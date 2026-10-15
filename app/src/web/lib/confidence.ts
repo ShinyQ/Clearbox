@@ -16,6 +16,7 @@ export function bandFor(confidence: number, tau: number, verdict: Verdict): Band
 
 /** Floor, never round, so 0.949 shows "94%" and stays consistent with the band. Epsilon guards float drift. */
 export function toPercent(confidence: number): number {
+  // Epsilon keeps values like 0.29 (0.28999999) from flooring one point low.
   return Math.floor(confidence * 100 + 1e-9);
 }
 
@@ -51,10 +52,11 @@ export function scaleBands(tau: number): ScaleBand[] {
     tau >= VERY_SURE_MIN
       ? { band: "sure", label: "Sure", range: "None right now", membership: "Threshold is above 95%" }
       : { band: "sure", label: "Sure", range: `${t} to 94%`, membership: "In Clean up" };
+  const veryLow = Math.max(t, 95);
   return [
-    { band: "very_sure", label: "Very sure", range: "95 to 100%", membership: "In Clean up" },
+    { band: "very_sure", label: "Very sure", range: `${veryLow} to 100%`, membership: "In Clean up" },
     sure,
-    { band: "likely", label: "Likely", range: `70 to ${Math.min(t, 95) - 1}%`, membership: "Left for you" },
+    { band: "likely", label: "Likely", range: `70 to ${t - 1}%`, membership: "Left for you" },
     { band: "unsure", label: "Unsure", range: "Below 70%", membership: "Left for you" },
   ];
 }

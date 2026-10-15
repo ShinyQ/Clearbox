@@ -59,6 +59,40 @@ describe("scaleBands", () => {
   });
 });
 
+describe("scaleBands consistency with bandFor", () => {
+  it("shows the raised Very sure range when tau is above 95%", () => {
+    expect(scaleBands(0.97).map((b) => `${b.label}|${b.range}|${b.membership}`)).toEqual([
+      "Very sure|97 to 100%|In Clean up",
+      "Sure|None right now|Threshold is above 95%",
+      "Likely|70 to 96%|Left for you",
+      "Unsure|Below 70%|Left for you",
+    ]);
+  });
+
+  function span(range: string): [number, number] {
+    if (range === "None right now") return [1, 0];
+    const below = /^Below (\d+)%$/.exec(range);
+    if (below) return [0, Number(below[1]) - 1];
+    const m = /^(\d+) to (\d+)%$/.exec(range);
+    if (!m) throw new Error(`unparseable range ${range}`);
+    return [Number(m[1]), Number(m[2])];
+  }
+
+  it.each([0.86, 0.95, 0.97])("places every confidence in the matching card for tau %s", (tau) => {
+    const cards = scaleBands(tau);
+    for (let pct = 60; pct <= 99; pct++) {
+      const c = pct / 100;
+      const band = bandFor(c, tau, "delete");
+      const card = cards.find((b) => b.band === band);
+      expect(card, `card for ${band}`).toBeDefined();
+      const [lo, hi] = span(card?.range ?? "");
+      const p = toPercent(c);
+      expect(p >= lo && p <= hi, `${pct}% in ${card?.range} for tau ${tau}`).toBe(true);
+      expect(card?.membership === "In Clean up", `membership at ${pct}%`).toBe(inCleanup("delete", band));
+    }
+  });
+});
+
 describe("membershipLine", () => {
   it("describes each case with the API tau", () => {
     expect(membershipLine("delete", { min: 0.91, max: 0.99 }, 0.86, 248)).toBe("All 248 are in Clean up.");

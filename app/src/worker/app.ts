@@ -10,6 +10,8 @@ import {
   requestContext,
   workerSecureHeaders,
 } from "./middleware/headers.ts";
+import { accountsRoutes } from "./routes/accounts.ts";
+import { meRoutes } from "./routes/me.ts";
 import { oauthRoutes } from "./routes/oauth.ts";
 import { makeProvider, PROVIDER_OAUTH } from "./scan/providers.ts";
 import type { ProviderFactory, ProviderOAuthMap } from "./scan/providers.ts";
@@ -43,6 +45,8 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
 
   // Routes (mounted by later tasks, in this order).
   app.route("/oauth", oauthRoutes);
+  app.route("/api", meRoutes);
+  app.route("/api/accounts", accountsRoutes);
 
   app.notFound(notFoundHandler);
   app.onError(onApiError);

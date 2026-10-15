@@ -15,6 +15,7 @@ import { readConfig } from "../env.ts";
 import { logEvent } from "../log.ts";
 import { claimStatements, parseClaim, parseTickSettings, scanNowError } from "./claim.ts";
 import type { TickAccountRow } from "./claim.ts";
+import { classifyFailure } from "./failure.ts";
 import { failTick, finishTick, idleReport, successResult } from "./tick-finish.ts";
 import type { TickResult } from "./tick-finish.ts";
 import { processAccount } from "./tick-process.ts";
@@ -175,20 +176,45 @@ async function tick(
     result = successResult(processed, finalResults);
   } catch (err) {
     final = createSubrequestCounter(limit, Math.max(work.used, final.used));
-    result = await failTick({
-      err,
-      account,
-      kind,
-      tickId,
-      now,
-      settings,
-      tokens,
-      encKey,
-      run,
-      final,
-      raise,
-      clear,
-    });
+    try {
+      result = await failTick({
+        err,
+        account,
+        kind,
+        tickId,
+        now,
+        settings,
+        tokens,
+        encKey,
+        run,
+        final,
+        raise,
+        clear,
+      });
+    } catch (failureWriteError) {
+      // Never throw for a claimed account: the lease expires by TTL and the next claim retries.
+      const errorCode = classifyFailure(failureWriteError, {
+        provider: account.provider,
+        attempts: account.attempts,
+        now,
+      }).errorCode;
+      logEvent("tick.failed", {
+        tickId,
+        accountId: account.id,
+        kind,
+        errorCode,
+        attempts: account.attempts,
+        retryAfterMs: null,
+      });
+      return {
+        ...idleReport(Math.max(work.used, final.used), null),
+        outcome: "error",
+        accountId: account.id,
+        kind,
+        phase: account.phase,
+        errorCode,
+      };
+    }
   }
 
   return finishTick({

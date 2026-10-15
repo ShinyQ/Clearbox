@@ -156,11 +156,15 @@ describe("runTick: failures", () => {
       errorCode: "decision_not_configured",
     });
     expect(await issueCodes()).toContain("decision_not_configured");
-    // Retry as soon as the backoff ends: still an inbox_backfill tick, so Decision-1 runs and the issue clears.
-    const retryAt = (await getAccount(ACCOUNT_A)).backoff_until ?? NOW;
-    expect(retryAt).toBeLessThan(NOW + 2 * MINUTE);
-    const retried = await runTick(env, { trigger: "cron", now: retryAt, engine: new FakeEngine() });
-    expect(retried.decided).toBeGreaterThan(0);
+    const retryAt = (await getAccount(ACCOUNT_A)).backoff_until;
+    expect(retryAt).not.toBeNull();
+    expect(retryAt).toBeGreaterThan(NOW);
+    // 7 h later the quiet account polls incrementally and decides nothing; configured secrets still clear it.
+    const retried = await runTick(env, {
+      trigger: "cron",
+      now: NOW + 7 * 60 * MINUTE,
+      engine: new FakeEngine(),
+    });
     expect(retried.outcome).toBe("processed");
     expect(await issueCodes()).not.toContain("decision_not_configured");
 
@@ -168,6 +172,58 @@ describe("runTick: failures", () => {
     mock.sent = [{ conversationId: "c-1", to: ["friend@example.net"], sentAt: NOW - MINUTE }];
     await seedTickAccount({ phase: "sent_backfill", lastIncrementalAt: null });
     expect((await runTick(noDecision, { trigger: "cron", now: NOW })).outcome).toBe("processed");
+  });
+
+  it("clears a stale client-invalid issue when a token refresh succeeded before the failure", async () => {
+    await seedTickAccount({
+      provider: "outlook",
+      accessToken: null,
+      phase: "inbox_backfill",
+      lastIncrementalAt: NOW - MINUTE,
+    });
+    await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('issues', ?1, ?2)")
+      .bind(
+        JSON.stringify([
+          { code: "microsoft_client_invalid", since: new Date(NOW).toISOString(), accountId: null },
+        ]),
+        NOW,
+      )
+      .run();
+    mock.failNext({ method: "GET", pathIncludes: "/inbox/messages", status: 503, times: 2 });
+    expect((await runTick(env, { trigger: "cron", now: NOW, engine: new FakeEngine() })).outcome).toBe(
+      "error",
+    );
+    expect(await issueCodes()).not.toContain("microsoft_client_invalid");
+  });
+
+  it("returns an error report instead of throwing when the failure write itself fails", async () => {
+    await seedTickAccount({ phase: "inbox_backfill", lastIncrementalAt: NOW - MINUTE });
+    mock.failNext({
+      method: "GET",
+      pathIncludes: "/inbox/messages",
+      status: 429,
+      headers: { "Retry-After": "120" },
+      body: { error: { code: "TooManyRequests", message: "Please retry again later." } },
+    });
+    let batches = 0;
+    const flaky = {
+      ...env,
+      DB: {
+        prepare: (q: string) => env.DB.prepare(q),
+        batch: (stmts: D1PreparedStatement[]) => {
+          batches += 1;
+          if (batches === 2) return Promise.reject(new Error("D1 unavailable"));
+          return env.DB.batch(stmts);
+        },
+      } as unknown as D1Database,
+    };
+    const report = await runTick(flaky, { trigger: "cron", now: NOW, engine: new FakeEngine() });
+    expect(report).toMatchObject({ outcome: "error", accountId: ACCOUNT_A, kind: "inbox_backfill" });
+    expect(report.errorCode).not.toBeNull();
+    expect(await getAccount(ACCOUNT_A)).toMatchObject({ attempts: 0, backoff_until: null });
+    expect(await one("SELECT released_at FROM leases WHERE account_id = ?1", ACCOUNT_A)).toEqual({
+      released_at: null,
+    });
   });
 
   it("halves the page without backoff when the subrequest budget runs out mid-tick", async () => {

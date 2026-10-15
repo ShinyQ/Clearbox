@@ -85,6 +85,7 @@ export async function processAccount(p: ProcessParams): Promise<Processed> {
   const needsEngine = kind !== "sent_backfill";
   const engine = needsEngine ? (p.engine ?? makeDecisionEngine(p.env, p.decisionFetch)) : null;
   if (needsEngine && engine === null) throw new DecisionNotConfiguredError();
+  if (needsEngine) p.clear.push("decision_not_configured");
   const provider = makeProvider(providerTargetOf(account), {
     fetch: p.providerFetch,
     tokens: p.tokens,

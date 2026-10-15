@@ -172,13 +172,17 @@ export async function failTick(f: FailParams): Promise<TickResult> {
     attempts: f.account.attempts,
     now: f.now,
   });
+  const update = f.tokens.update;
+  const clear = [...f.clear];
+  if (update !== null) {
+    clear.push(f.account.provider === "gmail" ? "google_client_invalid" : "microsoft_client_invalid");
+  }
   const issues = applyIssues(
     f.settings.issues,
     [...f.raise, ...plan.raise.map((code) => ({ code, accountId: null }))],
-    f.clear,
+    clear,
     f.now,
   );
-  const update = f.tokens.update;
   const tokens = update === null ? null : await encryptTokenUpdate(f.encKey, f.account, update);
   const res = await f.run(
     f.final,

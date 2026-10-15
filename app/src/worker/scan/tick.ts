@@ -32,7 +32,12 @@ import { claimStatements, parseClaim, parseTickSettings, scanNowError } from "./
 import type { TickAccountRow, TickSettings } from "./claim.ts";
 import { freshContextStatements, parseContext, redecideContextStatements } from "./context.ts";
 import { makeDecisionEngine } from "./engine.ts";
-import { DecisionNotConfiguredError, DecisionOutageError } from "./failure.ts";
+import {
+  DecisionNotConfiguredError,
+  DecisionOutageError,
+  buildFailureWrite,
+  classifyFailure,
+} from "./failure.ts";
 import {
   decideStage,
   emptyStage,
@@ -610,6 +615,89 @@ async function finishTick(f: FinishParams): Promise<TickReport> {
   };
 }
 
+interface FailParams {
+  err: unknown;
+  account: TickAccountRow;
+  kind: TickKind;
+  tickId: string;
+  now: number;
+  settings: TickSettings;
+  tokens: D1TokenSource;
+  encKey: CryptoKey;
+  run: BatchRunner;
+  final: SubrequestCounter;
+  raise: readonly IssueRaise[];
+  clear: readonly AppIssueCode[];
+}
+
+/** Contracts 8.2 catch branch: persist the failure, keep rotated tokens, release the lease. */
+async function failTick(f: FailParams): Promise<TickResult> {
+  const plan = classifyFailure(f.err, {
+    provider: f.account.provider,
+    attempts: f.account.attempts,
+    now: f.now,
+  });
+  const issues = applyIssues(
+    f.settings.issues,
+    [...f.raise, ...plan.raise.map((code) => ({ code, accountId: null }))],
+    f.clear,
+    f.now,
+  );
+  const update = f.tokens.update;
+  const tokens = update === null ? null : await encryptTokenUpdate(f.encKey, f.account, update);
+  const res = await f.run(
+    f.final,
+    buildFailureWrite({
+      accountId: f.account.id,
+      tickId: f.tickId,
+      now: f.now,
+      plan,
+      tokens,
+      issues: issues.changed ? issues.issues : null,
+    }),
+  );
+  if (plan.provider !== null) {
+    logEvent("provider.error", {
+      tickId: f.tickId,
+      accountId: f.account.id,
+      provider: f.account.provider,
+      errorCode: plan.errorCode,
+      status: plan.provider.status,
+    });
+  }
+  if (plan.status !== "active") {
+    logEvent("account.status", {
+      accountId: f.account.id,
+      from: "active",
+      to: plan.status,
+      reason: plan.statusReason,
+    });
+  }
+  logEvent("tick.failed", {
+    tickId: f.tickId,
+    accountId: f.account.id,
+    kind: f.kind,
+    errorCode: plan.errorCode,
+    attempts: f.account.attempts + 1,
+    retryAfterMs: plan.retryAfterMs,
+  });
+  return {
+    outcome: "error",
+    phase: f.account.phase,
+    nextTickAt: plan.status !== "active" ? null : (plan.backoffUntil ?? f.now),
+    errorCode: plan.errorCode,
+    freshCount: 0,
+    rowsWritten: sumMeta(res, "rows_written"),
+    rowsRead: sumMeta(res, "rows_read"),
+    dbSize: lastSizeAfter(res),
+    stats: emptyStats(),
+    fetched: 0,
+    skippedKnown: 0,
+    removed: 0,
+    issues,
+  };
+}
+
 async function tick(
   env: Env,
   opts: TickOptions,
@@ -706,11 +794,30 @@ async function tick(
     maxPageSize: freeTier ? PAGE_SIZE_FREE : PAGE_SIZE_PAID,
   };
 
-  // Success path. Task 8 wraps these four statements in the failure handler.
-  const processed = await processAccount(params);
-  const final = createSubrequestCounter(limit, work.used);
-  const finalResults = await run(final, processed.write.stmts);
-  const result = successResult(processed, finalResults);
+  let final = createSubrequestCounter(limit, work.used);
+  let result: TickResult;
+  try {
+    const processed = await processAccount(params);
+    final = createSubrequestCounter(limit, work.used);
+    const finalResults = await run(final, processed.write.stmts);
+    result = successResult(processed, finalResults);
+  } catch (err) {
+    final = createSubrequestCounter(limit, Math.max(work.used, final.used));
+    result = await failTick({
+      err,
+      account,
+      kind,
+      tickId,
+      now,
+      settings,
+      tokens,
+      encKey,
+      run,
+      final,
+      raise,
+      clear,
+    });
+  }
 
   return finishTick({
     run,

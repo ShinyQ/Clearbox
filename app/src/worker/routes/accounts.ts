@@ -17,6 +17,7 @@ import { countOpenByAccount, dismissOpenStmt } from "../db/suggestions.ts";
 import type { AppEnv } from "../env.ts";
 import { logEvent } from "../log.ts";
 import { ApiError, parseWith, readJsonBody } from "../middleware/errors.ts";
+import { runTick } from "../scan/tick.ts";
 
 export const accountsRoutes = new Hono<AppEnv>();
 
@@ -128,4 +129,14 @@ accountsRoutes.delete("/:id", async (c) => {
   return c.json(body);
 });
 
-// Plan 04 adds: accountsRoutes.post("/:id/scan", ...) (contracts 7.5 scan now).
+/** Contracts 7.5: one forced tick for this account. A failed claim throws ApiError (404, 409, 429) for onApiError. */
+accountsRoutes.post("/:id/scan", async (c) => {
+  const deps = c.get("deps");
+  const report = await runTick(c.env, {
+    trigger: "scan_now",
+    accountId: c.req.param("id"),
+    now: deps.now(),
+    fetch: deps.fetch,
+  });
+  return c.json(report);
+});

@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 import type { HttpHandler } from "msw";
 import { beforeEach } from "vitest";
+import { jwksHandler } from "./access.ts";
 import { network } from "../setup/network.ts";
 import { DAY, MINUTE, NOW, OWNER, graphDeltaLink } from "./tick-db.ts";
 
@@ -326,7 +327,7 @@ export function useNetwork(...groups: HttpHandler[][]): void {
   network.use(...groups.flat(), unhandled);
 }
 
-/** Same without the catch-all, for route tests whose Access JWKS mock is installed by plan 03 helpers. */
+/** Like useNetwork, but the Access JWKS handler answers before the recording catch-all, for route tests. */
 export function useNetworkOpen(...groups: HttpHandler[][]): void {
-  network.use(...groups.flat());
+  network.use(...groups.flat(), jwksHandler(), unhandled);
 }

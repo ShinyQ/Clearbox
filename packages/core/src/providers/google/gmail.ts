@@ -332,7 +332,7 @@ function isHistoryRecord(value: unknown): value is GmailHistoryRecord {
 /**
  * One history.list page (decision 9). The next startHistoryId is the last fully processed record, or the
  * response historyId when every record was processed and there is no nextPageToken. An id that is both
- * added and removed within the page counts as removed only (removal wins; its metadata is not fetched).
+ * added and removed within the page is resolved by its fresh metadata: still in INBOX means added only.
  */
 async function syncChanges(
   client: GmailClient,
@@ -358,19 +358,19 @@ async function syncChanges(
   const scan = scanHistory(records, maxMessages);
   const caughtUp = scan.processed === records.length && typeof body.nextPageToken !== "string";
   const historyId = caughtUp ? body.historyId : (scan.lastId ?? state.historyId);
-  const removed = new Set(scan.removed);
-  const inbox = scan.inbox.filter((id) => !removed.has(id));
   const metas = await fetchMetadata(client, [
-    ...inbox.map((id) => ({ key: `i:${id}`, path: gmailMetadataPath(id) })),
+    ...scan.inbox.map((id) => ({ key: `i:${id}`, path: gmailMetadataPath(id) })),
     ...scan.sent.map((id) => ({ key: `s:${id}`, path: gmailSentMetadataPath(id) })),
   ]);
   const sent = scan.sent.flatMap((id) => {
     const meta = metas.get(`s:${id}`);
     return meta === undefined ? [] : [mapGmailSentItem(meta)];
   });
+  const added = inboxMessages(scan.inbox, metas, "i:");
+  const addedIds = new Set(added.map((m) => m.providerMessageId));
   return {
-    added: inboxMessages(inbox, metas, "i:"),
-    removedIds: scan.removed,
+    added,
+    removedIds: scan.removed.filter((id) => !addedIds.has(id)),
     sent,
     nextCursor: encodeIncremental({ ...state, historyId }),
     caughtUp,

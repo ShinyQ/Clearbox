@@ -129,16 +129,24 @@ describe("GmailProvider.syncChanges", () => {
     expect(JSON.parse(page.nextCursor)).toMatchObject({ historyId: "2003" });
   });
 
-  it("lets a removal win over an add of the same id within one page", async () => {
+  it("resolves an id both removed and re-added in one page by its current inbox state", async () => {
     const { incrementalCursor } = await provider.bootstrap();
-    const bounced = box.addMessage();
-    box.move(bounced.id, "trash");
-    box.move(bounced.id, "inbox");
+    const undone = box.addMessage();
+    box.move(undone.id, "archive");
+    box.move(undone.id, "inbox");
+    const page = await provider.syncChanges(incrementalCursor, 25);
+    expect(page.added.map((m) => m.providerMessageId)).toEqual([undone.id]);
+    expect(page.removedIds).toEqual([]);
+    expect(page.caughtUp).toBe(true);
+  });
+
+  it("reports an id added and then trashed in one page as removed only", async () => {
+    const { incrementalCursor } = await provider.bootstrap();
+    const gone = box.addMessage();
+    box.move(gone.id, "trash");
     const page = await provider.syncChanges(incrementalCursor, 25);
     expect(page.added).toEqual([]);
-    expect(page.removedIds).toEqual([bounced.id]);
-    expect(page.caughtUp).toBe(true);
-    expect(box.requests).not.toContain("POST /batch/gmail/v1");
+    expect(page.removedIds).toEqual([gone.id]);
   });
 
   it("rejects a history response without a historyId", async () => {

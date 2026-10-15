@@ -5200,3 +5200,77 @@ Still open:
 
 1. `SELECT message_id FROM suggestions WHERE expires_at < ?` has no index; on a large table each nightly purge round scans until 500 matches. Fine at Free-plan volumes (rows read are cheap: 5M per day), but an index `suggestions (expires_at)` would cost one written row per suggestion insert and update; left out deliberately.
 2. If D1 rejects `CLAIM_SQL` (Task 2 Step 5 fallback), report it so contracts 8.2 is updated.
+
+## Execution notes
+
+Executed on branch `feat/clearbox-04-scan-pipeline` (stacked on `feat/clearbox-03-worker-platform`) with superpowers:subagent-driven-development: one implementer per task, a spec and quality review after each task (fix rounds on Tasks 7 and 8), a final whole-branch review and one fix wave. No dependency was added and `packages/core` was not edited. No Produces name or signature changed: `runTick(env, opts)`, `TickOptions`, `runNightly(env, { now })`, `POST /api/accounts/:id/scan` and its codes (404 `not_found`, 409 `account_busy` with `retryAt`, 409 `account_inactive`, 429 `budget_exhausted` with `retryAt`), `scan/{claim,context,ingest,write-plan,failure,tick-tokens,engine}.ts`, `nightly/purge.ts`, `docs/runbook.md` (CPU section) and `messages.signals_json = JSON.stringify(Signals)`.
+
+### Gate 04 result
+
+`pnpm --filter @clearbox/app exec vitest run -c vitest.worker.config.ts test/worker/tick/surface.test.ts test/worker/db-isolation.test.ts && pnpm test && CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000 pnpm typecheck && pnpm lint && pnpm format:check && git diff --quiet HEAD && echo committed` passes: surface and isolation `Test Files  2 passed (2)`, `Tests  11 passed (11)`; core `Test Files  40 passed (40)`, `Tests  635 passed (635)`; app worker `Test Files  48 passed (48)`, `Tests  382 passed (382)`; app web `Test Files  1 passed (1)`, `Tests  1 passed (1)`; `check-text: 264 tracked files clean`; `All matched files use Prettier code style!`; `committed`.
+
+Counts: plan 03 left the worker run at 28 files and 220 tests. The plan as written adds 18 files and 95 tests (46 / 315). This branch has 20 new files (the 18 planned plus `tick/tick-edges.test.ts` and `tick/tick-fence.test.ts` from the final fix wave) and 162 new tests: the extra 67 are regression tests for the lead notes, the fix rounds and the final review (for example `receivedAt = 0`, duplicate ids on a page, empty key lists, `key_version` 2 refresh, `dismissSql` on `awaiting_model`, stale Graph URLs, Gmail worst-case subrequests, lease fencing, scan-now `retryAt` values, storage gate and page size edges). Core and web are unchanged.
+
+CPU benchmark (`test/worker/tick/tick-cpu.test.ts`, 25-message page, `FakeEngine`, MSW Graph provider, local workerd on an Apple M4, 20 samples after one warm-up): median pure stages 1 to 2 ms (budget 8), median wall minus awaited I/O 4 to 5 ms (budget 10) across four runs. workerd timers are whole milliseconds, so medians move by about 1 ms between runs.
+
+### Live-verification outcomes (index items)
+
+| # | Outcome |
+|---|---|
+| 8 | Local D1 (workerd) accepts the primary `CLAIM_SQL` (upsert after `LIMIT`); the Task 2 Step 5 fallback was not needed and contracts 8.2 needs no change. Production D1 is still unverified. |
+| new | Local D1 reports one written row per deleted row in `meta.rows_written` (the purge test asserts `>= 1200` for 600 suggestions plus 600 messages, not the planned `>= 1800`). Production D1 may also count index writes. |
+| new | A D1 `batch()` should count as one subrequest and one query against the Free per-invocation limits; the tick success batch can hold more than 50 statements. Confirm after the first deploy (plan 06). |
+
+### Lead notes from earlier layers
+
+| # | Handling |
+|---|---|
+| 1 | `ingest.ts` `prepareOne`: `receivedAt <= 0` forces `ageDays: 0` for guardrails, the Decision state and the stored signals, so `guard_too_recent` caps the item at keep; the redecide path applies the same rule. Tested. |
+| 2 | Documented next to the reserved-call constants (worst case per Gmail metadata chunk: 3 batch POSTs plus one refresh); Decision-1 room is sized from the counter after the fetch. A Gmail worst-case tick test writes with 35 subrequests (limit 45). |
+| 3 | `fetchPage` routes `CursorExpiredError("incremental")` to `resyncCursor` once and rethrows a second failure; unit tests with a scripted `MailProvider`. |
+| 4 | Known and repeated `providerMessageId`s are skipped before Decision-1 and before writing (`skippedKnown`); tested in ingest and in a Graph delta tick. |
+| 5 | `ProviderResponseError` with `status === 0` is a stale cursor: sent and backfill restart from `null`, incremental resyncs from the watermark. Tested with a lookalike-host delta link. |
+| 6 | Not applicable: plan 04 never calls `trash`, `archive` or `restore`. A second Graph 401 (`ProviderAuthError("unauthorized")`) classifies as `needs_reauth`. |
+| 7 | Core untouched. |
+| 8 | `dismissSql` sets `action = COALESCE(action, 'unsure')`; a batch test dismisses an `awaiting_model` row. |
+| 9 | Stale-`approved` recovery runs one `UPDATE ... WHERE account_id = ?1 ...` per account in one batch (none when there are no accounts). The isolation test now checks every owned-table literal in `nightly/*.ts` (exemptions `calibration`, `purge_expired`, `purge_disconnected`) and in `scan/*.ts` (no exemptions); both were proven to fail on a mutation. |
+| 10 | `encryptTokenUpdate` encrypts under the row's `key_version` (comment points to `tokenUpdateStmt`, decision 23); tested with a version-2 row. Seed helpers default to `CURRENT_KEY_VERSION`. |
+| 11 | Provider calls stay sequential per account (comments in `openTickTokens` and `fetchPage`). |
+| 12 | Context builders, `removedIds` dismissals and `batchRunner` emit nothing for empty lists; nightly skips recovery with no accounts. |
+| 13 | `provider-mock.ts` records unmocked requests (`useNetwork` and `useNetworkOpen`); every tick, nightly, scheduled, scan-route and benchmark test calls `expectNoUnhandled()` in `afterEach`, and the benchmark asserts `errorCode: null` per tick. |
+| 14 | See "Counts" above. |
+
+### Deviations (fix forward)
+
+| # | Task | Change | Why |
+|---|---|---|---|
+| 1 | 4 | `withLowerSender` lowercases the sender address before the identity pass and signals | Core `extractSignals` does not lowercase while `registrableDomain` does; context keys, prior keys and stored senders must match (C12) |
+| 2 | 7 | Graph test mock pages with `lt` (as the provider does) and answers the first filtered delta round after a resync with mail; it records the resync `$filter` | The planned mock ignored `lt` (backfill never advanced) and returned nothing after a resync |
+| 3 | 7 | A partial incremental poll keeps `last_incremental_at` (`computeAdvance`) | Otherwise the interleave returned to backfill and the rest of the page waited up to 30 minutes (C9 intent) |
+| 4 | 7 | `Stopwatch.io` measures the union of concurrent I/O intervals; `freeTier` comes from the validated config; `fetchPage` is exported for unit tests; one shared `batchRunner` (tick and nightly) | Concurrent Decision-1 calls were double counted, which made the C20 check too lenient; typecheck; duplication |
+| 5 | 8 | `tick.ts` split into `fetch.ts`, `tick-stats.ts`, `tick-process.ts`, `tick-finish.ts`; `write-plan.ts` is a barrel over `stmt.ts`, `plan-builders.ts`, `success-write.ts` (every symbol still importable from `write-plan.ts`) | Contracts section 11: files over 500 lines must be split. Lead: add these files to contracts 1.1 |
+| 6 | 8 | `decision_not_configured` clears as soon as the engine is configured; `failTick` clears `<provider>_client_invalid` after a successful refresh; if the failure write itself fails, `runTick` logs `tick.failed` and returns an error report instead of throwing (lease expires by TTL) | A quiet account kept the banner forever; brief contract "never throws after a claim" |
+| 7 | 10 | The nightly claim batch reads `id, status` of every account: per-account stale recovery and disconnected-only purge | Lead note 9; `purgeDisconnected` does not re-check status |
+| 8 | final | Success and failure account updates and the sender upserts are fenced on the held lease (`EXISTS (SELECT 1 FROM leases WHERE name = 'account:' \|\| ? AND holder = ? AND released_at IS NULL)`) | A tick stalled past `LEASE_TTL_MS` could commit after another tick took the lease (double counted senders, cursor regression) |
+| 9 | final | Retry-After clamped to `BACKOFF_MAX_MS`; an unknown DB size (no budget row yet today) neither raises nor clears `storage_near_limit`; a storage-gated backfill account polls at the incremental interval; a subrequest budget failure at the page-size floor backs off normally; the stored `page_size` is clamped to the tier maximum | Unbounded backoff, daily issue flapping, minute polling, endless retries, `FREE_TIER` flips |
+| 10 | final | `docs/runbook.md` step 5 also mentions page-size halving on subrequest budget failures | Accuracy |
+
+C27 kept: tick audit rows `reauth_required` / `config_error` store `{"reason": <code>}` through the local `auditStmt` in `scan/plan-builders.ts`, while plan 03's `db/audit.ts` normalizes those kinds to `{}`. A5 does not fix these keys; plan 05 should not rely on either shape.
+
+### Notes for later plans
+
+- Plan 05:
+  - Scan-now returns `TickReport` (`outcome` `processed`, `idle` or `error`). With an invalid server config it returns 200 with an idle report (contracts 8.2), but Access already fails `/api/*` with 500 `access_misconfigured` in that case.
+  - `account_inactive` (409) is returned both for `needs_reauth`/`config_error` (no `retryAt`) and for an account in backoff (with `retryAt` = `backoff_until`).
+  - Decision issues `decision_auth_failed` and `decision_deployment_not_found` clear only after a successful decision, so they can stay up on a quiet account after the owner fixes them.
+- Plan 06:
+  - Runbook: keep the CPU section; it now mentions page-size halving on subrequest budget failures.
+  - Contracts 1.1 / 11 should list the extra scan files (deviation 5).
+  - Open product question (lead): Graph delta reports updates to old messages in `added`; once the nightly purge has removed such a message (30 days after a decision, 90 if pending), a later change re-ingests it as a new suggestion. Options: skip incremental items older than the retention window, or keep purged-id tombstones.
+  - Lost-lease fencing covers account and sender writes only; message and suggestion inserts stay idempotent but unfenced, so after a stall over 5 minutes some sender counters can stay low. A fenced tick still reports `processed` and drops a rotated refresh token (Microsoft keeps the previous token valid).
+  - Global `settings.issues` is read at claim and written at the end of a tick; concurrent ticks on different accounts can lose an issue update, which the next tick repairs.
+  - Confirm on Linux CI that the benchmark margin holds (local medians 1 to 2 ms against 8).
+
+### Deferred minor findings (triaged by the final review as safe to defer)
+
+Test hygiene and coverage gaps (order-dependent harness test, `page_size` floor and no-halve, `numbered(start, 0)`, `pair()` null, Decision `retryAfterMs`, budget write failure, D1 call saturation in nightly, bound account ids in the recovery test, mid-run purge write gate, 401/403 on scan-now, timer granularity); `parseTickSettings` silent fallbacks; duplicated encrypt block in `encryptTokenUpdate` (plan-mandated); sent recipients not lowercased; unvalidated `signals_json` on redecide; unbounded redecide priors and labels subqueries; `applyIssues` clears by code only; audit row written for an account disconnected mid-tick; unused `ClassifyContext.provider`; `fetchInboxEstimate` swallows all errors (best effort, C26); `purgeDisconnected` table deletes not status-guarded (callers pass disconnected ids only); purge `LIMIT 1000` repeated in literals; benchmark uses `FakeEngine` (Decision request building and parsing not measured).

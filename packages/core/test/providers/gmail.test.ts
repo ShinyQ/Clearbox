@@ -216,6 +216,22 @@ describe("GmailProvider.listInboxPage", () => {
     await expect(provider.listInboxPage(null, 25)).rejects.toBeInstanceOf(ProviderUnavailableError);
   });
 
+  it("throws instead of dropping a part that fails with a non-404 4xx (dailyLimitExceeded)", async () => {
+    box.addMessage();
+    box.addMessage();
+    box.failNext({
+      method: "GET",
+      path: /^\/gmail\/v1\/users\/me\/messages\/msg/,
+      status: 403,
+      body: { error: { code: 403, errors: [{ reason: "dailyLimitExceeded" }] } },
+      times: 2,
+    });
+    await expect(provider.listInboxPage(null, 25)).rejects.toMatchObject({
+      name: "ProviderRateLimitError",
+      retryAfterMs: 12 * 3_600_000,
+    });
+  });
+
   it("drops messages that left INBOX between list and metadata", async () => {
     box.addMessage();
     box.failNext({
@@ -289,6 +305,20 @@ describe("GmailProvider.listSentPage", () => {
       "hidden@example.net",
     ]);
     expect(second.nextCursor).toBeNull();
+  });
+
+  it("throws ProviderAuthError when a sent part fails with 403 insufficientPermissions", async () => {
+    box.addMessage({ folder: "sent", fromAddress: "owner@example.test" });
+    box.failNext({
+      method: "GET",
+      path: "/gmail/v1/users/me/messages/msg0001",
+      status: 403,
+      body: { error: { code: 403, errors: [{ reason: "insufficientPermissions" }] } },
+    });
+    await expect(provider.listSentPage(null, 100)).rejects.toMatchObject({
+      name: "ProviderAuthError",
+      reason: "insufficient_scope",
+    });
   });
 
   it("maps a rejected sent page token to CursorExpiredError(sent)", async () => {

@@ -97,11 +97,20 @@ interface MetadataRequest {
   path: string;
 }
 
+function parsePartJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fetches metadata with batches of at most 50 parts. Failed parts are retried once in the same call
- * (429/403-rate, 5xx, missing part; 401 parts after one forceRefresh). Afterwards: still rate limited ->
- * ProviderRateLimitError; every part of a chunk failed -> ProviderUnavailableError; otherwise 404 and
- * persistent 5xx parts are dropped.
+ * (429/403-rate, 5xx, missing part; 401 parts after one forceRefresh). Any other non-404 part failure
+ * (403 dailyLimitExceeded / domainPolicy / insufficientPermissions, 400, ...) throws at once via
+ * classifyGmailApiError. Afterwards: still rate limited -> ProviderRateLimitError; every part of a chunk
+ * failed -> ProviderUnavailableError; otherwise 404 and persistent 5xx parts are dropped.
  */
 async function fetchMetadata(
   client: GmailClient,
@@ -123,7 +132,17 @@ async function fetchMetadata(
       let unauthorized = false;
       rateRetryAfter = undefined;
       for (const [i, request] of pending.entries()) {
-        const outcome = classifyPart(parts.get(`m${String(i)}`), client.deps.now());
+        const part = parts.get(`m${String(i)}`);
+        const outcome = classifyPart(part, client.deps.now());
+        if (outcome.kind === "fail" && part !== undefined && part.status !== 404) {
+          // Dropping would lose the message for good (the page token still advances); fail the page instead.
+          throw classifyGmailApiError(
+            part.status,
+            parsePartJson(part.bodyText),
+            new Headers(part.headers),
+            client.deps.now(),
+          );
+        }
         if (outcome.kind === "ok") {
           found.set(request.key, outcome.body as unknown as GmailMessageMetadata);
           succeeded++;

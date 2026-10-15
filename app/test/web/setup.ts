@@ -1,6 +1,7 @@
 import { cleanup } from "@testing-library/react";
 import nativeConsole from "node:console";
 import { afterAll, afterEach, beforeAll } from "vitest";
+import { configureFormat } from "../../src/web/lib/format.ts";
 import { installMatchMedia, resetViewport } from "./helpers/viewport.ts";
 import { server } from "./msw/server.ts";
 
@@ -16,6 +17,7 @@ nativeConsole.error = (...args: unknown[]): void => {
 };
 
 installMatchMedia();
+configureFormat({ locale: "en-GB", timeZone: "UTC" });
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => undefined;
 
 beforeAll(() => server.listen({ onUnhandledFrame: "error" }));

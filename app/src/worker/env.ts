@@ -1,5 +1,7 @@
 import { z } from "zod";
+import type { FetchLike } from "@clearbox/core";
 import { base64ToBytes } from "./crypto/base64.ts";
+import type { ProviderFactory, ProviderOAuthMap } from "./scan/providers.ts";
 
 export const CRON_TICK = "* * * * *";
 export const CRON_NIGHTLY = "0 2 * * *";
@@ -132,4 +134,26 @@ function validate(env: Record<string, unknown>): ConfigResult {
       decision: endpoint && apiKey && deployment ? { endpoint, apiKey, deployment } : null,
     },
   };
+}
+
+/** Injectable dependencies; tests replace them through createApp(overrides). */
+export interface AppDeps {
+  fetch: FetchLike;
+  now: () => number;
+  providerFactory: ProviderFactory;
+  oauth: ProviderOAuthMap;
+}
+
+export interface AppVariables {
+  requestId: string;
+  deps: AppDeps;
+  /** Set by accessGuard. */
+  config: AppConfig;
+  /** Set by accessGuard. */
+  ownerEmail: string;
+}
+
+export interface AppEnv {
+  Bindings: Env;
+  Variables: AppVariables;
 }

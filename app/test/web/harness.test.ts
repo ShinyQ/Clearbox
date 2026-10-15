@@ -45,8 +45,11 @@ describe("axe helper", () => {
     const img = document.createElement("img");
     img.src = "/x.png";
     document.body.append(img);
-    await expect(expectNoA11yViolations()).rejects.toThrow();
-    img.remove();
+    try {
+      await expect(expectNoA11yViolations()).rejects.toThrow();
+    } finally {
+      img.remove();
+    }
   });
 
   it("passes on a labelled button", async () => {
@@ -66,5 +69,9 @@ describe("viewport helper", () => {
     expect(window.matchMedia("(min-width: 64rem)").matches).toBe(true);
     act(() => setReducedMotion(true));
     expect(window.matchMedia("(prefers-reduced-motion: reduce)").matches).toBe(true);
+    expect(window.matchMedia("(prefers-reduced-motion: no-preference)").matches).toBe(false);
+    act(() => setReducedMotion(false));
+    expect(window.matchMedia("(prefers-reduced-motion: reduce)").matches).toBe(false);
+    expect(window.matchMedia("(prefers-reduced-motion: no-preference)").matches).toBe(true);
   });
 });

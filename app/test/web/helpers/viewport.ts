@@ -8,7 +8,9 @@ function toPx(value: string, unit: string): number {
 }
 
 function evaluate(query: string): boolean {
-  if (query.includes("prefers-reduced-motion")) return reducedMotion && query.includes("reduce");
+  if (query.includes("prefers-reduced-motion")) {
+    return /prefers-reduced-motion:\s*reduce\b/.test(query) ? reducedMotion : !reducedMotion;
+  }
   const min = /min-width:\s*([\d.]+)(px|rem)/.exec(query);
   if (min?.[1] && min[2]) return width >= toPx(min[1], min[2]);
   const max = /max-width:\s*([\d.]+)(px|rem)/.exec(query);

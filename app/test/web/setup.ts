@@ -8,11 +8,15 @@ import { server } from "./msw/server.ts";
 // happy-dom logs "<METHOD> <url> <status> (<statusText>)" for every non-ok fetch response, which
 // is expected noise when tests exercise error paths. It writes through the native console that
 // vitest captured before replacing the global one, so that is the object patched here.
-// Everything else passes through unchanged.
+// It also logs the TypeError of a rejected fetch (MSW HttpResponse.error(), used to simulate being
+// offline). Everything else passes through unchanged.
 const HAPPY_DOM_FETCH_ERROR = /^[A-Z]+ \S+ \d{3} \([^)]*\)$/;
+const isNetworkError = (v: unknown): boolean =>
+  v instanceof Error && v.name === "TypeError" && v.message === "Network error";
 const nativeConsoleError = nativeConsole.error.bind(nativeConsole);
 nativeConsole.error = (...args: unknown[]): void => {
   if (args.length === 1 && typeof args[0] === "string" && HAPPY_DOM_FETCH_ERROR.test(args[0])) return;
+  if (args.length === 1 && isNetworkError(args[0])) return;
   nativeConsoleError(...args);
 };
 

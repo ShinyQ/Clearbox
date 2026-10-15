@@ -20,14 +20,36 @@ function normalizeAddress(raw: string): string | null {
   return ADDRESS.test(candidate) ? candidate : null;
 }
 
+/** Last `<...>` group outside double-quoted strings (backslash escapes honoured inside quotes). */
+function lastAngleGroup(value: string): { start: number; end: number } | null {
+  let quoted = false;
+  let start = -1;
+  let found: { start: number; end: number } | null = null;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (quoted) {
+      if (ch === "\\") i++;
+      else if (ch === '"') quoted = false;
+    } else if (ch === '"') quoted = true;
+    else if (ch === "<") start = i;
+    else if (ch === ">" && start >= 0) {
+      found = { start, end: i };
+      start = -1;
+    }
+  }
+  return found;
+}
+
 /** Parses one mailbox: `"Name" <a@b>`, `Name <a@b>`, `<a@b>`, `a@b`, `a@b (Name)`. */
 export function parseAddress(raw: string | null): MailAddress {
   if (raw === null) return { address: null, name: null };
   const value = unfoldHeader(raw);
-  const angle = /<([^<>]*)>/.exec(value);
+  const angle = lastAngleGroup(value);
   if (angle) {
-    const before = value.slice(0, angle.index);
-    return { address: normalizeAddress(angle[1] ?? ""), name: cleanName(before) };
+    return {
+      address: normalizeAddress(value.slice(angle.start + 1, angle.end)),
+      name: cleanName(value.slice(0, angle.start)),
+    };
   }
   const comment = /\(([^()]*)\)/.exec(value);
   const bare = comment ? value.replace(comment[0], "") : value;

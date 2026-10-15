@@ -24,14 +24,24 @@ export interface ParsedAuthResults {
 
 const FAIL_RESULTS: ReadonlySet<string> = new Set(["fail", "softfail", "hardfail", "permerror"]);
 
+/** Replaces each balanced top-level comment with one space in a single linear pass; unbalanced parentheses stay as text. */
 function stripComments(value: string): string {
-  let out = value;
-  let previous = "";
-  while (out !== previous) {
-    previous = out;
-    out = out.replace(/\([^()]*\)/g, " ");
+  const out: string[] = [];
+  const opens: number[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i] as string;
+    if (ch === "\\" && opens.length > 0 && i + 1 < value.length) {
+      out.push(ch, value[i + 1] as string);
+      i++;
+    } else if (ch === "(") {
+      opens.push(out.length);
+      out.push(ch);
+    } else if (ch === ")" && opens.length > 0) {
+      out.length = opens.pop() as number;
+      out.push(" ");
+    } else out.push(ch);
   }
-  return out;
+  return out.join("");
 }
 
 /** Parses one Authentication-Results value. Per method: pass if any pass, else fail if any fail/softfail/permerror, else none. */

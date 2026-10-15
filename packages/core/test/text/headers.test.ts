@@ -54,6 +54,20 @@ describe("parseAuthResults", () => {
   it("returns none for a missing header", () => {
     expect(parseAuthResults(null)).toEqual({ authservId: null, spf: "none", dkim: "none", dmarc: "none" });
   });
+
+  it("strips deeply nested comments in linear time", () => {
+    const value = "mx.example.test; spf=pass " + "(".repeat(50000) + ")".repeat(50000);
+    expect(parseAuthResults(value)).toMatchObject({ authservId: "mx.example.test", spf: "pass" });
+  });
+
+  it("strips nested and escaped comments", () => {
+    expect(parseAuthResults("mx.example.test; spf=(a (b) c)pass; dkim=fail (x \\) dkim=pass)")).toMatchObject(
+      {
+        spf: "pass",
+        dkim: "fail",
+      },
+    );
+  });
 });
 
 describe("parseListUnsubscribe", () => {

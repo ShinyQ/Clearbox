@@ -34,6 +34,18 @@ describe("parseAddress", () => {
     expect(parseAddress("<>")).toEqual({ address: null, name: null });
     expect(parseAddress(null)).toEqual({ address: null, name: null });
   });
+
+  it("ignores angle brackets inside a quoted display name", () => {
+    expect(parseAddress('"PayPal <service@paypal.com>" <attacker@evil.example>')).toEqual({
+      address: "attacker@evil.example",
+      name: "PayPal <service@paypal.com>",
+    });
+    expect(parseAddress('"Smith <Sales>" <a@example.com>')).toEqual({
+      address: "a@example.com",
+      name: "Smith <Sales>",
+    });
+    expect(parseAddress('"Say \\"<x@y.example>\\"" <a@example.com>').address).toBe("a@example.com");
+  });
 });
 
 describe("parseAddressList", () => {

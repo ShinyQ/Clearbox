@@ -79,6 +79,40 @@ describe("readConfig", () => {
     expect(result.config.decision).toBeNull();
   });
 
+  it("rejects a non-https decision endpoint", () => {
+    const result = readConfig(withEnv({ AZURE_DECISION_ENDPOINT: "http://decision.example.test" }));
+    expect(result).toEqual({ ok: false, invalid: ["AZURE_DECISION_ENDPOINT"] });
+  });
+
+  it("rejects a decision endpoint that is not an account root", () => {
+    for (const endpoint of [
+      "https://decision.example.test/openai/v1",
+      "https://decision.example.test/?x=1",
+      "https://decision.example.test/#frag",
+      "https://user:pass@decision.example.test",
+      "decision.example.test",
+    ]) {
+      const result = readConfig(withEnv({ AZURE_DECISION_ENDPOINT: endpoint }));
+      expect(result, endpoint).toEqual({ ok: false, invalid: ["AZURE_DECISION_ENDPOINT"] });
+    }
+  });
+
+  it("rejects the Microsoft-Decision-1 deployment name", () => {
+    const result = readConfig(withEnv({ AZURE_DECISION_DEPLOYMENT: "Microsoft-Decision-1" }));
+    expect(result).toEqual({ ok: false, invalid: ["AZURE_DECISION_DEPLOYMENT"] });
+  });
+
+  it("accepts an https account root decision endpoint and strips the trailing slash", () => {
+    const result = readConfig(withEnv({ AZURE_DECISION_ENDPOINT: "https://decision.example.test/" }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.config.decision).toEqual({
+      endpoint: "https://decision.example.test",
+      apiKey: "test-key",
+      deployment: "decision-1",
+    });
+  });
+
   it("exposes the cron expressions", () => {
     expect(CRON_TICK).toBe("* * * * *");
     expect(CRON_NIGHTLY).toBe("0 2 * * *");

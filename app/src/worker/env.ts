@@ -60,6 +60,27 @@ const Key32Schema = z
   });
 const OptionalSchema = z.string().trim().optional();
 
+const FORBIDDEN_DEPLOYMENT = "Microsoft-Decision-1";
+
+/**
+ * Contracts 3.7: the Decision endpoint is an https account root (no path, query, fragment or credentials).
+ * Returns "" when unset (feature off), the origin without trailing slash when valid, undefined when invalid.
+ */
+function decisionEndpoint(raw: string): string | undefined {
+  if (raw === "") return "";
+  if (raw.includes("?") || raw.includes("#")) return undefined;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "https:" || url.username !== "" || url.password !== "" || url.pathname !== "/") {
+    return undefined;
+  }
+  return url.origin;
+}
+
 const cache = new WeakMap<object, ConfigResult>();
 
 /** Validates every secret and var once per env object (one per isolate in production). Fails closed. */
@@ -95,6 +116,11 @@ function validate(env: Record<string, unknown>): ConfigResult {
   const tokenEncKey = pick("TOKEN_ENC_KEY", Key32Schema);
   const stateSigningKey = pick("STATE_SIGNING_KEY", Key32Schema);
   if (devAuthBypass === true && environment !== "development") invalid.push("DEV_AUTH_BYPASS");
+  const endpoint = decisionEndpoint(optional("AZURE_DECISION_ENDPOINT"));
+  if (endpoint === undefined) invalid.push("AZURE_DECISION_ENDPOINT");
+  const deployment = optional("AZURE_DECISION_DEPLOYMENT");
+  if (deployment.toLowerCase() === FORBIDDEN_DEPLOYMENT.toLowerCase())
+    invalid.push("AZURE_DECISION_DEPLOYMENT");
 
   if (
     invalid.length > 0 ||
@@ -105,7 +131,8 @@ function validate(env: Record<string, unknown>): ConfigResult {
     accessTeamDomain === undefined ||
     accessAud === undefined ||
     tokenEncKey === undefined ||
-    stateSigningKey === undefined
+    stateSigningKey === undefined ||
+    endpoint === undefined
   ) {
     return { ok: false, invalid };
   }
@@ -114,9 +141,7 @@ function validate(env: Record<string, unknown>): ConfigResult {
   const googleSecret = optional("GOOGLE_CLIENT_SECRET");
   const msId = optional("MS_CLIENT_ID");
   const msSecret = optional("MS_CLIENT_SECRET");
-  const endpoint = optional("AZURE_DECISION_ENDPOINT").replace(/\/$/, "");
   const apiKey = optional("AZURE_DECISION_KEY");
-  const deployment = optional("AZURE_DECISION_DEPLOYMENT");
 
   return {
     ok: true,

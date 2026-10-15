@@ -118,6 +118,32 @@ describe("undoBatch", () => {
     expect((await undoBatch(context(ok), batchId)).restored).toBe(2);
   });
 
+  it("keeps a keep-only batch undone: nothing to retry, no second audit row", async () => {
+    const acc = await seedAccount();
+    const keeps = await seedSuggestions(acc.id, 2, { action: "keep", confidence: 0.9 });
+    const fake = new FakeProvider();
+    const { batchId } = await executeSuggestions(context(fake), { kind: "approve_ids", ids: keeps });
+    const id = batchId ?? 0;
+    const res = await undoBatch(context(fake, SEED_NOW + 1), id);
+    expect(res).toMatchObject({ restored: 0, failed: 0, skipped: 2 });
+    expect(res.results.map((r) => [r.id, r.outcome, r.error])).toEqual(
+      keeps.map((k) => [k, "skipped", null]),
+    );
+    expect(fake.calls.filter((c) => c.method === "restore")).toHaveLength(0);
+    expect((await getBatch(env.DB, id))?.undoneAt).toBe(SEED_NOW + 1);
+    const app = createApp({ now: () => SEED_NOW + 2 });
+    const page = await readJson<Page<ActionBatchView>>(await apiFetch("/api/batches", {}, { app }));
+    expect(page.items.find((b) => b.id === id)?.undoable).toBe(false);
+    const again = await undoBatch(context(fake, SEED_NOW + 3), id);
+    expect(again).toMatchObject({ restored: 0, failed: 0, skipped: 2 });
+    const audits = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM audit_log WHERE kind = 'undo' AND batch_id = ?1",
+    )
+      .bind(id)
+      .first<{ n: number }>();
+    expect(audits?.n).toBe(1);
+  });
+
   it("stores moved Graph ids and fails items the provider reports as unknown", async () => {
     const acc = await seedAccount({ provider: "outlook" });
     const [a, b] = await seedSuggestions(acc.id, 2, { action: "archive" });

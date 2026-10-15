@@ -193,8 +193,9 @@ export async function undoBatch(ctx: ActionContext, batchId: number): Promise<Un
         result: { restored: count("restored"), failed: count("failed") },
       }),
     );
-    // Decision 10: nothing restored reopens the batch so the owner can retry.
-    if (restored.length === 0) stmts.push(resetUndoStmt(db, batchId, now));
+    // Decision 10: reopen only when nothing was restored and something failed, so the owner can retry.
+    // An all-skipped batch (for example keep-only) has nothing to retry and stays undone.
+    if (restored.length === 0 && count("failed") > 0) stmts.push(resetUndoStmt(db, batchId, now));
     writes.push(...(await db.batch(stmts)));
     committed = true;
 

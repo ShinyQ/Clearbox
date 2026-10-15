@@ -84,3 +84,48 @@ describe("D1 account isolation (contracts 6.1)", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+const nightlySources = import.meta.glob("../../src/worker/nightly/*.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+const NIGHTLY_EXEMPTIONS = new Set(["calibration", "purge_expired", "purge_disconnected"]);
+
+describe("nightly SQL on account-owned tables (contracts 6.1 exemption, lead note 9)", () => {
+  const nightlyLiterals = Object.entries(nightlySources).flatMap(([path, src]) =>
+    literals(src).map((sql) => ({ path, sql })),
+  );
+
+  it("finds the nightly and purge SQL", () => {
+    expect(Object.keys(nightlySources).length).toBeGreaterThanOrEqual(2);
+    expect(nightlyLiterals.filter(({ sql }) => OWNED.test(sql)).length).toBeGreaterThan(5);
+  });
+
+  it("marks every unscoped labels read with isolation-exempt: calibration", () => {
+    const offenders: string[] = [];
+    let marked = 0;
+    for (const { path, sql } of nightlyLiterals) {
+      if (!/\bFROM\s+labels\b/i.test(sql) || isScoped(sql)) continue;
+      if (EXEMPT.exec(sql)?.[1] === "calibration") marked += 1;
+      else offenders.push(`${path}: ${sql.replace(/\s+/g, " ").slice(0, 120)}`);
+    }
+    expect(offenders).toEqual([]);
+    expect(marked).toBe(1);
+  });
+
+  it("scopes every statement on account-owned tables by account_id or marks a known exemption", () => {
+    const offenders: string[] = [];
+    for (const { path, sql } of nightlyLiterals) {
+      if (!OWNED.test(sql)) continue;
+      const exempt = EXEMPT.exec(sql)?.[1];
+      if (exempt !== undefined) {
+        if (!NIGHTLY_EXEMPTIONS.has(exempt)) offenders.push(`${path}: unknown exemption ${exempt}`);
+        continue;
+      }
+      if (!isScoped(sql)) offenders.push(`${path}: ${sql.replace(/\s+/g, " ").slice(0, 120)}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+});

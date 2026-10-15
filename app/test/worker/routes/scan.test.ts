@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ApiErrorBody, TickReport } from "../../../src/shared/api.ts";
 import { createApp } from "../../../src/worker/app.ts";
-import { utcDate } from "../../../src/worker/scan/write-plan.ts";
+import { nextUtcMidnight, utcDate } from "../../../src/worker/scan/write-plan.ts";
 import { DecisionMock } from "../helpers/decision-mock.ts";
 import { ProviderMock, expectNoUnhandled, mail, useNetworkOpen } from "../helpers/provider-mock.ts";
 import { apiFetch } from "../helpers/request.ts";
@@ -75,7 +75,36 @@ describe("POST /api/accounts/:id/scan", () => {
     expect(res.status).toBe(429);
     const error = ((await res.json()) as ApiErrorBody).error;
     expect(error.code).toBe("budget_exhausted");
-    expect(error.retryAt).toBeDefined();
+    expect(error.retryAt).toBe(new Date(nextUtcMidnight(NOW)).toISOString());
+    expect(error.retryAt).toBe("2026-10-16T00:00:00.000Z");
     expect(await count("messages")).toBe(0);
+  });
+
+  it("returns 409 account_inactive with retryAt = backoff_until while the account backs off", async () => {
+    const backoff = NOW + 7 * MINUTE;
+    await seedTickAccount({ backoffUntil: backoff, attempts: 2 });
+    const res = await post(ACCOUNT_A);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as ApiErrorBody).error).toMatchObject({
+      code: "account_inactive",
+      retryAt: new Date(backoff).toISOString(),
+    });
+    expect(await count("messages")).toBe(0);
+  });
+
+  it("returns 404 not_found for a disconnected account", async () => {
+    await seedTickAccount({ status: "disconnected" });
+    const res = await post(ACCOUNT_A);
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as ApiErrorBody).error.code).toBe("not_found");
+  });
+
+  it("returns 409 account_inactive without retryAt for an account that needs reauth", async () => {
+    await seedTickAccount({ status: "needs_reauth" });
+    const res = await post(ACCOUNT_A);
+    expect(res.status).toBe(409);
+    const error = ((await res.json()) as ApiErrorBody).error;
+    expect(error.code).toBe("account_inactive");
+    expect(error.retryAt).toBeUndefined();
   });
 });

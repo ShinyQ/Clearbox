@@ -145,6 +145,58 @@ describe("scanNowError", () => {
     expect(err).toMatchObject({ status: 429, code: "budget_exhausted" });
     expect(nextUtcMidnight(NOW)).toBe(Date.UTC(2026, 9, 16));
   });
+
+  it("pins the exact code and retryAt of every scan-now error (consumed by the SPA)", async () => {
+    const backoff = NOW + 7 * MINUTE;
+    await seedTickAccount({ backoffUntil: backoff });
+    let c = (await claim({ accountId: ACCOUNT_A, force: true })).claim;
+    expect(scanNowError(c, NOW, INGEST_STOP_ROWS)).toMatchObject({
+      status: 409,
+      code: "account_inactive",
+      retryAt: new Date(backoff).toISOString(),
+    });
+
+    await resetDb();
+    await seedTickAccount({ status: "disconnected" });
+    c = (await claim({ accountId: ACCOUNT_A, force: true })).claim;
+    expect(scanNowError(c, NOW, INGEST_STOP_ROWS)).toMatchObject({
+      status: 404,
+      code: "not_found",
+      retryAt: null,
+    });
+
+    for (const status of ["needs_reauth", "config_error"] as const) {
+      await resetDb();
+      await seedTickAccount({ status });
+      c = (await claim({ accountId: ACCOUNT_A, force: true })).claim;
+      expect(scanNowError(c, NOW, INGEST_STOP_ROWS)).toMatchObject({
+        status: 409,
+        code: "account_inactive",
+        retryAt: null,
+      });
+    }
+
+    await resetDb();
+    await seedTickAccount();
+    await setBudget(utcDate(NOW), INGEST_STOP_ROWS);
+    c = (await claim({ accountId: ACCOUNT_A, force: true })).claim;
+    expect(scanNowError(c, NOW, INGEST_STOP_ROWS)).toMatchObject({
+      status: 429,
+      code: "budget_exhausted",
+      retryAt: new Date(nextUtcMidnight(NOW)).toISOString(),
+    });
+
+    await resetDb();
+    await seedTickAccount();
+    const held = await claim({ accountId: ACCOUNT_A, force: true });
+    expect(held.claim.claimedAccountId).toBe(ACCOUNT_A);
+    c = (await claim({ accountId: ACCOUNT_A, force: true, now: NOW + MINUTE })).claim;
+    expect(scanNowError(c, NOW + MINUTE, INGEST_STOP_ROWS)).toMatchObject({
+      status: 409,
+      code: "account_busy",
+      retryAt: new Date(NOW + LEASE_TTL_MS).toISOString(),
+    });
+  });
 });
 
 describe("parseTickSettings", () => {

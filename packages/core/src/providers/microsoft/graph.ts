@@ -18,6 +18,7 @@ import {
   stringField,
 } from "../oauth.ts";
 import type {
+  ActionResult,
   BackfillCursor,
   BootstrapResult,
   ChangesPage,
@@ -25,6 +26,7 @@ import type {
   IncrementalCursor,
   InboxPage,
   MailProvider,
+  RestoreItem,
   SentCursor,
   SentPage,
 } from "../provider.ts";
@@ -40,7 +42,7 @@ import {
   mapGraphSentItem,
 } from "./map.ts";
 import type { IncrementalState } from "./map.ts";
-import { classifyGraphApiError, isDeltaExpired, subRetryAfter } from "./oauth.ts";
+import { classifyGraphApiError, graphMoveResult, isDeltaExpired, subRetryAfter } from "./oauth.ts";
 import type { GraphBatchSubRequest, GraphBatchSubResponse, GraphHeader, GraphMessage } from "./types.ts";
 
 const PROVIDER = "outlook";
@@ -397,10 +399,78 @@ async function resyncCursor(client: GraphClient, watermark: number | null): Prom
 }
 
 // ---- Actions ----
-// (added in Task 13)
 
-function notImplemented(): Promise<never> {
-  return Promise.reject(new ClearboxError("not_implemented", "Added by a later plan 02 task"));
+const MAX_IDS_PER_CALL = 100;
+
+function assertMaxIds(count: number): void {
+  if (count > MAX_IDS_PER_CALL)
+    throw new ClearboxError("too_many_ids", "At most 100 ids per provider action call");
+}
+
+/**
+ * $batch of POST /me/messages/{id}/move, 20 per request; newId = response body id. 401 sub-responses get
+ * one forceRefresh per call and are retried; a second 401 throws ProviderAuthError.
+ */
+async function move(
+  client: GraphClient,
+  ids: readonly string[],
+  destinationId: string,
+): Promise<ActionResult[]> {
+  assertMaxIds(ids.length);
+  const results: ActionResult[] = [];
+  let refreshed = false;
+  for (const group of chunkIds(
+    ids.map((id, index) => ({ id, index })),
+    BATCH_MAX,
+  )) {
+    let pending = group;
+    while (pending.length > 0) {
+      const responses = await client.batch(
+        pending.map(({ id }, i) =>
+          subRequest(String(i), "POST", `/me/messages/${encodeURIComponent(id)}/move`, { destinationId }),
+        ),
+      );
+      const unauthorized: typeof pending = [];
+      for (const [i, item] of pending.entries()) {
+        const sub = responses.get(String(i));
+        if (sub?.status === 401) unauthorized.push(item);
+        else results[item.index] = graphMoveResult(item.id, sub, client.deps.now());
+      }
+      if (unauthorized.length > 0) {
+        if (refreshed) throw new ProviderAuthError({ provider: PROVIDER, reason: "unauthorized" });
+        await client.deps.tokens.forceRefresh();
+        refreshed = true;
+      }
+      pending = unauthorized;
+    }
+  }
+  return results;
+}
+
+function trash(client: GraphClient, ids: readonly string[]): Promise<ActionResult[]> {
+  return move(client, ids, "deleteditems");
+}
+
+/** Moves to the folder resolved at connect; archive_unavailable for every id (no request) when there is none. */
+async function archive(
+  client: GraphClient,
+  ids: readonly string[],
+  archiveFolderId: string | null,
+): Promise<ActionResult[]> {
+  assertMaxIds(ids.length);
+  if (archiveFolderId === null) {
+    return ids.map((id) => ({ id, ok: false, error: "archive_unavailable", retryAfterMs: null }));
+  }
+  return move(client, ids, archiveFolderId);
+}
+
+/** Trash and archive both restore by moving back to the well-known inbox folder. */
+function restore(client: GraphClient, items: readonly RestoreItem[]): Promise<ActionResult[]> {
+  return move(
+    client,
+    items.map((item) => item.id),
+    "inbox",
+  );
 }
 
 /** Graph provider (contracts 4.3, 4.3.2). Every request carries Prefer: IdType="ImmutableId"; requests are sequential. */
@@ -414,8 +484,8 @@ export function createGraphProvider(deps: GraphProviderDeps): MailProvider {
     syncChanges: (cursor, maxMessages) => syncChanges(client, cursor, maxMessages),
     resyncCursor: (watermark) => resyncCursor(client, watermark),
     inboxEstimate: () => getInboxEstimate(client),
-    trash: () => notImplemented(),
-    archive: () => notImplemented(),
-    restore: () => notImplemented(),
+    trash: (ids) => trash(client, ids),
+    archive: (ids) => archive(client, ids, deps.archiveFolderId),
+    restore: (items) => restore(client, items),
   };
 }

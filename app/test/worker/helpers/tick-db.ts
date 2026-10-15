@@ -219,6 +219,18 @@ export async function decryptAccountToken(
   return decryptToken(key, { ciphertext: ct, iv }, { accountId, kind, keyVersion: Number(row.key_version) });
 }
 
+/** Makes `holder` the live holder of the account lease (the final write batches are fenced on it). */
+export async function holdLease(accountId: string, holder: string, now = NOW): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO leases (name, account_id, holder, acquired_at, expires_at, released_at)
+     VALUES ('account:' || ?1, ?1, ?2, ?3, ?4, NULL)
+     ON CONFLICT (name) DO UPDATE SET holder = excluded.holder, acquired_at = excluded.acquired_at,
+       expires_at = excluded.expires_at, released_at = NULL`,
+  )
+    .bind(accountId, holder, now, now + 5 * MINUTE)
+    .run();
+}
+
 export async function setBudget(date: string, rowsWritten: number, dbSizeBytes = 0): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO budget (date, rows_written, db_size_bytes, updated_at) VALUES (?1, ?2, ?3, 0)

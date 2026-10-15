@@ -41,6 +41,7 @@ import {
   count,
   decryptAccountToken,
   getAccount,
+  holdLease,
   one,
   resetDb,
   seedMessage,
@@ -384,6 +385,7 @@ describe("buildSuccessWrite", () => {
 
   it("never writes tokens back to a disconnected account", async () => {
     await seedTickAccount({ status: "disconnected" });
+    await holdLease(ACCOUNT_A, "tick-1");
     const tokens = await encryptTokenUpdate(
       await testEncKey(),
       { id: ACCOUNT_A, key_version: 1 },

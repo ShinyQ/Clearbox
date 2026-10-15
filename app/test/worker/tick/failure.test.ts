@@ -25,6 +25,7 @@ import {
   NOW,
   decryptAccountToken,
   getAccount,
+  holdLease,
   one,
   resetDb,
   seedTickAccount,
@@ -207,6 +208,7 @@ describe("buildFailureWrite", () => {
 
   it("halves page_size without a backoff on a subrequest budget failure", async () => {
     await seedTickAccount({ pageSize: 25 });
+    await holdLease(ACCOUNT_A, "tick-1");
     const plan = classifyFailure(budgetError(), C);
     const stmts = buildFailureWrite({
       accountId: ACCOUNT_A,
@@ -229,6 +231,7 @@ describe("buildFailureWrite", () => {
     await seedTickAccount({ pageSize: 6 });
     const plan = classifyFailure(budgetError(), C);
     const run = async (): Promise<void> => {
+      await holdLease(ACCOUNT_A, "t");
       const stmts = buildFailureWrite({
         accountId: ACCOUNT_A,
         tickId: "t",
@@ -248,6 +251,7 @@ describe("buildFailureWrite", () => {
 
   it("upserts raised app issues in the same batch and writes no audit for transient failures", async () => {
     await seedTickAccount();
+    await holdLease(ACCOUNT_A, "t");
     const plan = classifyFailure(new DecisionNotConfiguredError(), C);
     const stmts = buildFailureWrite({
       accountId: ACCOUNT_A,
@@ -267,6 +271,31 @@ describe("buildFailureWrite", () => {
       value: JSON.stringify([
         { code: "decision_not_configured", since: new Date(NOW).toISOString(), accountId: null },
       ]),
+    });
+  });
+
+  it("leaves the account untouched when another tick holds the lease", async () => {
+    await seedTickAccount({ pageSize: 25 });
+    await holdLease(ACCOUNT_A, "newer-tick");
+    const plan = classifyFailure(new ProviderResponseError({ provider: "outlook", status: 502 }), C);
+    const stmts = buildFailureWrite({
+      accountId: ACCOUNT_A,
+      tickId: "stale-tick",
+      now: NOW,
+      plan,
+      tokens: null,
+      issues: null,
+    });
+    await env.DB.batch(stmts.map((s) => env.DB.prepare(s.sql).bind(...s.params)));
+    expect(await getAccount(ACCOUNT_A)).toMatchObject({
+      attempts: 0,
+      backoff_until: null,
+      last_error: null,
+      last_tick_at: null,
+    });
+    expect(await one("SELECT holder, released_at FROM leases WHERE account_id = ?1", ACCOUNT_A)).toEqual({
+      holder: "newer-tick",
+      released_at: null,
     });
   });
 });

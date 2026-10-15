@@ -108,8 +108,11 @@ const SUGGESTION_REDECIDE = `UPDATE suggestions SET status = ?3, action = ?4, co
     decision_attempts = ?18, retry_after = ?19, updated_at = ?20
   WHERE message_id = ?1 AND account_id = ?2 AND status = 'awaiting_model'`;
 
+// Lease fence: a stalled tick whose lease was taken over must not double-count senders (SQLite needs the
+// WHERE for an upsert-select).
 const SENDER_UPSERT = `INSERT INTO senders (account_id, address, domain, seen_count, read_count, last_seen_at)
-  VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+  SELECT ?1, ?2, ?3, ?4, ?5, ?6
+  WHERE EXISTS (SELECT 1 FROM leases WHERE name = 'account:' || ?1 AND holder = ?7 AND released_at IS NULL)
   ON CONFLICT (account_id, address) DO UPDATE SET seen_count = seen_count + excluded.seen_count,
     read_count = read_count + excluded.read_count, last_seen_at = MAX(last_seen_at, excluded.last_seen_at)`;
 
@@ -130,6 +133,8 @@ function dismissSql(n: number): string {
       AND message_id IN (SELECT id FROM messages WHERE account_id = ?3 AND provider_msg_id IN (${numbered(4, n)}))`;
 }
 
+// Fenced on the lease this tick still holds (released later in the same batch): a stalled tick that lost its
+// lease to a newer claim must not regress cursors or counters.
 const ACCOUNT_SUCCESS = `UPDATE accounts SET phase = ?2, backfill_done = MAX(backfill_done, ?3), sent_cursor = ?4,
     sent_scanned = ?5, backfill_cursor = ?6, incremental_cursor = ?7, last_incremental_at = ?8,
     watermark_received_at = ?9,
@@ -141,7 +146,8 @@ const ACCOUNT_SUCCESS = `UPDATE accounts SET phase = ?2, backfill_done = MAX(bac
       WHERE account_id = ?1 AND status = 'awaiting_model'), ?15)),
     last_tick_at = ?16, tick_finished_at = ?16, page_size = MIN(?17, page_size + 5),
     messages_ingested = messages_ingested + ?18, inbox_estimate = COALESCE(?19, inbox_estimate), updated_at = ?16
-  WHERE id = ?1 AND status <> 'disconnected'`;
+  WHERE id = ?1 AND status <> 'disconnected'
+    AND EXISTS (SELECT 1 FROM leases WHERE name = 'account:' || ?1 AND holder = ?20 AND released_at IS NULL)`;
 
 function clamp01(x: number): number {
   return Math.min(1, Math.max(0, x));
@@ -269,7 +275,7 @@ export function buildSuccessWrite(i: SuccessWriteInput): SuccessWrite {
     });
   }
   for (const [address, d] of senders) {
-    stmts.push(stmt(SENDER_UPSERT, i.accountId, address, d.domain, d.seen, d.read, d.last));
+    stmts.push(stmt(SENDER_UPSERT, i.accountId, address, d.domain, d.seen, d.read, d.last, i.tickId));
   }
   const owners = new Set(i.ownerAddresses);
   const addresses = new Map<string, number>();
@@ -318,6 +324,7 @@ export function buildSuccessWrite(i: SuccessWriteInput): SuccessWrite {
       i.maxPageSize,
       fresh.length,
       i.inboxEstimate,
+      i.tickId,
     ),
   );
   stmts.push(leaseReleaseStmt(i.accountId, i.tickId, i.now));

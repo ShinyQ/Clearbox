@@ -128,7 +128,8 @@ const ACCOUNT_FAILURE = `UPDATE accounts SET attempts = attempts + 1, backoff_un
     enc_refresh_token = COALESCE(?9, enc_refresh_token), refresh_iv = COALESCE(?10, refresh_iv),
     page_size = CASE WHEN ?11 = 1 THEN MAX(5, page_size / 2) ELSE page_size END,
     last_tick_at = ?12, tick_finished_at = ?12, updated_at = ?12
-  WHERE id = ?1 AND status <> 'disconnected'`;
+  WHERE id = ?1 AND status <> 'disconnected'
+    AND EXISTS (SELECT 1 FROM leases WHERE name = 'account:' || ?1 AND holder = ?13 AND released_at IS NULL)`;
 
 export interface FailureWriteInput {
   accountId: string;
@@ -158,6 +159,7 @@ export function buildFailureWrite(i: FailureWriteInput): Stmt[] {
       t?.refreshIv ?? null,
       i.plan.halvePageSize ? 1 : 0,
       i.now,
+      i.tickId,
     ),
     leaseReleaseStmt(i.accountId, i.tickId, i.now),
   ];

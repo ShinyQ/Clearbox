@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Clearbox UI design v4 (approved 2026-10-15)</title>
+<style>body{margin:0;padding:32px;background:#F1F2F5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:#16171B} h2{font-size:22px;margin:0 0 4px} .subtitle{color:#6b6f7a;margin:0 0 12px} .option{cursor:default}</style></head><body>
+<h2>Clearbox: full UI design (v4, confidence colors)</h2>
+<p class="subtitle">Light, calm, Linear / Superhuman / Vercel craft level. No colored edge stripes: selection is a soft tint. Scroll through: 1 Review, 2 Clean up flow, 3 Insights, 4 Activity, 5 Accounts, 6 Rules, 7 Components. Click any screen you want changed and tell me in the terminal.</p>
+
+<style>
+  :root {
+    --bg: #FBFBFC; --panel: #FFFFFF; --sunk: #F4F5F7; --line: #E8E9ED; --line2: #F0F1F4;
+    --ink: #16171B; --ink2: #4A4D57; --ink3: #7C808C; --accent: #4F46E5; --accent-soft: #EEF0FF;
+    --del: #D93636; --del-soft: #FDEEEE; --arc: #2F6FDB; --arc-soft: #ECF2FD; --keep: #1F9D55; --keep-soft: #EAF7EF; --chk: #B76E00; --chk-soft: #FFF5E0;
+    --r: 10px; --sh: 0 1px 2px rgba(16,17,22,.04), 0 4px 14px rgba(16,17,22,.06);
+  }
+  .cbx { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", system-ui, sans-serif; color: var(--ink); background: var(--bg); font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+  .frame { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 2px 6px rgba(16,17,22,.05), 0 24px 60px -24px rgba(16,17,22,.25); margin: 10px 0 30px; }
+  .app { display: grid; grid-template-columns: 208px 1fr; min-height: 560px; }
+  .side { background: var(--sunk); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: 14px; padding: 4px 8px 14px; letter-spacing: -.01em; }
+  .mark { width: 22px; height: 22px; border-radius: 7px; background: var(--ink); position: relative; }
+  .mark::after { content: ""; position: absolute; inset: 6px 5px 9px 5px; border: 2px solid #fff; border-top: 0; border-radius: 0 0 3px 3px; }
+  .nav { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 7px; color: var(--ink2); }
+  .nav .ic { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid currentColor; opacity: .7; }
+  .nav .ct { margin-left: auto; font-size: 11.5px; color: var(--ink3); }
+  .nav.on { background: var(--panel); color: var(--ink); font-weight: 560; box-shadow: 0 1px 2px rgba(16,17,22,.06); }
+  .sidehd { font-size: 11.5px; color: var(--ink3); padding: 16px 8px 6px; }
+  .acc { display: flex; align-items: center; gap: 8px; padding: 5px 8px; color: var(--ink2); font-size: 12.5px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .me { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 8px; font-size: 12px; color: var(--ink2); }
+  .av { width: 22px; height: 22px; border-radius: 50%; background: #D9DBE3; }
+  .main { padding: 18px 22px 22px; min-width: 0; }
+  .top { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .top h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: -.015em; }
+  .muted { color: var(--ink3); } .sm { font-size: 12px; }
+  .sel { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 5px 10px; font-size: 12.5px; color: var(--ink2); }
+  .btn { display: inline-flex; align-items: center; gap: 7px; border-radius: 8px; padding: 7px 12px; font-weight: 560; font-size: 12.5px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); white-space: nowrap; }
+  .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.08); }
+  .btn.danger { background: var(--del); color: #fff; border-color: var(--del); }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--ink2); }
+  .btn.lg { padding: 9px 15px; font-size: 13px; border-radius: 9px; }
+  .kbd { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10.5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; color: var(--ink3); background: var(--panel); }
+  .btn.primary .kbd { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.18); color: #D6D7DD; }
+  .spark { width: 14px; height: 14px; display: inline-block; background: conic-gradient(from 45deg, #8B85FF, #4F46E5, #8B85FF); clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
+  .summary { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: flex; align-items: center; gap: 16px; box-shadow: var(--sh); margin-bottom: 16px; }
+  .summary h2 { font-size: 15.5px; margin: 0 0 3px; font-weight: 640; letter-spacing: -.01em; }
+  .summary p { margin: 0; color: var(--ink2); font-size: 12.5px; }
+  .split { display: flex; height: 6px; border-radius: 4px; overflow: hidden; gap: 2px; margin-top: 10px; width: 340px; }
+  .legend { display: flex; gap: 14px; margin-top: 7px; font-size: 11.5px; color: var(--ink2); }
+  .legend span::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 5px; background: var(--c); }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 0; }
+  .tab { padding: 8px 10px; color: var(--ink3); font-size: 12.5px; position: relative; }
+  .tab b { color: var(--ink2); font-weight: 560; margin-left: 4px; }
+  .tab.on { color: var(--ink); font-weight: 560; }
+  .tab.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; background: var(--ink); border-radius: 2px; }
+  .work { display: grid; grid-template-columns: 1fr 300px; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .list { border-right: 1px solid var(--line); }
+  .lh { display: grid; grid-template-columns: 22px 1fr 92px 108px 44px; gap: 10px; padding: 8px 14px; font-size: 11.5px; color: var(--ink3); border-bottom: 1px solid var(--line); background: #FCFCFD; }
+  .row { display: grid; grid-template-columns: 22px 1fr 92px 108px 44px; gap: 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line2); }
+  .row.active { background: #F3F4FF; }
+  .row:hover { background: #F8F8FA; }
+  .cb { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid #C9CBD3; background: var(--panel); position: relative; }
+  .cb.on { background: var(--ink); border-color: var(--ink); }
+  .cb.on::after { content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  .who { min-width: 0; } .who b { font-weight: 580; } .who .s { color: var(--ink3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .fav { width: 22px; height: 22px; border-radius: 6px; display: inline-grid; place-items: center; font-size: 10.5px; font-weight: 700; color: #fff; margin-right: 9px; vertical-align: middle; flex: none; }
+  .who-l { display: flex; align-items: center; min-width: 0; }
+  .tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 580; padding: 2px 8px 2px 6px; border-radius: 6px; }
+  .tag i { width: 12px; height: 12px; display: inline-block; }
+  .t-del { background: var(--del-soft); color: #B42323; } .t-arc { background: var(--arc-soft); color: #1F58B8; } .t-keep { background: var(--keep-soft); color: #167A41; } .t-chk { background: var(--chk-soft); color: #8F5600; }
+  .i-del { border: 1.6px solid currentColor; border-top-width: 3px; border-radius: 1px 1px 3px 3px; transform: scale(.82); }
+  .i-arc { border: 1.6px solid currentColor; border-radius: 2px; box-shadow: inset 0 3px 0 -1px currentColor; transform: scale(.85); }
+  .i-keep { border: 1.6px solid currentColor; border-radius: 50%; transform: scale(.85); }
+  .i-chk { border: 1.6px solid currentColor; border-radius: 50%; position: relative; transform: scale(.85); }
+  .conf { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink2); }
+  .meter { flex: 1; height: 4px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
+  .meter i { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+  .meter.low i { background: #C9A15E; }
+  .cnt { text-align: right; color: var(--ink2); font-weight: 560; }
+  .detail { padding: 16px; display: flex; flex-direction: column; gap: 12px; background: #FCFCFD; }
+  .dh { display: flex; align-items: center; gap: 10px; }
+  .dh b { font-size: 14px; font-weight: 620; } .dh .s { color: var(--ink3); font-size: 12px; display: block; }
+  .verdict { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .vrow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .reasons { display: flex; flex-direction: column; gap: 7px; }
+  .reason { display: flex; gap: 9px; font-size: 12.5px; color: var(--ink2); align-items: flex-start; }
+  .reason .ri { width: 18px; height: 18px; border-radius: 5px; background: var(--sunk); flex: none; display: grid; place-items: center; font-size: 10px; color: var(--ink2); }
+  .subs { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+  .sub { display: flex; justify-content: space-between; gap: 10px; padding: 7px 10px; border-bottom: 1px solid var(--line2); font-size: 12px; color: var(--ink2); }
+  .sub:last-child { border: 0; }
+  .act { display: flex; gap: 6px; flex-wrap: wrap; }
+  .hint { font-size: 11.5px; color: var(--ink3); display: flex; gap: 10px; flex-wrap: wrap; }
+  .label { font-size: 11.5px; color: var(--ink3); font-weight: 560; }
+  .bar { position: relative; margin-top: 14px; background: var(--ink); color: #fff; border-radius: 12px; padding: 12px 14px 12px 18px; display: flex; align-items: center; gap: 14px; box-shadow: 0 12px 30px -10px rgba(16,17,22,.45); }
+  .bar .muted { color: #A9ABB5; }
+  .bar .btn { background: #fff; color: var(--ink); border-color: #fff; }
+  .bar .btn.ghost { background: transparent; color: #C9CAD1; border-color: transparent; }
+  .toast { display: inline-flex; align-items: center; gap: 12px; background: var(--ink); color: #fff; border-radius: 10px; padding: 9px 10px 9px 14px; font-size: 12.5px; box-shadow: 0 10px 28px -8px rgba(16,17,22,.4); }
+  .toast .u { color: #fff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+  .ph { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  .ph b { font-weight: 600; }
+  .grid2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
+  .stat-line { display: flex; align-items: baseline; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line2); }
+  .stat-line .v { font-size: 20px; font-weight: 650; letter-spacing: -.02em; min-width: 90px; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .tbl th { text-align: left; font-weight: 500; color: var(--ink3); font-size: 11.5px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+  .tbl td { padding: 10px 16px; border-bottom: 1px solid var(--line2); color: var(--ink2); }
+  .tbl td b { color: var(--ink); font-weight: 560; }
+  .chart { display: flex; align-items: flex-end; gap: 6px; height: 120px; padding: 14px 16px 6px; }
+  .chart i { flex: 1; background: #DADCF8; border-radius: 4px 4px 2px 2px; }
+  .chart i.c { background: var(--accent); }
+  .acard { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line2); }
+  .plogo { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; font-weight: 700; color: #fff; }
+  .banner { display: flex; align-items: center; gap: 12px; background: var(--chk-soft); border: 1px solid #F4DDB0; color: #6E4300; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; font-size: 12.5px; }
+  .field { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-bottom: 1px solid var(--line2); }
+  .field .lab { font-weight: 560; } .field .d { color: var(--ink3); font-size: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 6px 3px 10px; font-size: 12px; background: var(--panel); color: var(--ink2); }
+  .chip .x { width: 16px; height: 16px; border-radius: 50%; background: var(--sunk); display: grid; place-items: center; font-size: 10px; color: var(--ink3); }
+  .input { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: var(--panel); color: var(--ink3); font-size: 12.5px; }
+  .toggle { width: 30px; height: 18px; border-radius: 999px; background: var(--ink); position: relative; flex: none; }
+  .toggle::after { content: ""; position: absolute; right: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; }
+  .toggle.off { background: #D3D5DC; } .toggle.off::after { right: auto; left: 2px; }
+  .sk { background: linear-gradient(90deg, var(--sunk), #ECEDF1, var(--sunk)); border-radius: 5px; height: 10px; }
+  .comp { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; padding: 16px; }
+  .cbox { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .cbox h4 { margin: 0; font-size: 12.5px; font-weight: 600; }
+  .rowx { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .sec { font-size: 15px; font-weight: 650; margin: 26px 0 2px; letter-spacing: -.01em; }
+  .secp { margin: 0 0 4px; color: #6b6f7a; font-size: 13px; }
+
+  .meter { position: relative; overflow: visible; }
+  .meter i { background: var(--cc, var(--ink)); }
+  .meter::after { content: ""; position: absolute; left: 86%; top: -3px; bottom: -3px; width: 1.5px; background: #B5B8C2; border-radius: 1px; }
+  .meter.nt::after { display: none; }
+  .c-vs { --cc: #1F9D55; } .c-s { --cc: #6CC08B; } .c-l { --cc: #E0A030; } .c-u { --cc: #E5762E; }
+  .cl { font-size: 11px; font-weight: 560; color: var(--cc); }
+  .conf { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; }
+  .conf .meter { grid-column: 1 / -1; }
+  .conf .pct { color: var(--ink); font-weight: 580; font-size: 12px; }
+  .scale { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .scale div { border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; background: var(--panel); font-size: 12px; }
+  .scale b { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .scale b::before { content: ""; width: 9px; height: 9px; border-radius: 3px; background: var(--cc); }
+</style>
+
+<!-- ================= 1. REVIEW ================= -->
+<div class="sec">1. Review (home)</div>
+<p class="secp">The AI has already sorted everything. One summary, one Clean up button, sender groups to skim, a detail panel with plain-English reasons. Keyboard first.</p>
+<div class="frame cbx option" data-choice="review" style="display:block; padding:0">
+  <div class="app">
+    <aside class="side">
+      <div class="brand"><span class="mark"></span>Clearbox</div>
+      <div class="nav on"><span class="ic"></span>Review<span class="ct">412</span></div>
+      <div class="nav"><span class="ic"></span>Activity</div>
+      <div class="nav"><span class="ic"></span>Insights</div>
+      <div class="nav"><span class="ic"></span>Rules</div>
+      <div class="sidehd">Accounts</div>
+      <div class="acc"><span class="dot" style="background:var(--keep)"></span>Gmail · personal</div>
+      <div class="acc"><span class="dot" style="background:var(--keep)"></span>Outlook</div>
+      <div class="acc"><span class="dot" style="background:#E0A030"></span>Gmail · work<span class="muted sm" style="margin-left:auto">Reconnect</span></div>
+      <div class="nav" style="margin-top:4px"><span class="ic"></span>Add account</div>
+      <div class="me"><span class="av"></span>you@example.com</div>
+    </aside>
+    <main class="main">
+      <div class="top"><h1>Review</h1><span class="muted sm">Sorted 4 min ago</span><span style="margin-left:auto" class="sel">All accounts ▾</span><span class="btn ghost">Scan now</span></div>
+      <div class="summary">
+        <span class="spark" style="width:22px;height:22px;flex:none"></span>
+        <div style="flex:1; min-width:0">
+          <h2>1,284 emails are ready to clean up</h2>
+          <p>Clearbox is confident about 371 sender groups. 41 groups are left for you to check.</p>
+          <div class="split"><i style="flex:1102; background:var(--del)"></i><i style="flex:182; background:var(--arc)"></i><i style="flex:240; background:#D9DBE3"></i></div>
+          <div class="legend"><span style="--c:var(--del)">1,102 to trash</span><span style="--c:var(--arc)">182 to archive</span><span style="--c:#D9DBE3">240 to check or keep</span></div>
+        </div>
+        <span class="btn primary lg">Clean up 1,284 <span class="kbd">⌘ ↵</span></span>
+      </div>
+      <div class="tabs"><span class="tab on">All<b>412</b></span><span class="tab">Trash<b>318</b></span><span class="tab">Archive<b>53</b></span><span class="tab">Check<b>41</b></span><span class="tab">Keep<b>12</b></span><span style="margin-left:auto; padding:6px 0" class="muted sm">Sort: confidence ▾</span></div>
+      <div class="work" style="border-top-left-radius:0; border-top-right-radius:0; border-top:0">
+        <div class="list">
+          <div class="lh"><span class="cb on"></span><span>Sender</span><span>Verdict</span><span>Confidence</span><span style="text-align:right">Emails</span></div>
+          <div class="row active"><span class="cb on"></span><div class="who-l"><span class="fav" style="background:#EE4D2D">S</span><div class="who"><b>Shopee</b><span class="s">Flash sale 10.10 ends tonight</span></div></div><span class="tag t-del"><i class="i-del"></i>Trash</span><div class="conf c-vs"><span class="pct">97%</span><span class="cl">Very sure</span><div class="meter"><i style="width:97%"></i></div></div><span class="cnt">248</span></div>
+          <div class="row"><span class="cb on"></span><div class="who-l"><span class="fav" style="background:#111">M</span><div class="who"><b>Medium Daily Digest</b><span class="s">Stories picked for you</span></div></div><span class="tag t-del"><i class="i-del"></i>Trash</span><div class="conf c-s"><span class="pct">92%</span><span class="cl">Sure</span><div class="meter"><i style="width:92%"></i></div></div><span class="cnt">131</span></div>
+          <div class="row"><span class="cb on"></span><div class="who-l"><span class="fav" style="background:#03AC0E">T</span><div class="who"><b>Tokopedia Orders</b><span class="s">Your order has been delivered</span></div></div><span class="tag t-arc"><i class="i-arc"></i>Archive</span><div class="conf c-s"><span class="pct">88%</span><span class="cl">Sure</span><div class="meter"><i style="width:88%"></i></div></div><span class="cnt">42</span></div>
+          <div class="row"><span class="cb on"></span><div class="who-l"><span class="fav" style="background:#0A66C2">in</span><div class="who"><b>LinkedIn</b><span class="s">You appeared in 9 searches</span></div></div><span class="tag t-del"><i class="i-del"></i>Trash</span><div class="conf c-s"><span class="pct">91%</span><span class="cl">Sure</span><div class="meter"><i style="width:91%"></i></div></div><span class="cnt">76</span></div>
+          <div class="row"><span class="cb"></span><div class="who-l"><span class="fav" style="background:#FF6600">Y</span><div class="who"><b>Hacker Newsletter</b><span class="s">Issue #712: this week in tech</span></div></div><span class="tag t-del"><i class="i-del"></i>Trash</span><div class="conf c-l"><span class="pct">78%</span><span class="cl">Likely</span><div class="meter"><i style="width:78%"></i></div></div><span class="cnt">24</span></div>
+          <div class="row"><span class="cb"></span><div class="who-l"><span class="fav" style="background:#24292F">G</span><div class="who"><b>GitHub</b><span class="s">Review requested on clearbox#12</span></div></div><span class="tag t-chk"><i class="i-chk"></i>Check</span><div class="conf c-u"><span class="pct">54%</span><span class="cl">Unsure</span><div class="meter"><i style="width:54%"></i></div></div><span class="cnt">67</span></div>
+          <div class="row"><span class="cb"></span><div class="who-l"><span class="fav" style="background:#8E7CC3">M</span><div class="who"><b>Mom</b><span class="s">Dinner on Sunday?</span></div></div><span class="tag t-keep"><i class="i-keep"></i>Keep</span><div class="conf c-vs"><span class="pct">99%</span><span class="cl">Very sure</span><div class="meter"><i style="width:99%"></i></div></div><span class="cnt">3</span></div>
+        </div>
+        <div class="detail">
+          <div class="dh"><span class="fav" style="background:#EE4D2D; width:30px; height:30px; border-radius:8px; margin:0">S</span><div><b>Shopee</b><span class="s">promo@shopee.co.id · Gmail personal</span></div></div>
+          <div class="verdict">
+            <div class="vrow"><span class="tag t-del"><i class="i-del"></i>Move 248 to trash</span><span class="c-vs" style="display:inline-flex;gap:6px;align-items:baseline"><b>97%</b><span class="cl">Very sure</span></span></div>
+            <div class="reasons">
+              <div class="reason"><span class="ri">↺</span>You trashed all 14 you reviewed from Shopee</div>
+              <div class="reason"><span class="ri">◌</span>You haven't opened any in 90 days</div>
+              <div class="reason"><span class="ri">@</span>Marketing email with an unsubscribe link</div>
+            </div>
+          </div>
+          <div class="label">Latest emails</div>
+          <div class="subs">
+            <div class="sub"><span>Flash sale 10.10 ends tonight</span><span class="muted">2d</span></div>
+            <div class="sub"><span>Vouchers expiring soon</span><span class="muted">5d</span></div>
+            <div class="sub"><span>Free shipping weekend</span><span class="muted">9d</span></div>
+            <div class="sub"><span class="muted">+ 245 more</span><span class="muted">Open in Gmail ↗</span></div>
+          </div>
+          <div class="act"><span class="btn danger">Trash 248</span><span class="btn">Archive</span><span class="btn">Keep</span><span class="btn ghost">Always keep Shopee</span></div>
+          <div class="hint"><span><span class="kbd">J</span> <span class="kbd">K</span> move</span><span><span class="kbd">X</span> select</span><span><span class="kbd">T</span> trash</span><span><span class="kbd">A</span> archive</span><span><span class="kbd">E</span> keep</span></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ================= 2. CLEAN UP FLOW ================= -->
+<div class="sec">2. Clean up flow (no modal)</div>
+<p class="secp">Clicking Clean up turns the selection into a confirm bar at the bottom of the list. It states exactly what happens, then runs with live progress and a 24-hour Undo.</p>
+<div class="frame cbx option" data-choice="cleanup" style="display:block; padding:18px 22px; background:var(--bg)">
+  <div class="label" style="margin-bottom:6px">Step 1: confirm</div>
+  <div class="bar">
+    <span class="spark"></span>
+    <div style="flex:1"><b>Clean up 1,284 emails from 371 senders?</b><div class="muted sm">1,102 go to Trash and 182 to Archive. Nothing is permanently deleted. 41 groups below 90% stay here for you.</div></div>
+    <span class="btn ghost">Cancel <span class="kbd" style="background:transparent;color:#A9ABB5;border-color:#4a4c55">Esc</span></span>
+    <span class="btn">Clean up <span class="kbd">↵</span></span>
+  </div>
+  <div class="label" style="margin:18px 0 6px">Step 2: running</div>
+  <div class="bar">
+    <div style="flex:1"><b>Cleaning up… 812 of 1,284</b><div style="height:4px; background:#33353d; border-radius:3px; margin-top:8px; overflow:hidden"><i style="display:block; width:63%; height:100%; background:#fff"></i></div></div>
+    <span class="muted sm">You can keep reviewing</span>
+  </div>
+  <div class="label" style="margin:18px 0 6px">Step 3: done</div>
+  <div class="toast">✓ 1,284 emails cleaned up from 371 senders <span class="u">Undo</span><span class="kbd" style="background:transparent;color:#A9ABB5;border-color:#4a4c55">⌘ Z</span></div>
+  <div class="label" style="margin:18px 0 6px">After: empty state</div>
+  <div class="panel" style="padding:26px; text-align:center">
+    <div style="font-size:15px; font-weight:620">Inbox cleared</div>
+    <div class="muted" style="margin:4px 0 12px">41 groups are waiting for your call. New mail gets sorted every 30 minutes.</div>
+    <span class="btn">Review the 41 groups</span>
+  </div>
+</div>
+
+<!-- ================= 3. INSIGHTS ================= -->
+<div class="sec">3. Insights</div>
+<p class="secp">Is the AI trustworthy, and how is the free tier doing. Written as plain statements and a table, not a wall of KPI cards.</p>
+<div class="frame cbx option" data-choice="insights" style="display:block; padding:18px 22px; background:var(--bg)">
+  <div class="top"><h1>Insights</h1><span class="sel" style="margin-left:auto">Last 30 days ▾</span></div>
+  <div class="grid2">
+    <div class="panel">
+      <div class="ph"><b>How well Clearbox matches you</b></div>
+      <div class="stat-line"><span class="v">98.6%</span><span class="muted">of trash suggestions you approved (target 98%)</span></div>
+      <div class="stat-line"><span class="v">0.86</span><span class="muted">current trash threshold, tuned nightly from your choices</span></div>
+      <div class="stat-line" style="border:0"><span class="v">1,912</span><span class="muted">decisions learned from you</span></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><b>Emails cleaned per week</b></div>
+      <div class="chart"><i style="height:30%"></i><i style="height:52%"></i><i style="height:44%"></i><i style="height:70%"></i><i style="height:38%"></i><i class="c" style="height:92%"></i></div>
+      <div class="muted sm" style="padding:0 16px 12px">This week: 1,284 cleaned, 18 undone</div>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <div class="ph"><b>Accounts and daily budget</b><span class="muted sm" style="margin-left:auto">Cloudflare free tier · resets 07:00</span></div>
+    <table class="tbl">
+      <tr><th>Account</th><th>Status</th><th>Backlog</th><th>Last sorted</th><th>Today's writes</th></tr>
+      <tr><td><b>Gmail · personal</b></td><td><span class="dot" style="display:inline-block;background:var(--keep);margin-right:6px"></span>Up to date</td><td>0</td><td>4 min ago</td><td>8,120</td></tr>
+      <tr><td><b>Outlook</b></td><td><span class="dot" style="display:inline-block;background:var(--arc);margin-right:6px"></span>Catching up</td><td>18,400 emails · about 2 days</td><td>1 min ago</td><td>12,960</td></tr>
+      <tr><td><b>Gmail · work</b></td><td><span class="dot" style="display:inline-block;background:#E0A030;margin-right:6px"></span>Needs reconnect</td><td>Paused</td><td>3 days ago</td><td>0</td></tr>
+    </table>
+    <div style="padding:12px 16px"><div class="meter nt" style="height:6px"><i style="width:23%; background:var(--accent)"></i></div><div class="muted sm" style="margin-top:6px">21,080 of 90,000 daily writes used (23%)</div></div>
+  </div>
+</div>
+
+<!-- ================= 4. ACTIVITY ================= -->
+<div class="sec">4. Activity</div>
+<p class="secp">Everything Clearbox did on your behalf, grouped by run, each with Undo while it is still available.</p>
+<div class="frame cbx option" data-choice="activity" style="display:block; padding:18px 22px; background:var(--bg)">
+  <div class="top"><h1>Activity</h1><span class="muted sm">Undo is available for 24 hours</span></div>
+  <div class="panel">
+    <table class="tbl">
+      <tr><th>When</th><th>What</th><th>Accounts</th><th>Result</th><th></th></tr>
+      <tr><td>Today 16:21</td><td><b>Clean up</b> · 1,284 emails, 371 senders</td><td>Gmail personal, Outlook</td><td>1,280 done · 4 already moved</td><td style="text-align:right"><span class="btn">Undo</span></td></tr>
+      <tr><td>Today 16:05</td><td><b>Trash</b> · Shopee, 248 emails</td><td>Gmail personal</td><td>Done</td><td style="text-align:right"><span class="btn">Undo</span></td></tr>
+      <tr><td>Today 15:58</td><td><b>Always keep</b> · Mom</td><td>All</td><td>Rule added</td><td style="text-align:right"><span class="btn ghost">Remove rule</span></td></tr>
+      <tr><td>Sun 12 Oct</td><td><b>Clean up</b> · 2,031 emails, 512 senders</td><td>Gmail personal</td><td>Done</td><td style="text-align:right" class="muted sm">Undo expired</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ================= 5. ACCOUNTS ================= -->
+<div class="sec">5. Accounts</div>
+<p class="secp">Connect Gmail or Outlook with their own sign-in screens. Clear states for syncing, catching up, and reconnect.</p>
+<div class="frame cbx option" data-choice="accounts" style="display:block; padding:18px 22px; background:var(--bg)">
+  <div class="top"><h1>Accounts</h1><span style="margin-left:auto" class="btn">Connect Gmail</span><span class="btn">Connect Outlook</span></div>
+  <div class="banner"><span style="font-weight:700">!</span><div style="flex:1"><b>Gmail · work needs to reconnect.</b> Google ended the session (password change or 6 months unused). Sorting is paused for this account.</div><span class="btn">Reconnect</span></div>
+  <div class="panel">
+    <div class="acard"><span class="plogo" style="background:#EA4335">G</span><div><b>you@gmail.com</b><div class="muted sm">Gmail · up to date · 32,118 emails sorted · connected 15 Oct</div></div><div class="act"><span class="btn ghost">Scan now</span><span class="btn ghost">Disconnect</span></div></div>
+    <div class="acard"><span class="plogo" style="background:#0F6CBD">O</span><div><b>you@outlook.com</b><div class="muted sm">Outlook · catching up, 18,400 left (about 2 days) · connected 15 Oct</div><div class="meter nt" style="margin-top:6px; width:240px"><i style="width:41%; background:var(--arc)"></i></div></div><div class="act"><span class="btn ghost">Scan now</span><span class="btn ghost">Disconnect</span></div></div>
+    <div class="acard" style="border:0"><span class="plogo" style="background:#9AA0A6">G</span><div><b>you@company.com</b><div class="muted sm">Gmail · paused, needs reconnect</div></div><div class="act"><span class="btn">Reconnect</span><span class="btn ghost">Disconnect</span></div></div>
+  </div>
+  <p class="muted sm" style="margin-top:10px">Clearbox can only move mail to Trash or Archive. It can never permanently delete or send email.</p>
+</div>
+
+<!-- ================= 6. RULES ================= -->
+<div class="sec">6. Rules</div>
+<p class="secp">Simple guardrails in plain language. These always win over the AI.</p>
+<div class="frame cbx option" data-choice="rules" style="display:block; padding:18px 22px; background:var(--bg)">
+  <div class="top"><h1>Rules</h1><span class="muted sm">These always override the AI</span><span class="btn primary" style="margin-left:auto">Save changes</span></div>
+  <div class="panel">
+    <div class="field"><span class="lab">Always keep these senders</span><span class="d">Never suggested for trash or archive.</span><div class="chips"><span class="chip">Mom <span class="x">×</span></span><span class="chip">@bank.co.id <span class="x">×</span></span><span class="chip">@company.com <span class="x">×</span></span><span class="input" style="padding:3px 10px">Add sender or @domain</span></div></div>
+    <div class="field"><span class="lab">Always OK to trash</span><span class="d">Skip the confidence check for these.</span><div class="chips"><span class="chip">@marketing.example <span class="x">×</span></span><span class="input" style="padding:3px 10px">Add sender or @domain</span></div></div>
+    <div class="field" style="flex-direction:row; align-items:center"><div style="flex:1"><span class="lab">Leave recent emails alone</span><div class="d">Don't suggest anything for emails newer than this.</div></div><span class="sel">3 days ▾</span></div>
+    <div class="field" style="flex-direction:row; align-items:center"><div style="flex:1"><span class="lab">Protect starred, flagged and replied threads</span><div class="d">Always on. These are never trashed.</div></div><span class="toggle"></span></div>
+    <div class="field" style="flex-direction:row; align-items:center"><div style="flex:1"><span class="lab">Receipts and attachments go to Archive, not Trash</span><div class="d">Invoices, statements, tickets and anything with files.</div></div><span class="toggle"></span></div>
+    <div class="field" style="flex-direction:row; align-items:center; border:0"><div style="flex:1"><span class="lab">Store email previews</span><div class="d">Keeps a short snippet for 30 days to show in Review. Turn off to store subjects only.</div></div><span class="toggle"></span></div>
+  </div>
+</div>
+
+<!-- ================= 7. COMPONENTS ================= -->
+<div class="sec">7. Components</div>
+<p class="secp">The shared vocabulary every screen uses, with their states.</p>
+<div class="frame cbx option" data-choice="components" style="display:block; padding:0; background:var(--bg)">
+  <div class="comp">
+    <div class="cbox"><h4>Buttons</h4>
+      <div class="rowx"><span class="btn primary">Clean up 1,284</span><span class="btn">Archive</span><span class="btn danger">Trash 248</span><span class="btn ghost">Cancel</span></div>
+      <div class="rowx"><span class="btn" style="box-shadow:0 0 0 3px #C7CBFF; border-color:var(--accent)">Focused</span><span class="btn" style="opacity:.45">Disabled</span><span class="btn"><span style="width:12px;height:12px;border-radius:50%;border:2px solid #C9CBD3;border-top-color:var(--ink);display:inline-block"></span>Working…</span></div>
+    </div>
+    <div class="cbox"><h4>Verdict tags (icon + word, never color alone)</h4>
+      <div class="rowx"><span class="tag t-del"><i class="i-del"></i>Trash</span><span class="tag t-arc"><i class="i-arc"></i>Archive</span><span class="tag t-keep"><i class="i-keep"></i>Keep</span><span class="tag t-chk"><i class="i-chk"></i>Check</span><span class="tag" style="background:var(--sunk); color:var(--ink2)">Protected</span></div>
+    </div>
+    <div class="cbox"><h4>Confidence scale (tick = Clean up threshold, tuned nightly)</h4>
+      <div class="scale"><div class="c-vs"><b>Very sure</b>95 to 100%<br><span class="muted">In Clean up</span></div><div class="c-s"><b>Sure</b>86 to 94%<br><span class="muted">In Clean up</span></div><div class="c-l"><b>Likely</b>70 to 85%<br><span class="muted">Left for you</span></div><div class="c-u"><b>Unsure</b>below 70%<br><span class="muted">Left for you</span></div></div>
+      <div class="conf c-vs"><span class="pct">97%</span><span class="cl">Very sure</span><div class="meter"><i style="width:97%"></i></div></div><div class="conf c-s"><span class="pct">89%</span><span class="cl">Sure</span><div class="meter"><i style="width:89%"></i></div></div><div class="conf c-l"><span class="pct">78%</span><span class="cl">Likely · left for you</span><div class="meter"><i style="width:78%"></i></div></div><div class="conf c-u"><span class="pct">54%</span><span class="cl">Unsure · left for you</span><div class="meter"><i style="width:54%"></i></div></div>
+    </div>
+</div>
+
+</body></html>

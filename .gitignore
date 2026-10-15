@@ -1,0 +1,6 @@
+.superpowers/
+node_modules/
+.dev.vars
+.wrangler/
+dist/
+.impeccable/

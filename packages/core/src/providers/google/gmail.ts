@@ -14,6 +14,8 @@ import { bestEffortCount, chunkIds, isJsonObject, readJsonBody, sendGuarded } fr
 import type {
   BackfillCursor,
   BootstrapResult,
+  ChangesPage,
+  IncrementalCursor,
   InboxPage,
   MailProvider,
   ProviderDeps,
@@ -22,6 +24,7 @@ import type {
 } from "../provider.ts";
 import {
   GMAIL_API,
+  decodeIncremental,
   encodeIncremental,
   gmailMetadataPath,
   gmailSentMetadataPath,
@@ -29,9 +32,11 @@ import {
   mapGmailSentItem,
   pageCursor,
   pageTokenOf,
+  scanHistory,
 } from "./map.ts";
+import type { IncrementalState } from "./map.ts";
 import { classifyGmailApiError, classifyPart } from "./oauth.ts";
-import type { GmailMessageMetadata } from "./types.ts";
+import type { GmailHistoryRecord, GmailMessageMetadata } from "./types.ts";
 
 const PROVIDER = "gmail";
 const USER_URL = `${GMAIL_API}/gmail/v1/users/me`;
@@ -288,7 +293,97 @@ async function listSentPage(
 }
 
 // ---- Incremental sync ----
-// (added in Task 9)
+
+const HISTORY_PAGE_SIZE = 100;
+const HISTORY_TYPES = ["messageAdded", "labelAdded", "labelRemoved", "messageDeleted"] as const;
+
+async function catchUp(
+  client: GmailClient,
+  state: IncrementalState,
+  after: number,
+  max: number,
+): Promise<ChangesPage> {
+  const list = await listIds(
+    client,
+    { label: "INBOX", maxResults: max, pageToken: state.catchupPageToken, query: `after:${String(after)}` },
+    "incremental",
+  );
+  const metas = await fetchMetadata(
+    client,
+    list.ids.map((id) => ({ key: id, path: gmailMetadataPath(id) })),
+  );
+  const next: IncrementalState =
+    list.nextPageToken === null
+      ? { ...state, catchupAfter: null, catchupPageToken: null }
+      : { ...state, catchupPageToken: list.nextPageToken };
+  return {
+    added: inboxMessages(list.ids, metas),
+    removedIds: [],
+    sent: [],
+    nextCursor: encodeIncremental(next),
+    caughtUp: false,
+  };
+}
+
+function isHistoryRecord(value: unknown): value is GmailHistoryRecord {
+  return isJsonObject(value) && typeof value.id === "string" && value.id !== "";
+}
+
+/**
+ * One history.list page (decision 9). The next startHistoryId is the last fully processed record, or the
+ * response historyId when every record was processed and there is no nextPageToken. An id that is both
+ * added and removed within the page counts as removed only (removal wins; its metadata is not fetched).
+ */
+async function syncChanges(
+  client: GmailClient,
+  cursor: IncrementalCursor,
+  maxMessages: number,
+): Promise<ChangesPage> {
+  const state = decodeIncremental(cursor);
+  if (state.catchupAfter !== null) return catchUp(client, state, state.catchupAfter, maxMessages);
+  const url = new URL(`${USER_URL}/history`);
+  url.searchParams.set("startHistoryId", state.historyId);
+  for (const type of HISTORY_TYPES) url.searchParams.append("historyTypes", type);
+  url.searchParams.set("maxResults", String(HISTORY_PAGE_SIZE));
+  const res = await client.request(url.toString());
+  if (res.status === 404) throw new CursorExpiredError({ provider: PROVIDER, cursorKind: "incremental" });
+  if (!res.ok) throw await client.error(res);
+  const body = await readJsonBody(res);
+  if (!isJsonObject(body) || typeof body.historyId !== "string" || body.historyId === "") {
+    throw new ProviderResponseError({ provider: PROVIDER, status: res.status });
+  }
+  const records: unknown[] = Array.isArray(body.history) ? body.history : [];
+  if (!records.every(isHistoryRecord))
+    throw new ProviderResponseError({ provider: PROVIDER, status: res.status });
+  const scan = scanHistory(records, maxMessages);
+  const caughtUp = scan.processed === records.length && typeof body.nextPageToken !== "string";
+  const historyId = caughtUp ? body.historyId : (scan.lastId ?? state.historyId);
+  const removed = new Set(scan.removed);
+  const inbox = scan.inbox.filter((id) => !removed.has(id));
+  const metas = await fetchMetadata(client, [
+    ...inbox.map((id) => ({ key: `i:${id}`, path: gmailMetadataPath(id) })),
+    ...scan.sent.map((id) => ({ key: `s:${id}`, path: gmailSentMetadataPath(id) })),
+  ]);
+  const sent = scan.sent.flatMap((id) => {
+    const meta = metas.get(`s:${id}`);
+    return meta === undefined ? [] : [mapGmailSentItem(meta)];
+  });
+  return {
+    added: inboxMessages(inbox, metas, "i:"),
+    removedIds: scan.removed,
+    sent,
+    nextCursor: encodeIncremental({ ...state, historyId }),
+    caughtUp,
+  };
+}
+
+async function resyncCursor(client: GmailClient, watermark: number | null): Promise<IncrementalCursor> {
+  const profile = await client.json(`${USER_URL}/profile`);
+  if (typeof profile.historyId !== "string")
+    throw new ProviderResponseError({ provider: PROVIDER, status: 200 });
+  const catchupAfter = watermark === null ? null : Math.max(0, Math.floor(watermark / 1000) - 1);
+  return encodeIncremental({ v: 1, historyId: profile.historyId, catchupAfter, catchupPageToken: null });
+}
 
 // ---- Actions ----
 // (added in Task 10)
@@ -305,8 +400,8 @@ export function createGmailProvider(deps: ProviderDeps): MailProvider {
     bootstrap: () => bootstrap(client),
     listInboxPage: (cursor, pageSize) => listInboxPage(client, cursor, pageSize),
     listSentPage: (cursor, pageSize) => listSentPage(client, cursor, pageSize),
-    syncChanges: () => notImplemented(),
-    resyncCursor: () => notImplemented(),
+    syncChanges: (cursor, maxMessages) => syncChanges(client, cursor, maxMessages),
+    resyncCursor: (watermark) => resyncCursor(client, watermark),
     inboxEstimate: () => getInboxEstimate(client),
     trash: () => notImplemented(),
     archive: () => notImplemented(),

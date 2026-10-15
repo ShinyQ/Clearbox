@@ -156,4 +156,54 @@ describe("buildDecisionState", () => {
     expect(state.email.subject).toBe("");
     expect(JSON.stringify(state).length).toBeLessThanOrEqual(DECISION_STATE_MAX_CHARS);
   });
+
+  it("caps an oversized sender address to 64 chars after emptying the subject", () => {
+    const state = buildDecisionState({
+      msg: makeMailMessage({ subject: "x", snippet: "y" }),
+      signals: makeSignals({ senderAddress: `${"a".repeat(1500)}@example.com` }),
+      pastDecisions: [],
+    });
+    expect(state.email.subject).toBe("");
+    expect(state.email.snippet).toBe("");
+    expect(state.email.domain).toBe("example.com");
+    expect(state.email.from).toBe("a".repeat(64));
+    expect(JSON.stringify(state).length).toBeLessThanOrEqual(DECISION_STATE_MAX_CHARS);
+  });
+
+  it("keeps the bound for a 2,000-char sender address", () => {
+    const state = buildDecisionState({
+      msg: makeMailMessage({ subject: "x", snippet: "y" }),
+      signals: makeSignals({ senderAddress: `${"a".repeat(1980)}@example.com` }),
+      pastDecisions: past(5),
+    });
+    expect(state.similar_past_decisions).toEqual([]);
+    expect(state.email.subject).toBe("");
+    expect(state.email.from).toHaveLength(64);
+    expect(JSON.stringify(state).length).toBeLessThanOrEqual(DECISION_STATE_MAX_CHARS);
+  });
+
+  it("caps an oversized domain to 64 chars and leaves from intact", () => {
+    const state = buildDecisionState({
+      msg: makeMailMessage({ subject: "x", snippet: "y" }),
+      signals: makeSignals({ senderDomain: "d".repeat(2000) }),
+      pastDecisions: [],
+    });
+    expect(state.email.subject).toBe("");
+    expect(state.email.domain).toBe("d".repeat(64));
+    expect(state.email.from).toBe("news@shop.example.com");
+    expect(JSON.stringify(state).length).toBeLessThanOrEqual(DECISION_STATE_MAX_CHARS);
+  });
+
+  it("keeps the bound when both sender fields are oversized and need escaping", () => {
+    const state = buildDecisionState({
+      msg: makeMailMessage({ subject: heavy(120), snippet: heavy(300) }),
+      signals: makeSignals({ senderAddress: heavy(2000), senderDomain: heavy(2000) }),
+      pastDecisions: past(5),
+    });
+    expect(state.email.subject).toBe("");
+    expect(state.email.snippet).toBe("");
+    expect(state.email.domain).toHaveLength(64);
+    expect(state.email.from).toHaveLength(64);
+    expect(JSON.stringify(state).length).toBeLessThanOrEqual(DECISION_STATE_MAX_CHARS);
+  });
 });

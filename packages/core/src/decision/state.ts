@@ -71,7 +71,8 @@ function stateLength(state: DecisionState): number {
 /**
  * Token budget: JSON.stringify(state).length <= DECISION_STATE_MAX_CHARS (1,750 chars = 500 tokens at 3.5 chars/token).
  * Shrink order until it fits: drop similar_past_decisions from the end one by one,
- * then snippet to 150 chars, then snippet to "", then subject to 60 chars, then subject to "".
+ * then snippet to 150 chars, then snippet to "", then subject to 60 chars, then subject to "",
+ * then (sender-controlled fields) domain to 64 chars, from to 64 chars, domain to "", from to "".
  */
 export function buildDecisionState(input: BuildStateInput): DecisionState {
   const { msg, signals } = input;
@@ -117,6 +118,11 @@ export function buildDecisionState(input: BuildStateInput): DecisionState {
     () => (state.email.snippet = ""),
     () => (state.email.subject = truncateChars(state.email.subject, 60)),
     () => (state.email.subject = ""),
+    // Last resort: sender-controlled fields are unbounded, so cap them after everything else is gone.
+    () => (state.email.domain = truncateChars(state.email.domain, 64)),
+    () => (state.email.from = truncateChars(state.email.from, 64)),
+    () => (state.email.domain = ""),
+    () => (state.email.from = ""),
   ];
   for (const step of shrinkSteps) {
     if (stateLength(state) <= DECISION_STATE_MAX_CHARS) break;

@@ -58,7 +58,7 @@ describe("useGroups", () => {
 
 describe("usePatchAccount", () => {
   it("flips paused optimistically and rolls back on error", async () => {
-    installFakeApi();
+    const state = installFakeApi();
     server.use(
       http.patch("*/api/accounts/:id", async () => {
         await delay(150);
@@ -70,11 +70,19 @@ describe("usePatchAccount", () => {
     const accounts = renderHook(() => useAccounts(), { wrapper });
     await waitFor(() => expect(accounts.result.current.isSuccess).toBe(true));
     const mutation = renderHook(() => usePatchAccount(), { wrapper });
+    // The settle refetch lands before isError flips, so it must return the flipped value and the cache is recorded
+    // on every change: only the onError rollback can put false back between the optimistic flip and the refetch.
+    state.accounts = state.accounts.map((a) => ({ ...a, paused: true }));
+    const seen: boolean[] = [];
+    client.getQueryCache().subscribe(() => {
+      const paused = client.getQueryData<AccountsResponse>(qk.accounts)?.accounts[0]?.paused;
+      if (paused !== undefined && seen.at(-1) !== paused) seen.push(paused);
+    });
     act(() => mutation.result.current.mutate({ id: ACC_GMAIL, paused: true }));
     await waitFor(() =>
       expect(client.getQueryData<AccountsResponse>(qk.accounts)?.accounts[0]?.paused).toBe(true),
     );
     await waitFor(() => expect(mutation.result.current.isError).toBe(true));
-    expect(client.getQueryData<AccountsResponse>(qk.accounts)?.accounts[0]?.paused).toBe(false);
+    expect(seen).toEqual([true, false, true]);
   });
 });

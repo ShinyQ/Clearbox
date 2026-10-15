@@ -7,7 +7,8 @@ import type {
   SenderGroup,
 } from "../../shared/api.ts";
 import type { ActionKind } from "../lib/view-types.ts";
-import { ApiError } from "./client.ts";
+import { reportBug } from "../lib/report.ts";
+import { ApiError, isApiError } from "./client.ts";
 
 export interface GroupActionResult {
   executed: number;
@@ -45,7 +46,8 @@ export async function actOnGroup(
     out.retryLater += r.retryLater;
     if (r.batchId !== null) out.batchIds.push(r.batchId);
     for (const item of r.results) {
-      if (item.error && item.outcome !== "executed") out.codes[item.error] = (out.codes[item.error] ?? 0) + 1;
+      if (item.error && (item.outcome === "failed" || item.outcome === "retry_later"))
+        out.codes[item.error] = (out.codes[item.error] ?? 0) + 1;
     }
   };
   const maxCalls = Math.ceil(group.count / 100) + 3;
@@ -63,7 +65,7 @@ export async function actOnGroup(
           page = await deps.groupDetail(group.key, { limit: 100 });
         } catch (e) {
           // The group disappears (404) once it has no pending items left.
-          if (e instanceof ApiError && e.status === 404) break;
+          if (isApiError(e) && e.status === 404) break;
           throw e;
         }
         const ids = page.items.items.map((it) => it.id);
@@ -74,7 +76,17 @@ export async function actOnGroup(
       }
     }
   } catch (e) {
-    out.error = e instanceof ApiError ? e : new ApiError(0, "invalid_response", "Unexpected error");
+    if (isApiError(e)) out.error = e;
+    else {
+      reportBug("Group action stopped on an unexpected error", e);
+      out.error = new ApiError(
+        500,
+        "internal",
+        e instanceof Error ? e.message : "Unexpected error",
+        undefined,
+        e,
+      );
+    }
   }
   return out;
 }

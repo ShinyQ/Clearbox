@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionResponse, CleanupBody, CleanupPreview } from "../../../src/shared/api.ts";
 import { ApiError } from "../../../src/web/api/client.ts";
+import * as report from "../../../src/web/lib/report.ts";
 import { runCleanup, type CleanupDeps } from "../../../src/web/api/cleanup.ts";
 
 const preview = (count: number): CleanupPreview => ({
@@ -41,6 +42,8 @@ function deps(responses: (ActionResponse | Error)[], overrides: Partial<CleanupD
   };
   return { d, bodies };
 }
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("runCleanup", () => {
   it("loops until remaining is 0 and sends the confirmed threshold and asOf unchanged", async () => {
@@ -126,6 +129,28 @@ describe("runCleanup", () => {
   it("maps a 400 to unexpected", async () => {
     const { d } = deps([new ApiError(400, "validation_failed", "x")]);
     expect(await runCleanup(preview(10), { actions: ["delete"] }, d)).toMatchObject({ reason: "unexpected" });
+  });
+
+  it("reports the original error as a bug on an unexpected failure", async () => {
+    const spy = vi.spyOn(report, "reportBug").mockImplementation(() => undefined);
+    const boom = new TypeError("boom");
+    const { d } = deps([boom]);
+    expect(await runCleanup(preview(10), { actions: ["delete"] }, d)).toMatchObject({ reason: "unexpected" });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]?.[1]).toBe(boom);
+    const bad = new ApiError(400, "validation_failed", "x");
+    await runCleanup(preview(10), { actions: ["delete"] }, deps([bad]).d);
+    expect(spy.mock.calls[1]?.[1]).toBe(bad);
+  });
+
+  it("does not report expected stops as bugs", async () => {
+    const spy = vi.spyOn(report, "reportBug").mockImplementation(() => undefined);
+    await runCleanup(
+      preview(10),
+      { actions: ["delete"] },
+      deps([new ApiError(429, "budget_exhausted", "x")]).d,
+    );
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it("stops after maxCalls = ceil(count / 100) + 5", async () => {

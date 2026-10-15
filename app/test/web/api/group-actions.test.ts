@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionResponse, GroupDetail, SenderGroup, SuggestionItem } from "../../../src/shared/api.ts";
 import { ApiError } from "../../../src/web/api/client.ts";
+import * as report from "../../../src/web/lib/report.ts";
 import { actOnGroup, type GroupActionDeps } from "../../../src/web/api/group-actions.ts";
 
 const group = (o: Partial<SenderGroup> = {}): SenderGroup => ({
@@ -44,6 +45,8 @@ function fakeDeps(o: Partial<GroupActionDeps>): GroupActionDeps {
     ...o,
   };
 }
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("actOnGroup", () => {
   it("approves the whole group by groupKey, 100 per call, until remaining is 0", async () => {
@@ -118,5 +121,37 @@ describe("actOnGroup", () => {
     const out = await actOnGroup(group(), "delete", "x", fakeDeps({ approve }));
     expect(out.executed).toBe(100);
     expect(out.error?.code).toBe("budget_exhausted");
+  });
+
+  it("counts codes only for failed and retry_later items", async () => {
+    const approve = vi.fn().mockResolvedValueOnce(
+      res({
+        batchId: 1,
+        retryLater: 2,
+        failed: 1,
+        skipped: 2,
+        results: [
+          { id: 1, outcome: "retry_later", action: "delete", error: "account_inactive" },
+          { id: 2, outcome: "retry_later", action: "delete", error: "account_inactive" },
+          { id: 3, outcome: "failed", action: "delete", error: "unavailable" },
+          { id: 4, outcome: "skipped", action: "delete", error: "not_pending" },
+          { id: 5, outcome: "skipped", action: "delete", error: "unsure_not_approvable" },
+        ],
+      }),
+    );
+    const out = await actOnGroup(group({ count: 5 }), "delete", "x", fakeDeps({ approve }));
+    expect(out.codes).toEqual({ account_inactive: 2, unavailable: 1 });
+  });
+
+  it("reports a non-ApiError as a bug and keeps it as the error details", async () => {
+    const spy = vi.spyOn(report, "reportBug").mockImplementation(() => undefined);
+    const boom = new TypeError("boom");
+    const approve = vi.fn().mockRejectedValueOnce(boom);
+    const out = await actOnGroup(group(), "delete", "x", fakeDeps({ approve }));
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]?.[1]).toBe(boom);
+    expect(out.error).toBeInstanceOf(ApiError);
+    expect(out.error?.details).toBe(boom);
+    expect(out.error?.code).not.toBe("invalid_response");
   });
 });

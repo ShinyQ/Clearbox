@@ -1,5 +1,6 @@
 import type { ActionResponse, CleanupBody, CleanupPreview, ItemErrorCode } from "../../shared/api.ts";
 import type { ActionKind } from "../lib/view-types.ts";
+import { reportBug } from "../lib/report.ts";
 import { isApiError } from "./client.ts";
 
 export const RETRY_DELAY_MS = 2000;
@@ -136,7 +137,9 @@ export async function runCleanup(
     try {
       res = await postWithOneRetry(deps, body);
     } catch (e) {
-      return { phase: "partial", reason: mapError(e), run };
+      const reason = mapError(e);
+      if (reason === "unexpected") reportBug("Clean up stopped on an unexpected error", e);
+      return { phase: "partial", reason, run };
     }
     run = accumulate(run, res);
     deps.onProgress?.(run);

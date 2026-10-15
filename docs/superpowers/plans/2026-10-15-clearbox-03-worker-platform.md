@@ -9536,3 +9536,73 @@ git commit -m "chore(app): fix-ups from full verification"
 - Reconciled with plan 04 (index plan 00): it keeps the `runTick`/`runNightly`/`TickOptions` signatures, marks its calibration SQL with `-- isolation-exempt: calibration` (and extends `db-isolation.test.ts` to check it), checks the awaiting-model query plan in its own `context.test.ts`, refreshes `accounts.inbox_estimate` inside its guarded tick account update, and replaces the `// Plan 04 adds` comment in `routes/accounts.ts` with `accountsRoutes.post("/:id/scan", ...)`.
 - Unexpected request errors log `request.error` (contracts 9 rev 2.2, decision 17).
 
+
+## Execution notes
+
+Executed on branch `feat/clearbox-03-worker-platform` (stacked on `feat/clearbox-02-mail-providers`) with superpowers:subagent-driven-development: one implementer per task, a spec and quality review after each task (fix rounds on Tasks 8, 9 and 14), a final whole-branch review and one fix wave. No dependency was added. No name in "Interfaces produced for other plans" or the index registry was renamed or changed signature; the only interface additions are listed under "Additive interface changes".
+
+### Gate 03 result
+
+`pnpm install --frozen-lockfile && pnpm test && CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000 pnpm typecheck && pnpm lint && pnpm format:check && CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000 pnpm build && git diff --quiet HEAD && echo committed` passes: core `Test Files  40 passed (40)`, `Tests  635 passed (635)`; app worker `Test Files  28 passed (28)`, `Tests  220 passed (220)`; app web `Test Files  1 passed (1)`, `Tests  1 passed (1)`; `check-text: 225 tracked files clean`; `All matched files use Prettier code style!`; `app/.cloudflare/output/v0/` exists (client assets include `_headers`); `committed`.
+
+Counts differ from the plan text: core carries 635 tests from plans 01 and 02 (not 353 + 252; see their execution notes). The worker run has the 27 files the gate lists plus `test/worker/routes/cleanup-scope.test.ts` (final-review fix F1); per-task test counts are higher than the briefs because regression tests were added for the deviations below. Worker runs print wrangler `Missing required secrets` and Node `DEP0040 punycode` notices (test values come from `miniflare.bindings`); they are harmless and pre-date any route code.
+
+Task 16 smoke test (dev server with `.dev.vars` from the example, then deleted): `GET /api/me` returned `"email":"owner@example.test"` and `"environment":"development"`; `POST /api/approve` without `X-Clearbox-CSRF` returned `403`.
+
+### Live-verification outcomes (index items)
+
+| # | Outcome |
+|---|---|
+| 9 | `@cloudflare/vitest-plugin` 1.4.2 with `experimental.newConfig` loads `app/cloudflare.config.ts` in test mode (the `DB` binding comes from it; `miniflare.bindings` apply on top). Vitest 5's default `fsModuleCache` broke the workerd pool, so `vitest.worker.config.ts` sets `fsModuleCache: false`. |
+| 10 | `@msw/cloudflare` 0.2.0 `setupNetwork()` takes no arguments. The documented fallback is used: `beforeEach(() => network.use(jwksHandler(), catchAll))`. |
+| 11 | Local D1 returns BLOB columns as `number[]`; `bytesFromBlob` handles it. |
+| 13 | `cf build` writes `app/.cloudflare/output/v0/` (`config.json`, `workers/default/bundle/index.js`, client assets in `workers/default/assets/`). Plan 05 and Gate 05 paths are correct. |
+| 14 | Confirmed for `cf workers types` and `cf build`, and also for `cf d1 migrations apply --local`: `db:migrate:local` therefore passes `--mode development` (uses `LOCAL_D1_ID`, no `CLEARBOX_D1_ID` needed). |
+| 15 | `tsc -b` accepts `composite` with `noEmit` under TypeScript 6.0.3; each app tsconfig sets `tsBuildInfoFile` under `node_modules/.tmp` so no `.tsbuildinfo` lands in tracked paths. |
+
+### Deviations (fix forward)
+
+| # | Task | Change | Why |
+|---|---|---|---|
+| 1 | 1 | `pnpm-workspace.yaml` gains `allowBuilds: { esbuild: false, workerd: false }` and a pnpm-written `minimumReleaseAgeExclude` for four pinned SPA packages | `pnpm install` fails with `ERR_PNPM_IGNORED_BUILDS`; the platform binaries come from optional packages (verified on macOS; plan 06 CI should confirm Linux). The exclude entries can go once those versions age |
+| 2 | 1 | `cloudflare.config.ts` resolves `clearbox.local.json` with `path.join(import.meta.dirname, ...)` and is type-checked by `tsconfig.worker.json` (not `tsconfig.node.json`); `test/worker/env.d.ts` augments `Cloudflare.Env` with `TEST_MIGRATIONS` | Workers `URL` is not Node's `PathLike`; generated types already import the config; `env` from `cloudflare:workers` is typed `Cloudflare.Env` |
+| 3 | 3 | `utf8()` returns `Uint8Array.from(new TextEncoder().encode(s))` | Workers types for `TextEncoder.encode` are not assignable to `Uint8Array<ArrayBuffer>` |
+| 4 | 6 | `auditStmt` normalizes results to the fixed A5 keys (`auditResult`); `parseSettings` returns a copy of the default policy; `selectBatchAuditStmt` throws `RangeError` above 99 ids | Decision 28 exact keys; shared constant mutation; 99-parameter rule |
+| 5 | 7 | `dismissOpenStmt` sets `action = COALESCE(action, 'unsure')` | Schema `CHECK (status = 'awaiting_model' OR action IS NOT NULL)` rejected dismissing `awaiting_model` rows on disconnect |
+| 6 | 7 | `packages/core/test/msw/gmail.ts` and `google-oauth.ts`: two private helper parameters narrowed to `Pick<Request, ...>` (type-only) | Importing `@clearbox/core/testing` from the worker tsconfig failed typecheck against Workers `Request` |
+| 7 | 9 | New accounts and reconnects encrypt with and store `CURRENT_KEY_VERSION` (brief kept the existing row version on reconnect); in-place updates (`tokenUpdateStmt`) keep the row's `key_version` | Decision 23 |
+| 8 | 9 | `revokeGoogleToken` result handled as a boolean (dead `try/catch` removed); unexpected failures in the callback and in `completeConnect` keep their redirect codes but log `request.error` (`ConnectContext.onUnexpectedError`, route `/oauth/:segment/callback`) | Plan 02 API; decision 17 diagnostics |
+| 9 | 9 | A reconnect whose `inboxEstimate()` fails or returns `null` keeps the previous estimate (new rows stay NULL) | Decision 27 describes not writing; erasing a known value is worse |
+| 10 | 10 | Disconnect logs `request.error` when the stored refresh token cannot be decrypted (still answers `revocation: "failed"`) | Key or AAD misconfiguration was invisible |
+| 11 | 11 | Stored reasons are validated before `renderReason` (`code` in `REASON_CODES`, params a string/number record); invalid ones are omitted and the request logs `request.error` with `errorName: "InvalidStoredReason"` and a `skippedReasons` count on a 200; `groupReasonsQuery` ignores non-object `reasons_json` elements; `topReasonsFor`/`toSuggestionItem` gain an optional trailing skip counter | `renderReason` throws on unknown codes (plan 01 note). No contracts 9 event fits; flag `request.error` reuse (and `skippedReasons`) for the next contracts revision |
+| 12 | 12 | `updateProviderMsgIdStmt` skips the update (`NOT EXISTS` guard) when another row of the account already has the moved Graph id; empty Clean up `actions` match nothing; unexpected non-provider errors in a provider call log `request.error`; the budget test restores the budget | A UNIQUE collision would abort the one-transaction result batch after mail had moved |
+| 13 | 13 | `ActionContext` gains `route: string` (set from `routePath(c)` by `actionContext(c)`) | Contracts 9 needs a route pattern in `request.error` |
+| 14 | 14 | `GET /api/batches` chunks the audit read by `MAX_BOUND_PARAMS`; undo target reads are chunked (accounts + 1 + ids <= 99, at most 90 accounts); `provider.error.errorCode` uses the `ClearboxError` code; the claim is reset only if the final write did not commit | 99-parameter rule (page limit is 100); log contract; a failed post-commit budget write must not reopen an applied undo |
+| 15 | 14 | Decision 10 interpreted as: reset `undone_at` only when nothing was restored AND at least one item failed. An all-skipped batch (for example a "Confirm all keeps" batch) stays undone | Literal reading kept keep-only batches undoable for 24 hours, writing a zero-count `undo` audit row on every click |
+| 16 | 15, final | `writePolicy` runs the policy upsert and the audit insert guarded on `policy_version = ?expected`, then the conditional bump last; success is the bump's `changes === 1`. Same semantics as decision 25, different statement order | The plan order let a stale same-millisecond write overwrite the policy; the interim `changes()` chain depended on undocumented D1 connection behaviour and could lose the policy silently |
+| 17 | final | `readConfig` validates `AZURE_DECISION_ENDPOINT` (https account root: no path, query, fragment or credentials) and rejects deployment `Microsoft-Decision-1`; invalid values fail closed in `invalid`; empty values still mean "off" | Contracts 3.7; an `http://` endpoint would send `api-key` in cleartext |
+| 18 | final | Delete/archive Clean up (execute, preview, `QueueSummary.cleanup`) is scoped to `active` accounts (paused accounts are active); keep-only Clean up keeps every visible account; an explicit inactive `accountId` gives an empty scope; preview `groupsLeft` counts inactive accounts' pending groups as left. New export `cleanupAccountIds` in `actions/execute.ts` | One `needs_reauth` account with 100+ high-confidence items blocked every all-accounts Clean up (`retry_later` forever, `remaining` never 0) |
+
+### Additive interface changes
+
+`auditResult` (`db/audit.ts`), `ConnectContext.onUnexpectedError?` (`oauth/connect.ts`), `ActionContext.route` (`actions/execute.ts`), `cleanupAccountIds` (`actions/execute.ts`), optional trailing parameters on `topReasonsFor` and `toSuggestionItem` (`routes/queue.ts`). Nothing was removed or renamed.
+
+### Notes for later plans
+
+- Plan 04:
+  - `dismissSql` for `removedIds` (contracts 8.2) must also set `action = COALESCE(action, 'unsure')`; otherwise an `awaiting_model` suggestion hits the schema CHECK and aborts the whole tick batch on every tick of that account.
+  - The nightly stale-`approved` recovery SQL has no `account_id` predicate; rewrite it per account or mark it with an isolation exemption and extend the isolation test.
+  - `tokenUpdateStmt` re-encrypts under the row's `key_version`; `encryptTokenUpdate` must do the same. `createD1TokenSource` has no single-flight refresh: keep provider calls per account sequential.
+  - Builders that take `accountIds` (`countOpenByAccount` excepted) emit `IN ()` on an empty list; guard callers. Account-id IN lists are not chunked (about 90 accounts maximum per statement).
+  - `entry.test.ts` cannot tell the cron routes apart while both handlers are no-op stubs; assert dispatch when replacing them.
+  - The test network catch-all answers 500 for unmocked requests instead of failing the test; code that maps 5xx to `retry_later` can pass silently with a missing mock.
+- Plan 05:
+  - Delete/archive Clean up counts and execution exclude inactive accounts; keep-only ("Confirm all keeps") does not.
+  - A partly restored undo whose other items failed with a retryable error stays undone (`undoable: false`); do not offer an in-app retry for those items.
+  - `src/shared/api.ts` keeps the contract-verbatim comment "default all three" on Clean up actions; the server enforces decision 29 (`["delete","archive"]` default, `keep` only on its own).
+  - OAuth landing redirects and codes are unchanged (`/settings/accounts?connected=<id>` or `?error=<code>&provider=<kind>`).
+- Plan 06: confirm `allowBuilds: false` for `esbuild`/`workerd` on Linux CI; remove `minimumReleaseAgeExclude` once the pinned versions age.
+
+### Deferred minor findings (triaged by the final review as safe to defer)
+
+Test hygiene and coverage gaps (spy restores outside `finally`, order-dependent tests sharing per-file D1, untested IV length, CHECK on `inbox_estimate`, PATCH sender 3-retry 409, undo 429 and `account_inactive`, per-item `unavailable`, the `ACCESS_TOKEN_MIN_TTL_MS` boundary, direct `FakeProvider` tests); the `request.error` field mapping repeated in five call sites; a dead `BodyLimitError` branch in `errors.ts`; `TeamDomainSchema` accepts any https host; `bytesFromBlob` accepts non-byte numbers; AAD fields joined by `|` (ids are generated); audit rows not tied to the guarded UPDATE on racing disconnect, pause or reconnect; `issue.cleared` logged before its batch commits; an unreachable `provider_config_error` branch in `completeConnect`; inbox estimate not range-checked before the CHECK; inflated `skippedReasons` count; missing reason params render the placeholder text; silent Graph id collision; undo `rowsRead` undercount; batch id `1e2` accepted; `deletePrecisionStmt`/`labelStatsStmt` bind accounts + 1.

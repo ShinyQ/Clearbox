@@ -12,9 +12,12 @@ import {
 } from "./middleware/headers.ts";
 import { accountsRoutes } from "./routes/accounts.ts";
 import { actionsRoutes } from "./routes/actions.ts";
+import { activityRoutes } from "./routes/activity.ts";
 import { batchesRoutes } from "./routes/batches.ts";
+import { insightsRoutes } from "./routes/insights.ts";
 import { meRoutes } from "./routes/me.ts";
 import { oauthRoutes } from "./routes/oauth.ts";
+import { policyRoutes } from "./routes/policy.ts";
 import { queueRoutes } from "./routes/queue.ts";
 import { makeProvider, PROVIDER_OAUTH } from "./scan/providers.ts";
 import type { ProviderFactory, ProviderOAuthMap } from "./scan/providers.ts";
@@ -53,6 +56,9 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   app.route("/api", queueRoutes);
   app.route("/api", actionsRoutes);
   app.route("/api/batches", batchesRoutes);
+  app.route("/api/activity", activityRoutes);
+  app.route("/api/insights", insightsRoutes);
+  app.route("/api/policy", policyRoutes);
 
   app.notFound(notFoundHandler);
   app.onError(onApiError);

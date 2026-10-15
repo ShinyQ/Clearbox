@@ -103,3 +103,46 @@ export function issuesEqual(a: readonly AppIssue[], b: readonly AppIssue[]): boo
 export function setIssuesStmt(db: D1Database, issues: readonly AppIssue[], now: number): D1PreparedStatement {
   return setSettingStmt(db, "issues", issues, now);
 }
+
+/**
+ * Decision 25: conditional version bump, then policy upsert and audit guarded on the new version and timestamp,
+ * in one D1 batch. Returns the new version, or null when expectedVersion is stale.
+ * `changes() = 1` chains each guarded statement to the one before it (the batch is one transaction), so a stale
+ * writer whose `now` equals the winner's cannot pass the version and timestamp guards.
+ */
+export async function writePolicy(
+  db: D1Database,
+  policy: Policy,
+  expectedVersion: number,
+  now: number,
+): Promise<number | null> {
+  const next = String(expectedVersion + 1);
+  const result = { allow: policy.allowlist.length, deny: policy.denylist.length };
+  const [bump] = await db.batch([
+    db
+      .prepare(
+        "UPDATE settings SET value = ?2, updated_at = ?3 WHERE key = 'policy_version' AND CAST(value AS INTEGER) = ?1",
+      )
+      .bind(expectedVersion, next, now),
+    db
+      .prepare(
+        `INSERT INTO settings (key, value, updated_at)
+         SELECT 'policy', ?1, ?2
+         WHERE changes() = 1
+           AND (SELECT value FROM settings WHERE key = 'policy_version') = ?3
+           AND (SELECT updated_at FROM settings WHERE key = 'policy_version') = ?2
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .bind(JSON.stringify(policy), now, next),
+    db
+      .prepare(
+        `INSERT INTO audit_log (ts, account_id, kind, batch_id, count, result_json)
+         SELECT ?1, NULL, 'policy_updated', NULL, 0, ?2
+         WHERE changes() = 1
+           AND (SELECT value FROM settings WHERE key = 'policy_version') = ?3
+           AND (SELECT updated_at FROM settings WHERE key = 'policy_version') = ?1`,
+      )
+      .bind(now, JSON.stringify(result), next),
+  ]);
+  return (bump?.meta.changes ?? 0) === 1 ? expectedVersion + 1 : null;
+}

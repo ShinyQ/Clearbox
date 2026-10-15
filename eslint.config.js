@@ -78,4 +78,29 @@ export default defineConfig(
     languageOptions: { globals: { ...globals.node } },
     rules: { "@typescript-eslint/no-non-null-assertion": "off" },
   },
+  {
+    files: ["app/src/web/**"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            'JSXAttribute[name.name="style"] > JSXExpressionContainer > :not(CallExpression[callee.name="cssVars"])',
+          message: "Use style={cssVars({...})} with --cb-* properties only (CSP, see UI spec 8.4)",
+        },
+        {
+          selector: 'JSXAttribute[name.name="dangerouslySetInnerHTML"]',
+          message: "Email content is rendered as plain text only (UI spec 8.5).",
+        },
+        {
+          selector: "AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]",
+          message: "No HTML injection in the SPA (UI spec 8.5).",
+        },
+        {
+          selector: 'CallExpression[callee.property.name="insertAdjacentHTML"]',
+          message: "No HTML injection in the SPA (UI spec 8.5).",
+        },
+      ],
+    },
+  },
 );

@@ -23,6 +23,7 @@ export interface TickResult {
   stats: DecisionStats;
   fetched: number;
   skippedKnown: number;
+  skippedOld: number;
   removed: number;
   issues: IssueChange | null;
 }
@@ -41,6 +42,7 @@ export function successResult(p: Processed, res: readonly BatchResult[]): TickRe
     stats: p.stats,
     fetched: p.fetched,
     skippedKnown: p.skippedKnown,
+    skippedOld: p.skippedOld,
     removed: p.write.dismissals.reduce((n, i) => n + (res[i]?.meta?.changes ?? 0), 0),
     issues: p.issues,
   };
@@ -119,6 +121,7 @@ export async function finishTick(f: FinishParams): Promise<TickReport> {
       kind: f.kind,
       fetched: r.fetched,
       skippedKnown: r.skippedKnown,
+      skippedOld: r.skippedOld,
       decided: r.stats.decided,
       deferred: r.stats.deferred,
       unsure: r.stats.unsure,
@@ -233,6 +236,7 @@ export async function failTick(f: FailParams): Promise<TickResult> {
     stats: emptyStats(),
     fetched: 0,
     skippedKnown: 0,
+    skippedOld: 0,
     removed: 0,
     issues,
   };

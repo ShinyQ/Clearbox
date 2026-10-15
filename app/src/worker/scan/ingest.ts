@@ -1,4 +1,5 @@
 import {
+  DECIDED_TTL_MS,
   DECISION_CONCURRENCY,
   DECISION_FAILURE_ABORT_RATIO,
   DECISION_MAX_ATTEMPTS,
@@ -109,6 +110,20 @@ export function identify(messages: readonly MailMessage[], s: IngestSettings): I
     const sig = extractSignals(withLowerSender(raw), EMPTY_HISTORY, ctx);
     return { address: sig.senderAddress, domain: sig.senderDomain };
   });
+}
+
+/**
+ * Incremental feeds also re-report updates (read, flagged, categorised) of old mail. Anything older than the
+ * shortest retention (DECIDED_TTL_MS) may already be purged, so it would re-enter as a new suggestion; drop it.
+ * receivedAt <= 0 means "date unknown" and is kept (guard_too_recent caps it at keep).
+ */
+export function dropBeyondRetention(
+  messages: readonly MailMessage[],
+  now: number,
+): { kept: MailMessage[]; skippedOld: number } {
+  const cutoff = now - DECIDED_TTL_MS;
+  const kept = messages.filter((m) => m.receivedAt <= 0 || m.receivedAt >= cutoff);
+  return { kept, skippedOld: messages.length - kept.length };
 }
 
 export interface FreshKeys {

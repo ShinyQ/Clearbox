@@ -8,6 +8,7 @@ import { DecisionNotConfiguredError, DecisionOutageError } from "./failure.ts";
 import { fetchInboxEstimate, fetchPage, shouldRefreshEstimate } from "./fetch.ts";
 import {
   decideStage,
+  dropBeyondRetention,
   emptyStage,
   finalize,
   freshKeys,
@@ -77,6 +78,8 @@ export interface Processed {
   stats: DecisionStats;
   fetched: number;
   skippedKnown: number;
+  /** Incremental inbox items older than the retention window, dropped before any read or decision. */
+  skippedOld: number;
   freshCount: number;
   rowsRead: number;
 }
@@ -112,6 +115,7 @@ export async function processAccount(p: ProcessParams): Promise<Processed> {
   let removedIds: readonly string[] = [];
   let fetchedCount = 0;
   let skippedKnown = 0;
+  let skippedOld = 0;
   let rowsRead = 0;
   if (fetched.kind === "sent_backfill") {
     sent = fetched.page.items;
@@ -128,13 +132,16 @@ export async function processAccount(p: ProcessParams): Promise<Processed> {
       return prepareRedecide(parsed.redecideRows, parsed.ctx, s);
     });
   } else {
-    const messages: readonly MailMessage[] =
-      fetched.kind === "inbox_backfill" ? fetched.page.messages : fetched.page.added;
-    if (fetched.kind === "incremental") {
+    let messages: readonly MailMessage[];
+    if (fetched.kind === "inbox_backfill") {
+      messages = fetched.page.messages;
+      fetchedCount = messages.length;
+    } else {
       sent = fetched.page.sent;
       removedIds = fetched.page.removedIds;
+      fetchedCount = fetched.page.added.length;
+      ({ kept: messages, skippedOld } = dropBeyondRetention(fetched.page.added, now));
     }
-    fetchedCount = messages.length;
     if (messages.length > 0) {
       // Graph delta also reports updates of stored messages in `added`: the "known" read and prepareFresh
       // drop every provider id already in D1 (and repeats within the page) before Decision-1 and the write.
@@ -216,6 +223,7 @@ export async function processAccount(p: ProcessParams): Promise<Processed> {
     stats,
     fetched: fetchedCount,
     skippedKnown,
+    skippedOld,
     freshCount: fresh.length,
     rowsRead,
   };

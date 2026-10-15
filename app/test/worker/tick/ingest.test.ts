@@ -1,5 +1,6 @@
 import {
   DEFAULT_POLICY,
+  DECIDED_TTL_MS,
   DELETE_MARGIN,
   FakeEngine,
   MIN_CONFIDENCE,
@@ -11,6 +12,7 @@ import { makeMailMessage } from "@clearbox/core/testing";
 import { describe, expect, it } from "vitest";
 import {
   decideStage,
+  dropBeyondRetention,
   emptyContext,
   finalize,
   freshKeys,
@@ -58,6 +60,21 @@ describe("identify and freshKeys", () => {
       domains: ["shop.example"],
       threadIds: ["t-a", "t-b"],
     });
+  });
+});
+
+describe("dropBeyondRetention", () => {
+  it("drops mail older than now minus the decided TTL, keeps the cutoff, newer mail and undated mail", () => {
+    const messages = [
+      msg("old", "a@shop.example", { receivedAt: NOW - 40 * DAY }),
+      msg("fresh", "a@shop.example", { receivedAt: NOW - DAY }),
+      msg("edge", "a@shop.example", { receivedAt: NOW - DECIDED_TTL_MS }),
+      msg("just-over", "a@shop.example", { receivedAt: NOW - DECIDED_TTL_MS - 1 }),
+      msg("undated", "a@shop.example", { receivedAt: 0 }),
+    ];
+    const { kept, skippedOld } = dropBeyondRetention(messages, NOW);
+    expect(kept.map((m) => m.providerMessageId)).toEqual(["fresh", "edge", "undated"]);
+    expect(skippedOld).toBe(2);
   });
 });
 

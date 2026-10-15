@@ -58,7 +58,7 @@ export function createGoogleOAuthState(): FakeOAuthState {
   });
 }
 
-function unhandled(request: Request): never {
+function unhandled(request: Pick<Request, "url" | "method">): never {
   const url = new URL(request.url);
   throw new Error(`Unhandled request ${request.method} ${url.origin}${url.pathname}`);
 }

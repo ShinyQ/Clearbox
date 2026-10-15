@@ -270,7 +270,7 @@ function renderBatch(results: { contentId: string; result: FakeResult }[]): stri
   return `${out}--${RESPONSE_BOUNDARY}--\r\n`;
 }
 
-function isAuthorized(request: Request, box: FakeMailbox): boolean {
+function isAuthorized(request: Pick<Request, "headers">, box: FakeMailbox): boolean {
   return request.headers.get("authorization") === `Bearer ${box.validAccessToken}`;
 }
 

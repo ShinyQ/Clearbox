@@ -3,7 +3,8 @@ import type { ChangesPage, InboxPage, MailProvider, SentPage } from "@clearbox/c
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TickAccountRow } from "../../../src/worker/scan/claim.ts";
-import { fetchPage, runTick } from "../../../src/worker/scan/tick.ts";
+import { fetchPage } from "../../../src/worker/scan/fetch.ts";
+import { runTick } from "../../../src/worker/scan/tick.ts";
 import { DecisionMock } from "../helpers/decision-mock.ts";
 import { ProviderMock, expectNoUnhandled, mail, useNetwork } from "../helpers/provider-mock.ts";
 import {

@@ -1,3 +1,4 @@
+import type { DecisionResult } from "../../src/decision/engine.ts";
 import type { MailHeaders, MailMessage } from "../../src/model/mail.ts";
 import { DEFAULT_POLICY, type Policy } from "../../src/policy/policy.ts";
 import type { SenderHistory, Signals } from "../../src/signals/signals.ts";
@@ -102,6 +103,21 @@ export function makePolicy(overrides: Partial<Policy> = {}): Policy {
     allowlist: [...DEFAULT_POLICY.allowlist],
     denylist: [...DEFAULT_POLICY.denylist],
     recordPatterns: [...DEFAULT_POLICY.recordPatterns],
+    ...overrides,
+  };
+}
+
+/** A keep-leaning model result with low flags and importance 1. */
+export function makeDecisionResult(overrides: Partial<DecisionResult> = {}): DecisionResult {
+  return {
+    action: { delete: 0.1, archive: 0.2, keep: 0.6, unsure: 0.1 },
+    importance: 1,
+    flags: { isRecord: 0.1, isExpired: 0.1, isFromHuman: 0.1 },
+    responseModel: "microsoft-decision-1",
+    modelVersion: "decision-1/microsoft-decision-1",
+    inputTokens: 500,
+    requestId: null,
+    latencyMs: 0,
     ...overrides,
   };
 }

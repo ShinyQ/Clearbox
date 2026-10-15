@@ -203,20 +203,38 @@ function batchKindOf(req: ExecuteRequest): BatchKind {
   return req.kind === "override" ? "override" : req.kind === "cleanup" ? "cleanup" : "approve";
 }
 
-/** Empty when nothing can match, so callers never build an `IN ()` list. */
+/**
+ * Clean up scope, shared by POST /api/cleanup, its preview and QueueSummary.cleanup. delete/archive only reach
+ * accounts with status active (paused included, decision 12), so an inactive account's pending items can never
+ * fill a Clean up page with retry_later results. Keep-only ("Confirm all keeps") makes no provider call and
+ * covers every visible account. Empty when nothing can match (unknown or excluded ids), so callers never build
+ * an `IN ()` list.
+ */
+export function cleanupAccountIds(
+  accounts: readonly Account[],
+  actions: readonly ActionKind[],
+  accountId: string | null,
+): string[] {
+  if (actions.length === 0) return [];
+  const moving = actions.some((a) => a !== "keep");
+  return accounts
+    .filter((a) => (accountId === null || a.id === accountId) && (!moving || a.status === "active"))
+    .map((a) => a.id);
+}
+
 function cleanupScope(
   req: Extract<ExecuteRequest, { kind: "cleanup" }>,
-  accountIds: readonly string[],
+  accounts: readonly Account[],
 ): string[] {
-  if (req.actions.length === 0) return [];
-  return req.accountId === null ? [...accountIds] : accountIds.filter((id) => id === req.accountId);
+  return cleanupAccountIds(accounts, req.actions, req.accountId);
 }
 
 async function selectTargets(
   db: D1Database,
   req: ExecuteRequest,
-  accountIds: readonly string[],
+  accounts: readonly Account[],
 ): Promise<TargetRow[]> {
+  const accountIds = accounts.map((a) => a.id);
   if (accountIds.length === 0) return [];
   if (accountIds.length > 90) throw new ClearboxError("too_many_accounts");
   let queries: SqlQuery[] = [];
@@ -231,7 +249,7 @@ async function selectTargets(
       ];
     }
   } else {
-    const scope = cleanupScope(req, accountIds);
+    const scope = cleanupScope(req, accounts);
     if (scope.length > 0) {
       queries = [
         targetsForCleanupQuery(scope, req.actions, req.threshold, req.asOf, MAX_ITEMS_PER_ACTION_REQUEST),
@@ -276,7 +294,7 @@ export async function executeSuggestions(ctx: ActionContext, req: ExecuteRequest
   assertOwnerBudget(budget, ctx.config, now);
   const accounts = new Map(visible.map((a) => [a.id, a]));
   const accountIds = [...accounts.keys()];
-  const targets = await selectTargets(db, req, accountIds);
+  const targets = await selectTargets(db, req, visible);
 
   const results = new Map<number, ItemResult>();
   const set = (id: number, outcome: ItemOutcome, action: ActionKind | null, error: ItemErrorCode | null) =>
@@ -485,7 +503,7 @@ export async function executeSuggestions(ctx: ActionContext, req: ExecuteRequest
   if (req.kind === "approve_group" && accountIds.includes(req.accountId)) {
     remainingQuery = remainingGroupQuery(req.accountId, req.sender, req.action, req.asOf);
   } else if (req.kind === "cleanup") {
-    const scope = cleanupScope(req, accountIds);
+    const scope = cleanupScope(req, visible);
     if (scope.length > 0) remainingQuery = remainingCleanupQuery(scope, req.actions, req.threshold, req.asOf);
   }
   if (remainingQuery) stmts.push(bindQuery(db, remainingQuery));

@@ -14,6 +14,7 @@ import type {
   SenderGroup,
   SuggestionItem,
 } from "../../shared/api.ts";
+import { cleanupAccountIds } from "../actions/execute.ts";
 import { listAccounts } from "../db/accounts.ts";
 import type { Account } from "../db/accounts.ts";
 import { readSettings } from "../db/settings.ts";
@@ -231,7 +232,9 @@ queueRoutes.get("/queue/summary", async (c) => {
   const db = c.env.DB;
   const now = c.get("deps").now();
   const settings = await readSettings(db);
-  const ids = (await scopeAccounts(db, q.accountId)).map((a) => a.id);
+  const accounts = await scopeAccounts(db, q.accountId);
+  const ids = accounts.map((a) => a.id);
+  const cleanupIds = cleanupAccountIds(accounts, CLEANUP_DEFAULT_ACTIONS, null);
   const pending = { ...zeroByAction(), total: 0 };
   const groupsByAction = zeroByAction();
   const byAction: Record<ActionKind, number> = { delete: 0, archive: 0, keep: 0 };
@@ -240,7 +243,9 @@ queueRoutes.get("/queue/summary", async (c) => {
     const [byActionRes, awaitingRes, cleanupRes] = await db.batch([
       bindQuery(db, pendingByActionQuery(ids)),
       bindQuery(db, awaitingCountQuery(ids)),
-      bindQuery(db, cleanupCountsQuery(ids, CLEANUP_DEFAULT_ACTIONS, settings.tauDelete)),
+      ...(cleanupIds.length > 0
+        ? [bindQuery(db, cleanupCountsQuery(cleanupIds, CLEANUP_DEFAULT_ACTIONS, settings.tauDelete))]
+        : []),
     ]);
     for (const row of (byActionRes?.results ?? []) as { action: SuggestedAction; n: number; g: number }[]) {
       pending[row.action] = row.n;

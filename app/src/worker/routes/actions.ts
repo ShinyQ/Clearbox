@@ -9,11 +9,16 @@ import {
   OverrideBodySchema,
 } from "../../shared/api.ts";
 import type { CleanupPreview } from "../../shared/api.ts";
-import { executeSuggestions } from "../actions/execute.ts";
+import { cleanupAccountIds, executeSuggestions } from "../actions/execute.ts";
 import type { ActionContext } from "../actions/execute.ts";
 import { readSettings } from "../db/settings.ts";
 import { bindQuery, isoToMs, toIso } from "../db/sql.ts";
-import { cleanupCountsQuery, decodeGroupKey, groupsLeftQuery } from "../db/suggestions.ts";
+import {
+  cleanupCountsQuery,
+  decodeGroupKey,
+  groupsLeftQuery,
+  pendingByActionQuery,
+} from "../db/suggestions.ts";
 import type { AppEnv } from "../env.ts";
 import { ApiError, parseWith, readJsonBody } from "../middleware/errors.ts";
 import { loadVisibleAccount } from "./accounts.ts";
@@ -82,20 +87,32 @@ actionsRoutes.get("/cleanup/preview", async (c) => {
   const settings = await readSettings(db);
   const threshold = q.threshold ?? settings.tauDelete;
   const actions = resolveCleanupActions(q.actions?.split(",") as ActionKind[] | undefined);
-  const ids = (await scopeAccounts(db, q.accountId)).map((a) => a.id);
+  const accounts = await scopeAccounts(db, q.accountId);
+  const ids = cleanupAccountIds(accounts, actions, null);
+  // Accounts outside the Clean up scope (inactive, for delete/archive) keep every pending group.
+  const excluded = accounts.filter((a) => !ids.includes(a.id)).map((a) => a.id);
   const byAction: Record<ActionKind, number> = { delete: 0, archive: 0, keep: 0 };
   let groups = 0;
   let groupsLeft = 0;
+  const stmts: D1PreparedStatement[] = [];
   if (ids.length > 0) {
-    const [counts, left] = await db.batch([
+    stmts.push(
       bindQuery(db, cleanupCountsQuery(ids, actions, threshold)),
       bindQuery(db, groupsLeftQuery(ids, actions, threshold)),
-    ]);
+    );
+  }
+  if (excluded.length > 0) stmts.push(bindQuery(db, pendingByActionQuery(excluded)));
+  const results = stmts.length > 0 ? await db.batch(stmts) : [];
+  if (ids.length > 0) {
+    const [counts, left] = results;
     for (const row of (counts?.results ?? []) as { action: ActionKind; n: number; g: number }[]) {
       byAction[row.action] = row.n;
       groups += row.g;
     }
     groupsLeft = ((left?.results ?? [])[0] as { n: number } | undefined)?.n ?? 0;
+  }
+  if (excluded.length > 0) {
+    for (const row of (results[results.length - 1]?.results ?? []) as { g: number }[]) groupsLeft += row.g;
   }
   const body: CleanupPreview = {
     asOf: toIso(c.get("deps").now()),

@@ -1,7 +1,9 @@
 import type { MailAddress } from "../model/mail.ts";
 import { decodeEncodedWords, unfoldHeader } from "./rfc2047.ts";
 
-const ADDRESS = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
+const MAX_ADDRESS_LENGTH = 254;
+// Host labels exclude "." so each dot has exactly one parse (linear time on attacker-controlled input).
+const ADDRESS = /^[^\s@<>()",;:]+@(?:[^\s@<>()",;:.]+\.)+[^\s@<>()",;:.]+$/;
 
 function cleanName(raw: string): string | null {
   let name = raw.trim();
@@ -17,7 +19,7 @@ function normalizeAddress(raw: string): string | null {
     .trim()
     .replace(/^mailto:/i, "")
     .toLowerCase();
-  return ADDRESS.test(candidate) ? candidate : null;
+  return candidate.length <= MAX_ADDRESS_LENGTH && ADDRESS.test(candidate) ? candidate : null;
 }
 
 /** Last `<...>` group outside double-quoted strings (backslash escapes honoured inside quotes). */

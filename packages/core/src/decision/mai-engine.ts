@@ -50,7 +50,7 @@ export class MaiDecisionEngine implements DecisionEngine {
   }
 
   async decide(input: DecisionInput): Promise<DecisionResult> {
-    const { deployment, apiKey } = this.#config;
+    const { deployment, apiKey, fetch } = this.#config;
     const now = this.#config.now ?? Date.now;
     const timeoutMs = this.#config.timeoutMs ?? DECISION_TIMEOUT_MS;
     const body = JSON.stringify(buildDecisionRequest(input.state, deployment, input.seed));
@@ -58,7 +58,7 @@ export class MaiDecisionEngine implements DecisionEngine {
 
     let response: Response;
     try {
-      response = await this.#config.fetch(this.#url, {
+      response = await fetch(this.#url, {
         method: "POST",
         headers: { "api-key": apiKey, "content-type": "application/json" },
         body,
@@ -84,8 +84,11 @@ export class MaiDecisionEngine implements DecisionEngine {
     try {
       json = await response.json();
     } catch (error) {
-      const kind = isTimeout(error) ? "timeout" : "invalid_response";
-      throw new DecisionError({ kind, status: response.status, requestId, cause: error });
+      // A JSON SyntaxError message embeds a prefix of the body, so only a timeout keeps its cause.
+      if (isTimeout(error)) {
+        throw new DecisionError({ kind: "timeout", status: response.status, requestId, cause: error });
+      }
+      throw new DecisionError({ kind: "invalid_response", status: response.status, requestId });
     }
     return normalizeDecisionResponse(json, { deployment, requestId, latencyMs: now() - started });
   }

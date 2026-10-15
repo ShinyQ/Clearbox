@@ -48,6 +48,26 @@ describe("parseAddress", () => {
   });
 });
 
+describe("parseAddress bounds", () => {
+  it("returns a null address quickly for a pathological dotted host", () => {
+    const hostile = `<a@${".".repeat(100_000)},>`;
+    expect(parseAddress(hostile).address).toBeNull();
+    expect(parseAddressList(hostile)).toEqual([]);
+  });
+
+  it("rejects candidates longer than 254 characters and accepts 254", () => {
+    const suffix = "@example.com";
+    const atLimit = `${"a".repeat(254 - suffix.length)}${suffix}`;
+    expect(parseAddress(atLimit).address).toBe(atLimit);
+    expect(parseAddress(`${"a".repeat(255 - suffix.length)}${suffix}`).address).toBeNull();
+  });
+
+  it("rejects empty host labels", () => {
+    expect(parseAddress("a@.example..com").address).toBeNull();
+    expect(parseAddress("a@sub.example.co.uk").address).toBe("a@sub.example.co.uk");
+  });
+});
+
 describe("parseAddressList", () => {
   it("splits on commas outside quotes and brackets", () => {
     const list = parseAddressList('"Doe, Jane" <jane@example.com>, bob@example.net, Team <team@example.org>');

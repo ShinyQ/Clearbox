@@ -165,6 +165,52 @@ describe("MaiDecisionEngine", () => {
     expect([error.kind, error.retryable]).toEqual(["timeout", true]);
   });
 
+  it("does not leak the response body or api key through message or cause on a non-JSON 200", async () => {
+    const secretBody = "Subject: Your invoice from example.com";
+    server.use(
+      http.post(
+        `${ENDPOINT}/providers/microsoft/v1/systemone`,
+        () => new HttpResponse(secretBody, { status: 200 }),
+      ),
+    );
+    const error = await decideError(engine({ apiKey: "key-never-in-errors" }));
+    expect(error.kind).toBe("invalid_response");
+    const rendered = [
+      error.message,
+      String(error.cause),
+      String((error.cause as Error | undefined)?.message),
+    ].join("|");
+    expect(rendered).not.toContain("Subject");
+    expect(rendered).not.toContain("invoice");
+    expect(rendered).not.toContain("example.com");
+    expect(rendered).not.toContain("key-never-in-errors");
+  });
+
+  it("does not leak the response body or api key through message or cause on a schema failure", async () => {
+    mock.respond = () => ({ note: "Subject: Your invoice from example.com" });
+    const error = await decideError(engine());
+    expect(error.kind).toBe("invalid_response");
+    const rendered = [error.message, String(error.cause)].join("|");
+    expect(rendered).not.toContain("invoice");
+    expect(rendered).not.toContain("test-key");
+  });
+
+  it("calls fetch unbound so it never runs with this set to the config", async () => {
+    const seen: unknown[] = [];
+    const config: ConstructorParameters<typeof MaiDecisionEngine>[0] = {
+      endpoint: ENDPOINT,
+      deployment: "decision-1",
+      apiKey: "test-key",
+      fetch: function (this: unknown, i, init) {
+        seen.push(this);
+        return fetch(i, init);
+      },
+    };
+    await new MaiDecisionEngine(config).decide(input());
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).not.toBe(config);
+  });
+
   it("never retries internally", async () => {
     let calls = 0;
     const counting = (i: Request | string | URL, init?: RequestInit) => {

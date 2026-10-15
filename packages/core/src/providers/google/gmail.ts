@@ -12,6 +12,7 @@ import {
 import type { MailMessage } from "../../model/mail.ts";
 import { bestEffortCount, chunkIds, isJsonObject, readJsonBody, sendGuarded } from "../oauth.ts";
 import type {
+  ActionResult,
   BackfillCursor,
   BootstrapResult,
   ChangesPage,
@@ -19,6 +20,7 @@ import type {
   InboxPage,
   MailProvider,
   ProviderDeps,
+  RestoreItem,
   SentCursor,
   SentPage,
 } from "../provider.ts";
@@ -32,11 +34,13 @@ import {
   mapGmailSentItem,
   pageCursor,
   pageTokenOf,
+  isHistoryRecord,
   scanHistory,
 } from "./map.ts";
 import type { IncrementalState } from "./map.ts";
-import { classifyGmailApiError, classifyPart } from "./oauth.ts";
-import type { GmailHistoryRecord, GmailMessageMetadata } from "./types.ts";
+import { classifyGmailApiError, classifyPart, parsePartBody, toActionOutcome } from "./oauth.ts";
+import type { ActionOutcome } from "./oauth.ts";
+import type { GmailMessageMetadata } from "./types.ts";
 
 const PROVIDER = "gmail";
 const USER_URL = `${GMAIL_API}/gmail/v1/users/me`;
@@ -102,14 +106,6 @@ interface MetadataRequest {
   path: string;
 }
 
-function parsePartJson(text: string): unknown {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Fetches metadata with batches of at most 50 parts. Failed parts are retried once in the same call
  * (429/403-rate, 5xx, missing part; 401 parts after one forceRefresh). Any other non-404 part failure
@@ -143,7 +139,7 @@ async function fetchMetadata(
           // Dropping would lose the message for good (the page token still advances); fail the page instead.
           throw classifyGmailApiError(
             part.status,
-            parsePartJson(part.bodyText),
+            parsePartBody(part.bodyText),
             new Headers(part.headers),
             client.deps.now(),
           );
@@ -325,10 +321,6 @@ async function catchUp(
   };
 }
 
-function isHistoryRecord(value: unknown): value is GmailHistoryRecord {
-  return isJsonObject(value) && typeof value.id === "string" && value.id !== "";
-}
-
 /**
  * One history.list page (decision 9). The next startHistoryId is the last fully processed record, or the
  * response historyId when every record was processed and there is no nextPageToken. An id that is both
@@ -386,10 +378,102 @@ async function resyncCursor(client: GmailClient, watermark: number | null): Prom
 }
 
 // ---- Actions ----
-// (added in Task 10)
 
-function notImplemented(): Promise<never> {
-  return Promise.reject(new ClearboxError("not_implemented", "Added by a later plan 02 task"));
+const MAX_IDS_PER_CALL = 100;
+
+function assertMaxIds(count: number): void {
+  if (count > MAX_IDS_PER_CALL)
+    throw new ClearboxError("too_many_ids", "At most 100 ids per provider action call");
+}
+
+function unknownResult(id: string): ActionResult {
+  return { id, ok: false, error: "unknown", retryAfterMs: null };
+}
+
+/** POST /messages/{id}/{verb} for every id through the batch endpoint (50 per request). */
+async function postEach(
+  client: GmailClient,
+  ids: readonly string[],
+  verb: "trash" | "untrash" | "modify",
+  body?: Record<string, unknown>,
+): Promise<Map<string, ActionOutcome>> {
+  const out = new Map<string, ActionOutcome>();
+  let refreshed = false;
+  for (const group of chunkIds(ids, BATCH_MAX_PARTS)) {
+    let pending = group;
+    while (pending.length > 0) {
+      const parts = await client.batch(
+        pending.map((id, i) => ({
+          contentId: `a${String(i)}`,
+          method: "POST" as const,
+          path: `/gmail/v1/users/me/messages/${encodeURIComponent(id)}/${verb}`,
+          ...(body === undefined ? {} : { body }),
+        })),
+      );
+      const unauthorized: string[] = [];
+      for (const [i, id] of pending.entries()) {
+        const outcome = classifyPart(parts.get(`a${String(i)}`), client.deps.now());
+        if (outcome.kind === "auth") unauthorized.push(id);
+        else out.set(id, toActionOutcome(id, outcome));
+      }
+      if (unauthorized.length > 0) {
+        if (refreshed) throw new ProviderAuthError({ provider: PROVIDER, reason: "unauthorized" });
+        await client.deps.tokens.forceRefresh();
+        refreshed = true;
+      }
+      pending = unauthorized;
+    }
+  }
+  return out;
+}
+
+/** batchModify for all ids; a 400/404 (an id no longer exists) falls back to per-message modify for per-item results. */
+async function modifyLabels(
+  client: GmailClient,
+  ids: readonly string[],
+  change: { addLabelIds?: string[]; removeLabelIds?: string[] },
+): Promise<Map<string, ActionResult>> {
+  if (ids.length === 0) return new Map();
+  const res = await client.request(`${USER_URL}/messages/batchModify`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ids, ...change }),
+  });
+  if (res.ok) return new Map(ids.map((id) => [id, { id, ok: true, newId: id }]));
+  if (res.status !== 400 && res.status !== 404) throw await client.error(res);
+  const each = await postEach(client, ids, "modify", change);
+  return new Map(ids.map((id) => [id, each.get(id)?.result ?? unknownResult(id)]));
+}
+
+async function trash(client: GmailClient, ids: readonly string[]): Promise<ActionResult[]> {
+  assertMaxIds(ids.length);
+  const outcomes = await postEach(client, ids, "trash");
+  return ids.map((id) => outcomes.get(id)?.result ?? unknownResult(id));
+}
+
+async function archive(client: GmailClient, ids: readonly string[]): Promise<ActionResult[]> {
+  assertMaxIds(ids.length);
+  const results = await modifyLabels(client, ids, { removeLabelIds: ["INBOX"] });
+  return ids.map((id) => results.get(id) ?? unknownResult(id));
+}
+
+async function restore(client: GmailClient, items: readonly RestoreItem[]): Promise<ActionResult[]> {
+  assertMaxIds(items.length);
+  const fromTrash = items.filter((item) => item.from === "trash").map((item) => item.id);
+  const untrashed = await postEach(client, fromTrash, "untrash");
+  const needInbox = items.filter((item) => item.from === "archive").map((item) => item.id);
+  for (const id of fromTrash) {
+    const outcome = untrashed.get(id);
+    if (outcome?.result.ok === true && !(outcome.labelIds ?? []).includes("INBOX")) needInbox.push(id);
+  }
+  const modified = await modifyLabels(client, needInbox, { addLabelIds: ["INBOX"] });
+  return items.map(({ id, from }) => {
+    if (from === "archive") return modified.get(id) ?? unknownResult(id);
+    const outcome = untrashed.get(id);
+    if (outcome === undefined) return unknownResult(id);
+    if (!outcome.result.ok) return outcome.result;
+    return modified.get(id) ?? outcome.result;
+  });
 }
 
 /** Gmail provider (contracts 4.3, 4.3.2). Requests are strictly sequential; no hard delete exists. */
@@ -403,8 +487,8 @@ export function createGmailProvider(deps: ProviderDeps): MailProvider {
     syncChanges: (cursor, maxMessages) => syncChanges(client, cursor, maxMessages),
     resyncCursor: (watermark) => resyncCursor(client, watermark),
     inboxEstimate: () => getInboxEstimate(client),
-    trash: () => notImplemented(),
-    archive: () => notImplemented(),
-    restore: () => notImplemented(),
+    trash: (ids) => trash(client, ids),
+    archive: (ids) => archive(client, ids),
+    restore: (items) => restore(client, items),
   };
 }

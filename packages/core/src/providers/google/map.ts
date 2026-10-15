@@ -4,7 +4,7 @@ import { parseAddress } from "../../text/address.ts";
 import { headerValue } from "../../text/headers.ts";
 import { decodeEncodedWords } from "../../text/rfc2047.ts";
 import { collapseWhitespace, decodeHtmlEntities, truncateChars } from "../../text/truncate.ts";
-import { buildMailHeaders, headerValues, parseCursorJson, uniqueAddresses } from "../oauth.ts";
+import { buildMailHeaders, headerValues, isJsonObject, parseCursorJson, uniqueAddresses } from "../oauth.ts";
 import type { IncrementalCursor, SentItem } from "../provider.ts";
 import type { GmailHistoryRecord, GmailMessageMetadata } from "./types.ts";
 
@@ -182,6 +182,10 @@ export interface HistoryScan {
 
 function countNew(seen: ReadonlySet<string>, ids: readonly string[]): number {
   return seen.size + ids.filter((id) => !seen.has(id)).length;
+}
+
+export function isHistoryRecord(value: unknown): value is GmailHistoryRecord {
+  return isJsonObject(value) && typeof value.id === "string" && value.id !== "";
 }
 
 /** Walks records in order and stops before a record that would push inbox or sent adds past max. */

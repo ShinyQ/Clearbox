@@ -199,7 +199,8 @@ export type PartOutcome =
   | { kind: "server"; retryAfterMs: number | null }
   | { kind: "fail"; error: ActionErrorCode };
 
-function parsePartBody(text: string): unknown {
+/** A batch part body as JSON, or null when empty or unparseable. */
+export function parsePartBody(text: string): unknown {
   if (text === "") return null;
   try {
     return JSON.parse(text) as unknown;

@@ -75,6 +75,8 @@ export interface ActionContext {
   requestId: string;
   /** Request origin, used for the OAuth client redirect URI on token refresh. */
   origin: string;
+  /** Hono route pattern of the calling request (contracts 9 `request.error`). */
+  route: string;
 }
 
 interface Candidate {
@@ -386,11 +388,10 @@ export async function executeSuggestions(ctx: ActionContext, req: ExecuteRequest
           status: null,
         });
         // Not a provider error class: surface the class name (never the message) like onApiError does.
-        // No Hono context here; the request id links it to the route's invocation log.
         if (!(err instanceof ClearboxError)) {
           logEvent("request.error", {
             requestId: ctx.requestId,
-            route: null,
+            route: ctx.route,
             errorName: err instanceof Error ? err.name : "unknown",
           });
         }

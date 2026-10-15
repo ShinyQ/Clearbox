@@ -11,6 +11,7 @@ import {
   workerSecureHeaders,
 } from "./middleware/headers.ts";
 import { accountsRoutes } from "./routes/accounts.ts";
+import { actionsRoutes } from "./routes/actions.ts";
 import { meRoutes } from "./routes/me.ts";
 import { oauthRoutes } from "./routes/oauth.ts";
 import { queueRoutes } from "./routes/queue.ts";
@@ -49,6 +50,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   app.route("/api", meRoutes);
   app.route("/api/accounts", accountsRoutes);
   app.route("/api", queueRoutes);
+  app.route("/api", actionsRoutes);
 
   app.notFound(notFoundHandler);
   app.onError(onApiError);

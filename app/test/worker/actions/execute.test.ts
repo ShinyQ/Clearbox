@@ -34,6 +34,7 @@ function context(provider: FakeProvider, envPatch: Record<string, string> = {}):
     deps: defaultDeps({ now: () => SEED_NOW, providerFactory: provider.factory(), oauth: fakeOAuth().oauth }),
     requestId: "00000000-0000-4000-8000-0000000000aa",
     origin: TEST_ORIGIN,
+    route: "/api/approve",
   };
 }
 
@@ -222,6 +223,7 @@ describe("provider failures", () => {
     >;
     expect(event).toMatchObject({
       requestId: "00000000-0000-4000-8000-0000000000aa",
+      route: "/api/approve",
       errorName: "TypeError",
     });
     expect(lines.join("\n")).not.toMatch(/secret detail|msg-/);

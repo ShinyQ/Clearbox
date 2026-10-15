@@ -122,6 +122,8 @@ export class ProviderMock {
   readonly inboxDelta = new Map<string, DeltaPage>();
   readonly sentDelta = new Map<string, SentDeltaPage>();
   readonly expiredTokens = new Set<string>();
+  /** $filter of every delta request without $deltatoken (the first round after a resync), per folder. */
+  readonly resyncFilters: { inbox: string[]; sent: string[] } = { inbox: [], sent: [] };
   /** Inbox total reported by the provider (amendment A4); null = number of fake inbox messages. */
   inboxTotal: number | null = null;
   microsoftToken: TokenReply = {
@@ -209,12 +211,12 @@ export class ProviderMock {
   private inboxListReply(url: URL): Response {
     const top = Number(url.searchParams.get("$top") ?? "10");
     const filter = url.searchParams.get("$filter") ?? "";
-    // The Graph provider pages with "receivedDateTime lt <next second>" (keysetUpperBound); "le" kept for safety.
-    const bound = /receivedDateTime (le|lt) '?([0-9T:.\-Z]+)'?/.exec(filter);
-    const before = bound?.[2] === undefined ? Number.POSITIVE_INFINITY : Date.parse(bound[2]);
+    // The Graph provider pages with "receivedDateTime lt <next second>" (keysetUpperBound).
+    const bound = /receivedDateTime lt '?([0-9T:.\-Z]+)'?/.exec(filter);
+    const before = bound?.[1] === undefined ? Number.POSITIVE_INFINITY : Date.parse(bound[1]);
     const sorted = [...this.inbox]
       .sort((a, b) => b.receivedAt - a.receivedAt)
-      .filter((m) => (bound?.[1] === "lt" ? m.receivedAt < before : m.receivedAt <= before));
+      .filter((m) => m.receivedAt < before);
     const page = sorted.slice(0, top);
     return HttpResponse.json({
       value: page.map((m) => graphMessage(m, true)),
@@ -245,6 +247,8 @@ export class ProviderMock {
    */
   private inboxDeltaReply(url: URL): Response {
     const token = url.searchParams.get("$deltatoken") ?? "resync-inbox";
+    if (!url.searchParams.has("$deltatoken"))
+      this.resyncFilters.inbox.push(url.searchParams.get("$filter") ?? "");
     if (this.expiredTokens.has(token)) {
       return HttpResponse.json(
         { error: { code: "syncStateNotFound", message: "The sync state is not found." } },
@@ -264,6 +268,8 @@ export class ProviderMock {
   /** Same as inboxDeltaReply: the first round after a resync serves the page registered as "resync-sent". */
   private sentDeltaReply(url: URL): Response {
     const token = url.searchParams.get("$deltatoken") ?? "resync-sent";
+    if (!url.searchParams.has("$deltatoken"))
+      this.resyncFilters.sent.push(url.searchParams.get("$filter") ?? "");
     if (this.expiredTokens.has(token)) {
       return HttpResponse.json(
         { error: { code: "syncStateNotFound", message: "The sync state is not found." } },

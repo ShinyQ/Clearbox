@@ -109,6 +109,8 @@ const DECISION_ISSUES: readonly AppIssueCode[] = [
 
 class Stopwatch {
   readonly t: TickTimings;
+  private inFlight = 0;
+  private ioStart = 0;
 
   constructor(t?: TickTimings) {
     this.t = t ?? { wallMs: 0, ioMs: 0, pureMs: 0 };
@@ -123,12 +125,15 @@ class Stopwatch {
     }
   }
 
+  /** Concurrent calls count once: the clock runs while at least one is in flight (union of intervals). */
   async io<T>(fn: () => Promise<T>): Promise<T> {
-    const start = performance.now();
+    if (this.inFlight === 0) this.ioStart = performance.now();
+    this.inFlight += 1;
     try {
       return await fn();
     } finally {
-      this.t.ioMs += performance.now() - start;
+      this.inFlight -= 1;
+      if (this.inFlight === 0) this.t.ioMs += performance.now() - this.ioStart;
     }
   }
 }

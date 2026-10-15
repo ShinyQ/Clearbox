@@ -134,6 +134,16 @@ describe("runTick: leases, gates and the subrequest budget", () => {
     expect(timings.ioMs).toBeGreaterThan(0);
     expect(timings.ioMs + timings.pureMs).toBeLessThanOrEqual(timings.wallMs + 1);
   });
+
+  it("measures concurrent Decision-1 calls as the union of their intervals, not their sum", async () => {
+    const timings = { wallMs: 0, ioMs: 0, pureMs: 0 };
+    const report = await runTickInternal(env, { trigger: "cron", now: NOW }, { timings });
+    expect(report).toMatchObject({ outcome: "processed", decided: 5, errorCode: null });
+    expect(decision.calls).toBe(5);
+    expect(timings.ioMs).toBeGreaterThan(0);
+    expect(timings.ioMs).toBeLessThanOrEqual(timings.wallMs + 1);
+    expect(timings.ioMs + timings.pureMs).toBeLessThanOrEqual(timings.wallMs + 1);
+  });
 });
 
 describe("runTick: a partial incremental poll during the backfill", () => {

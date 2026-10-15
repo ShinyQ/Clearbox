@@ -43,6 +43,7 @@ describe("runTick: incremental", () => {
     await seedTickAccount({
       phase: "incremental",
       incrementalCursor: graphCursor("expired-inbox", "sent-1", NOW - 2 * DAY),
+      watermark: NOW - 2 * DAY,
     });
     const gone = await seedMessage(ACCOUNT_A, { providerId: "gone-1" });
 
@@ -56,6 +57,9 @@ describe("runTick: incremental", () => {
       removed: 1,
       errorCode: null,
     });
+    const since = new Date(NOW - 2 * DAY).toISOString();
+    expect(mock.resyncFilters.inbox).toEqual([expect.stringContaining(since)]);
+    expect(mock.resyncFilters.sent).toEqual([expect.stringContaining(since)]);
     expect(await one("SELECT status FROM suggestions WHERE message_id = ?1", gone)).toEqual({
       status: "dismissed",
     });
@@ -131,6 +135,9 @@ describe("runTick: incremental", () => {
     expect(account.incremental_cursor).not.toContain("example.net");
     expect(mock.calls.some((c) => c.includes("example.net"))).toBe(false);
     expect(mock.calls).toContain("GET https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta");
+    const since = new Date(NOW - 2 * DAY).toISOString();
+    expect(mock.resyncFilters.inbox).toEqual([expect.stringContaining(since)]);
+    expect(mock.resyncFilters.sent).toEqual([expect.stringContaining(since)]);
   });
 });
 

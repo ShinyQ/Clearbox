@@ -1,0 +1,111 @@
+[
+  {
+    "status": 401,
+    "body": {
+      "error": {
+        "code": 401,
+        "message": "Invalid Credentials",
+        "errors": [{ "reason": "authError" }],
+        "status": "UNAUTHENTICATED"
+      }
+    },
+    "expected": "ProviderAuthError",
+    "reason": "unauthorized"
+  },
+  {
+    "status": 403,
+    "body": {
+      "error": {
+        "code": 403,
+        "message": "Rate Limit Exceeded",
+        "errors": [{ "domain": "usageLimits", "reason": "rateLimitExceeded" }]
+      }
+    },
+    "expected": "ProviderRateLimitError",
+    "retryAfterRange": [60000, 61000]
+  },
+  {
+    "status": 403,
+    "body": {
+      "error": {
+        "code": 403,
+        "message": "User Rate Limit Exceeded",
+        "errors": [{ "domain": "usageLimits", "reason": "userRateLimitExceeded" }]
+      }
+    },
+    "headers": { "Retry-After": "30" },
+    "expected": "ProviderRateLimitError",
+    "retryAfterMs": 30000
+  },
+  {
+    "status": 403,
+    "body": {
+      "error": {
+        "code": 403,
+        "message": "Daily Limit Exceeded",
+        "errors": [{ "domain": "usageLimits", "reason": "dailyLimitExceeded" }]
+      }
+    },
+    "expected": "ProviderRateLimitError",
+    "retryAfterMs": 43200000
+  },
+  {
+    "status": 403,
+    "body": {
+      "error": { "code": 403, "message": "Domain policy", "errors": [{ "reason": "domainPolicy" }] }
+    },
+    "expected": "ProviderAuthError",
+    "reason": "domain_policy"
+  },
+  {
+    "status": 403,
+    "body": {
+      "error": {
+        "code": 403,
+        "message": "Insufficient Permission",
+        "errors": [{ "reason": "insufficientPermissions" }]
+      }
+    },
+    "expected": "ProviderAuthError",
+    "reason": "insufficient_scope"
+  },
+  {
+    "status": 429,
+    "body": {
+      "error": {
+        "code": 429,
+        "message": "Too many concurrent requests for user",
+        "status": "RESOURCE_EXHAUSTED"
+      }
+    },
+    "expected": "ProviderRateLimitError",
+    "retryAfterRange": [60000, 61000]
+  },
+  {
+    "status": 500,
+    "body": {
+      "error": { "code": 500, "message": "Backend Error", "errors": [{ "reason": "backendError" }] }
+    },
+    "expected": "ProviderUnavailableError",
+    "retryAfterMs": null
+  },
+  {
+    "status": 503,
+    "body": null,
+    "headers": { "Retry-After": "120" },
+    "expected": "ProviderUnavailableError",
+    "retryAfterMs": 120000
+  },
+  {
+    "status": 400,
+    "body": { "error": { "code": 400, "message": "Bad Request", "errors": [{ "reason": "badRequest" }] } },
+    "expected": "ProviderResponseError",
+    "httpStatus": 400
+  },
+  {
+    "status": 404,
+    "body": { "error": { "code": 404, "message": "Not Found", "errors": [{ "reason": "notFound" }] } },
+    "expected": "ProviderResponseError",
+    "httpStatus": 404
+  }
+]

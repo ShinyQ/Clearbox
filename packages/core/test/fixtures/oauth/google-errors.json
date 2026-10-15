@@ -1,0 +1,54 @@
+[
+  {
+    "status": 400,
+    "body": { "error": "invalid_grant", "error_description": "Token has been expired or revoked." },
+    "expected": "ProviderAuthError",
+    "reason": "invalid_grant"
+  },
+  {
+    "status": 400,
+    "body": { "error": "invalid_grant", "error_subtype": "invalid_rapt" },
+    "expected": "ProviderAuthError",
+    "reason": "invalid_grant"
+  },
+  {
+    "status": 400,
+    "body": { "error": "interaction_required" },
+    "expected": "ProviderAuthError",
+    "reason": "interaction_required"
+  },
+  {
+    "status": 400,
+    "body": { "error": "consent_required" },
+    "expected": "ProviderAuthError",
+    "reason": "consent_required"
+  },
+  {
+    "status": 401,
+    "body": { "error": "invalid_client", "error_description": "The OAuth client was not found." },
+    "expected": "ProviderConfigError",
+    "reason": "invalid_client"
+  },
+  {
+    "status": 401,
+    "body": { "error": "unauthorized_client" },
+    "expected": "ProviderConfigError",
+    "reason": "unauthorized_client"
+  },
+  {
+    "status": 401,
+    "body": { "error": "deleted_client" },
+    "expected": "ProviderConfigError",
+    "reason": "deleted_client"
+  },
+  { "status": 503, "body": { "error": "temporarily_unavailable" }, "expected": "ProviderUnavailableError" },
+  { "status": 500, "body": null, "expected": "ProviderUnavailableError" },
+  {
+    "status": 429,
+    "body": {},
+    "headers": { "Retry-After": "20" },
+    "expected": "ProviderRateLimitError",
+    "retryAfterMs": 20000
+  },
+  { "status": 400, "body": { "error": "invalid_request" }, "expected": "ProviderResponseError" }
+]

@@ -1,0 +1,36 @@
+{
+  "@odata.etag": "W/\"CQAAABYAAAFake\"",
+  "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AFake-Newsletter-01",
+  "conversationId": "AAQkAGI2Fake-Conv-01",
+  "conversationIndex": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+  "internetMessageId": "<abc123@mail.shop.example.com>",
+  "receivedDateTime": "2026-10-14T21:03:11Z",
+  "subject": "Big sale",
+  "bodyPreview": "Our biggest sale\r\n\r\nof the year starts now",
+  "isRead": false,
+  "importance": "high",
+  "hasAttachments": true,
+  "inferenceClassification": "focused",
+  "webLink": "https://outlook.office365.com/owa/?ItemID=AAkALgFake&exvsurl=1&viewmodel=ReadMessageItem",
+  "flag": { "flagStatus": "flagged" },
+  "from": { "emailAddress": { "name": "Shop", "address": "News@Shop.Example.com" } },
+  "toRecipients": [
+    { "emailAddress": { "name": "Owner", "address": "owner@example.test" } },
+    {
+      "emailAddress": {
+        "name": "Exchange user",
+        "address": "/O=EXCHANGELABS/OU=EXCHANGE ADMINISTRATIVE GROUP/CN=RECIPIENTS/CN=FAKE"
+      }
+    }
+  ],
+  "ccRecipients": [{ "emailAddress": { "name": "Team", "address": "team@example.org" } }],
+  "internetMessageHeaders": [
+    { "name": "List-Unsubscribe", "value": "<https://shop.example.com/u/abc>" },
+    {
+      "name": "Authentication-Results",
+      "value": "spf=pass (sender IP is 192.0.2.1) smtp.mailfrom=esp.example.net; dkim=pass (signature was verified) header.d=shop.example.com;dmarc=pass action=none header.from=shop.example.com;compauth=pass reason=100"
+    },
+    { "name": "Authentication-Results", "value": "spf=fail smtp.mailfrom=other.example.net" },
+    { "name": "Return-Path", "value": "bounce@esp.example.net" }
+  ]
+}

@@ -2,6 +2,7 @@ import type { DecisionResult } from "../../src/decision/engine.ts";
 import type { MailHeaders, MailMessage } from "../../src/model/mail.ts";
 import { DEFAULT_POLICY, type Policy } from "../../src/policy/policy.ts";
 import type { GmailHeader, GmailMessageMetadata } from "../../src/providers/google/types.ts";
+import type { GraphMessage } from "../../src/providers/microsoft/types.ts";
 import type { SenderHistory, Signals } from "../../src/signals/signals.ts";
 
 /** Fixed test clock: 2026-10-15T00:00:00.000Z. */
@@ -149,5 +150,29 @@ export function makeGmailMetadata(overrides: GmailMetadataOverrides = {}): Gmail
       ],
     },
     ...rest,
+  };
+}
+
+/** Minimal Graph inbox message from a synthetic sender. */
+export function makeGraphMessage(overrides: Partial<GraphMessage> = {}): GraphMessage {
+  return {
+    id: "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0Fake0001",
+    conversationId: "AAQkAGI2Fake0001",
+    conversationIndex: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ==",
+    internetMessageId: "<0001@mail.example.com>",
+    receivedDateTime: "2026-10-05T08:00:00Z",
+    subject: "Synthetic subject",
+    bodyPreview: "Synthetic preview",
+    isRead: false,
+    importance: "normal",
+    hasAttachments: false,
+    inferenceClassification: "other",
+    flag: { flagStatus: "notFlagged" },
+    from: { emailAddress: { name: "Example Sender", address: "sender@example.com" } },
+    toRecipients: [{ emailAddress: { name: "Owner", address: "owner@example.test" } }],
+    ccRecipients: [],
+    webLink: "https://outlook.office365.com/owa/?ItemID=Fake0001&exvsurl=1&viewmodel=ReadMessageItem",
+    internetMessageHeaders: [],
+    ...overrides,
   };
 }

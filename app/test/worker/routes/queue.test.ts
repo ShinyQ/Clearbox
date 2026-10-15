@@ -257,4 +257,30 @@ describe("stored reasons that core cannot render", () => {
     ]);
     for (const line of lines) expect(line).not.toMatch(/aaa_retired_code|Promotions|@|odd/);
   });
+
+  it("ignores bare-string reason elements instead of failing groups and group detail", async () => {
+    const d = await seedAccount({ provider: "gmail", email: "queue-d@example.com" });
+    const stored = ["bare-string", { code: "list_unsubscribe", params: {} }] as unknown as Reason[];
+    await seedSuggestions(d.id, 1, { sender: "bare@example.com", reasons: stored });
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const groupsRes = await apiFetch(`/api/groups?accountId=${d.id}`, {}, { app });
+    expect(groupsRes.status).toBe(200);
+    const groups = await readJson<Page<SenderGroup>>(groupsRes);
+    expect(groups.items[0]?.topReasons).toEqual([
+      { code: "list_unsubscribe", text: "Has an unsubscribe link" },
+    ]);
+
+    const detailRes = await apiFetch(
+      `/api/groups/${encodeGroupKey(d.id, "bare@example.com", "delete")}`,
+      {},
+      { app },
+    );
+    expect(detailRes.status).toBe(200);
+    const detail = await readJson<GroupDetail>(detailRes);
+    expect(detail.group.topReasons.map((r) => r.code)).toEqual(["list_unsubscribe"]);
+    expect(detail.items.items[0]?.reasons).toEqual([
+      { code: "list_unsubscribe", text: "Has an unsubscribe link" },
+    ]);
+  });
 });

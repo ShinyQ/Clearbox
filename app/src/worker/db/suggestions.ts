@@ -245,7 +245,7 @@ export function groupReasonsQuery(
       MIN(r.value) AS reason_json
     FROM suggestions s, json_each(s.reasons_json) r
     WHERE s.account_id = ?1 AND s.status = 'pending' AND s.sender IN (${placeholders(n, 2)})
-      AND (?${n + 2} IS NULL OR s.action = ?${n + 2})
+      AND (?${n + 2} IS NULL OR s.action = ?${n + 2}) AND r.type = 'object'
     GROUP BY s.sender, s.action, code`;
   return { sql, params: [accountId, ...senders, action] };
 }

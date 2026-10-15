@@ -119,7 +119,7 @@ describe("tokenUpdateStmt", () => {
     const ctx = (kind: "refresh" | "access") => ({
       accountId: account.id,
       kind,
-      keyVersion: CURRENT_KEY_VERSION,
+      keyVersion: account.keyVersion,
     });
     expect(stored?.accessExpiresAt).toBe(SEED_NOW + 1);
     expect(stored?.updatedAt).toBe(SEED_NOW);
@@ -143,10 +143,38 @@ describe("tokenUpdateStmt", () => {
     const ctx = (kind: "refresh" | "access") => ({
       accountId: account.id,
       kind,
-      keyVersion: CURRENT_KEY_VERSION,
+      keyVersion: account.keyVersion,
     });
     expect(await decryptToken(key, stored?.refreshToken ?? EMPTY, ctx("refresh"))).toBe("keep-me");
     expect(await decryptToken(key, stored?.accessToken ?? EMPTY, ctx("access"))).toBe("a3");
+  });
+  it("re-encrypts under the row's key_version, not CURRENT_KEY_VERSION", async () => {
+    const seeded = await seedAccount({ provider: "outlook" });
+    const account = { ...seeded, keyVersion: 2 };
+    const key = await testEncKey();
+    await (
+      await tokenUpdateStmt(
+        env.DB,
+        account,
+        key,
+        { accessToken: "a4", accessExpiresAt: SEED_NOW + 3, refreshToken: "r4" },
+        SEED_NOW,
+      )
+    ).run();
+    const stored = await getAccount(env.DB, account.id);
+    const ctx = (kind: "refresh" | "access", keyVersion: number) => ({
+      accountId: account.id,
+      kind,
+      keyVersion,
+    });
+    expect(await decryptToken(key, stored?.accessToken ?? EMPTY, ctx("access", 2))).toBe("a4");
+    expect(await decryptToken(key, stored?.refreshToken ?? EMPTY, ctx("refresh", 2))).toBe("r4");
+    await expect(
+      decryptToken(key, stored?.accessToken ?? EMPTY, ctx("access", CURRENT_KEY_VERSION)),
+    ).rejects.toThrow();
+    await expect(
+      decryptToken(key, stored?.refreshToken ?? EMPTY, ctx("refresh", CURRENT_KEY_VERSION)),
+    ).rejects.toThrow();
   });
 });
 

@@ -1,6 +1,6 @@
 import { ACCESS_TOKEN_MIN_TTL_MS, ProviderAuthError, ProviderConfigError } from "@clearbox/core";
 import type { FetchLike, OAuthTokens, ProviderKind, TokenSource, TokenUpdate } from "@clearbox/core";
-import { CURRENT_KEY_VERSION, decryptToken, encryptToken } from "../crypto/aead.ts";
+import { decryptToken, encryptToken } from "../crypto/aead.ts";
 import type { TokenKind } from "../crypto/aead.ts";
 import { accessTokenUpdateStmt, tokensUpdateStmt } from "../db/accounts.ts";
 import type { Account } from "../db/accounts.ts";
@@ -111,7 +111,7 @@ export function refreshFnFor(
   };
 }
 
-/** Encrypts a TokenUpdate with CURRENT_KEY_VERSION (contracts 7.15, decision 23). */
+/** Re-encrypts in place under the row's key_version (decision 23: only inserts and reconnects write CURRENT_KEY_VERSION). */
 export async function tokenUpdateStmt(
   db: D1Database,
   account: TokenAccount,
@@ -119,7 +119,7 @@ export async function tokenUpdateStmt(
   update: TokenUpdate,
   now: number,
 ): Promise<D1PreparedStatement> {
-  const ctx = (kind: TokenKind) => ({ accountId: account.id, kind, keyVersion: CURRENT_KEY_VERSION });
+  const ctx = (kind: TokenKind) => ({ accountId: account.id, kind, keyVersion: account.keyVersion });
   const access = await encryptToken(encKey, update.accessToken, ctx("access"));
   if (update.refreshToken !== null) {
     const refresh = await encryptToken(encKey, update.refreshToken, ctx("refresh"));

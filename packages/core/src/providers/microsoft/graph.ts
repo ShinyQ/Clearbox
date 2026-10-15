@@ -20,7 +20,9 @@ import {
 import type {
   BackfillCursor,
   BootstrapResult,
+  ChangesPage,
   GraphProviderDeps,
+  IncrementalCursor,
   InboxPage,
   MailProvider,
   SentCursor,
@@ -32,6 +34,7 @@ import {
   GRAPH_SENT_DELTA_SELECT,
   GRAPH_SENT_LIST_SELECT,
   IMMUTABLE_ID_PREFER,
+  decodeIncremental,
   graphUrl,
   mapGraphMessage,
   mapGraphSentItem,
@@ -350,7 +353,48 @@ async function listSentPage(
 }
 
 // ---- Incremental ----
-// (added in Task 12)
+
+async function syncChanges(
+  client: GraphClient,
+  cursor: IncrementalCursor,
+  maxMessages: number,
+): Promise<ChangesPage> {
+  const state = decodeIncremental(cursor);
+  const inbox = await getDeltaPage(client, state.inboxDeltaLink, maxMessages);
+  const sentPage = await getDeltaPage(client, state.sentDeltaLink, maxMessages);
+  const removedIds = inbox.value.filter((m) => m["@removed"] !== undefined).map((m) => m.id);
+  const added = await withHeaders(
+    client,
+    inbox.value.filter((m) => m["@removed"] === undefined),
+  );
+  const sent = sentPage.value.filter((m) => m["@removed"] === undefined).map(mapGraphSentItem);
+  const newest = added.reduce((max, m) => Math.max(max, m.receivedAt), Date.parse(state.watermark));
+  const next: IncrementalState = {
+    v: 1,
+    inboxDeltaLink: inbox.nextLink ?? inbox.deltaLink ?? state.inboxDeltaLink,
+    sentDeltaLink: sentPage.nextLink ?? sentPage.deltaLink ?? state.sentDeltaLink,
+    watermark: Number.isFinite(newest) ? new Date(newest).toISOString() : state.watermark,
+  };
+  return {
+    added,
+    removedIds,
+    sent,
+    nextCursor: JSON.stringify(next),
+    caughtUp: inbox.nextLink === null && sentPage.nextLink === null,
+  };
+}
+
+/** No request: returns fresh filtered delta URLs from the watermark; syncChanges pages them (items since watermark are ingested). */
+async function resyncCursor(client: GraphClient, watermark: number | null): Promise<IncrementalCursor> {
+  const since = new Date(watermark ?? client.deps.now()).toISOString();
+  const state: IncrementalState = {
+    v: 1,
+    inboxDeltaLink: initialInboxDelta(since),
+    sentDeltaLink: initialSentDelta(since),
+    watermark: since,
+  };
+  return JSON.stringify(state);
+}
 
 // ---- Actions ----
 // (added in Task 13)
@@ -367,8 +411,8 @@ export function createGraphProvider(deps: GraphProviderDeps): MailProvider {
     bootstrap: () => bootstrap(client),
     listInboxPage: (cursor, pageSize) => listInboxPage(client, cursor, pageSize),
     listSentPage: (cursor, pageSize) => listSentPage(client, cursor, pageSize),
-    syncChanges: () => notImplemented(),
-    resyncCursor: () => notImplemented(),
+    syncChanges: (cursor, maxMessages) => syncChanges(client, cursor, maxMessages),
+    resyncCursor: (watermark) => resyncCursor(client, watermark),
     inboxEstimate: () => getInboxEstimate(client),
     trash: () => notImplemented(),
     archive: () => notImplemented(),

@@ -1,0 +1,36 @@
+{
+  "id": "19a0c0ffee000001",
+  "threadId": "19a0c0ffee000000",
+  "labelIds": ["UNREAD", "CATEGORY_PROMOTIONS", "INBOX", "IMPORTANT"],
+  "snippet": "Our autumn sale starts now &amp; ends Sunday.   Don&#39;t miss it",
+  "historyId": "4421337",
+  "internalDate": "1760500000000",
+  "payload": {
+    "mimeType": "multipart/mixed",
+    "headers": [
+      { "name": "From", "value": "=?UTF-8?B?Q2Fmw6kgU2hvcA==?= <News@Shop.Example.com>" },
+      { "name": "To", "value": "Owner <owner@example.test>,\r\n team@example.org" },
+      { "name": "Cc", "value": "\"Doe, Jane\" <jane@example.net>" },
+      { "name": "Delivered-To", "value": "owner@example.test" },
+      { "name": "Subject", "value": "=?UTF-8?Q?Caf=C3=A9_autumn_sale?= =?ISO-8859-1?Q?_=FCber_30=25_off?=" },
+      { "name": "Date", "value": "Wed, 15 Oct 2025 03:46:40 +0000" },
+      { "name": "Message-Id", "value": "<abc123@mail.shop.example.com>" },
+      { "name": "References", "value": "<r1@example.com> <r2@example.com>" },
+      { "name": "In-Reply-To", "value": "<r2@example.com>" },
+      {
+        "name": "List-Unsubscribe",
+        "value": "<mailto:unsub@shop.example.com?subject=unsub>, <https://shop.example.com/u/abc>"
+      },
+      { "name": "List-Unsubscribe-Post", "value": "List-Unsubscribe=One-Click" },
+      { "name": "List-Id", "value": "Shop News <news.shop.example.com>" },
+      { "name": "Precedence", "value": "bulk" },
+      { "name": "Authentication-Results", "value": "relay.example.net; dkim=fail header.d=shop.example.com" },
+      {
+        "name": "Authentication-Results",
+        "value": "mx.google.com; dkim=pass header.i=@shop.example.com header.s=s1 header.b=Ab12; spf=pass (google.com: domain of bounce@esp.example.net designates 192.0.2.1 as permitted sender) smtp.mailfrom=bounce@esp.example.net; dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=shop.example.com"
+      },
+      { "name": "Return-Path", "value": "<bounce-123@esp.example.net>" },
+      { "name": "Content-Type", "value": "multipart/mixed; boundary=\"b1\"" }
+    ]
+  }
+}

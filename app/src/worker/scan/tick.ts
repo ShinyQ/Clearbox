@@ -109,8 +109,8 @@ async function tick(
     }),
   );
   const claim = parseClaim(claimResults);
-  const account = claim.account;
-  if (claim.claimedAccountId === null || account === null) {
+  const claimed = claim.account;
+  if (claim.claimedAccountId === null || claimed === null) {
     if (opts.trigger === "scan_now") throw scanNowError(claim, now, stopRows);
     const rowsWritten = claim.budget?.rows_written ?? 0;
     const gated = rowsWritten >= stopRows;
@@ -119,18 +119,26 @@ async function tick(
     return idleReport(work.used, gated ? nextUtcMidnight(now) : null);
   }
 
+  const maxPageSize = freeTier ? PAGE_SIZE_FREE : PAGE_SIZE_PAID;
+  // A page size grown on the paid tier never fetches more than the current tier allows.
+  const account: TickAccountRow = { ...claimed, page_size: Math.min(claimed.page_size, maxPageSize) };
   const settings = parseTickSettings(claim.settings);
   let kind = selectKind(account, claim.awaitingDue, now);
   const raise: IssueRaise[] = [];
   const clear: AppIssueCode[] = [];
-  if ((claim.budget?.db_size_bytes ?? 0) >= STORAGE_SOFT_LIMIT_BYTES) {
-    if (kind === "inbox_backfill") {
-      raise.push({ code: "storage_near_limit", accountId: null });
-      kind = "incremental";
-    }
-  } else {
-    clear.push("storage_near_limit");
+  // Size 0 is unknown (no budget row yet today): the open issue is the latest known state, so the gate keeps
+  // its last decision and the issue is neither raised nor cleared.
+  const dbSize = claim.budget?.db_size_bytes ?? 0;
+  const storageFull =
+    dbSize > 0
+      ? dbSize >= STORAGE_SOFT_LIMIT_BYTES
+      : settings.issues.some((i) => i.code === "storage_near_limit");
+  const storageGated = storageFull && kind === "inbox_backfill";
+  if (storageGated) {
+    if (dbSize > 0) raise.push({ code: "storage_near_limit", accountId: null });
+    kind = "incremental";
   }
+  if (dbSize > 0 && !storageFull) clear.push("storage_near_limit");
   logEvent("tick.claimed", {
     tickId,
     trigger: opts.trigger,
@@ -164,7 +172,8 @@ async function tick(
     watch,
     raise,
     clear,
-    maxPageSize: freeTier ? PAGE_SIZE_FREE : PAGE_SIZE_PAID,
+    maxPageSize,
+    storageGated,
   };
 
   let final = createSubrequestCounter(limit, work.used);

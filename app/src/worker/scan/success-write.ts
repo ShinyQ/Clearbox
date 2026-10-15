@@ -29,7 +29,15 @@ export interface AccountCursorState {
 export type PageOutcome =
   | { kind: "sent_backfill"; itemCount: number; nextCursor: string | null }
   | { kind: "inbox_backfill"; nextCursor: string | null; partial: boolean }
-  | { kind: "incremental"; startCursor: string; nextCursor: string; caughtUp: boolean; partial: boolean }
+  | {
+      kind: "incremental";
+      startCursor: string;
+      nextCursor: string;
+      caughtUp: boolean;
+      partial: boolean;
+      /** A storage-gated backfill account polls at the incremental interval, not every minute. */
+      storageGated?: boolean;
+    }
   | { kind: "redecide" };
 
 export interface AccountAdvance extends AccountCursorState {
@@ -79,7 +87,7 @@ export function computeAdvance(
       // A partial poll is not a completed poll: keeping last_incremental_at makes selectKind resume it on the
       // next tick (C9) instead of switching back to the backfill until the next 30-minute poll.
       if (!out.partial) next.last_incremental_at = now;
-      if (cur.phase === "incremental" && out.caughtUp && !out.partial) {
+      if ((cur.phase === "incremental" || out.storageGated === true) && out.caughtUp && !out.partial) {
         next.nextTickAt = now + POLL_INTERVAL_MS;
       }
       return next;

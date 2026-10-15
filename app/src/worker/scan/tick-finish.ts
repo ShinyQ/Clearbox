@@ -171,6 +171,7 @@ export async function failTick(f: FailParams): Promise<TickResult> {
     provider: f.account.provider,
     attempts: f.account.attempts,
     now: f.now,
+    pageSize: f.account.page_size,
   });
   const update = f.tokens.update;
   const clear = [...f.clear];

@@ -66,6 +66,8 @@ export interface ProcessParams {
   raise: IssueRaise[];
   clear: AppIssueCode[];
   maxPageSize: number;
+  /** An inbox_backfill tick switched to incremental by the storage gate. */
+  storageGated: boolean;
 }
 
 export interface Processed {
@@ -176,6 +178,7 @@ export async function processAccount(p: ProcessParams): Promise<Processed> {
               nextCursor: fetched.page.nextCursor,
               caughtUp: fetched.page.caughtUp,
               partial: stage.partial,
+              storageGated: p.storageGated,
             }
           : { kind: "redecide" };
   const advance = computeAdvance(account, outcome, maxReceived, now);

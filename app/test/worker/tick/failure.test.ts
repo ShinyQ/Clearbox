@@ -1,5 +1,8 @@
 import {
+  BACKOFF_MAX_MS,
   CursorExpiredError,
+  DecisionError,
+  PAGE_SIZE_MIN,
   ProviderAuthError,
   ProviderConfigError,
   ProviderRateLimitError,
@@ -113,6 +116,46 @@ describe("classifyFailure", () => {
         attempts: 2,
       }).backoffUntil,
     ).toBe(NOW + 4 * MINUTE);
+  });
+
+  it("clamps a provider or Decision-1 Retry-After to [0, BACKOFF_MAX_MS]", () => {
+    const huge = classifyFailure(
+      new ProviderRateLimitError({ provider: "outlook", retryAfterMs: 30 * 24 * 60 * MINUTE }),
+      C,
+    );
+    expect(huge).toMatchObject({ retryAfterMs: BACKOFF_MAX_MS, backoffUntil: NOW + BACKOFF_MAX_MS });
+    const negative = classifyFailure(
+      new ProviderUnavailableError({ provider: "outlook", retryAfterMs: -5_000 }),
+      C,
+    );
+    expect(negative).toMatchObject({ retryAfterMs: 0, backoffUntil: NOW });
+    const decision = classifyFailure(
+      new DecisionError({
+        kind: "rate_limited",
+        status: 429,
+        retryable: true,
+        scope: "item",
+        retryAfterMs: Number.MAX_SAFE_INTEGER,
+        requestId: null,
+      }),
+      C,
+    );
+    expect(decision).toMatchObject({ retryAfterMs: BACKOFF_MAX_MS, backoffUntil: NOW + BACKOFF_MAX_MS });
+  });
+
+  it("backs off normally for a subrequest budget error once page_size is at the floor", () => {
+    expect(classifyFailure(budgetError(), { ...C, pageSize: PAGE_SIZE_MIN })).toMatchObject({
+      errorCode: "subrequest_budget",
+      halvePageSize: false,
+      backoffUntil: NOW + MINUTE,
+    });
+    expect(classifyFailure(budgetError(), { ...C, attempts: 2, pageSize: PAGE_SIZE_MIN })).toMatchObject({
+      backoffUntil: NOW + 4 * MINUTE,
+    });
+    expect(classifyFailure(budgetError(), { ...C, pageSize: PAGE_SIZE_MIN + 1 })).toMatchObject({
+      halvePageSize: true,
+      backoffUntil: null,
+    });
   });
 
   it("records the provider status for provider failures only", () => {

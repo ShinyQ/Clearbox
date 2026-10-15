@@ -1,7 +1,9 @@
 import {
+  BACKOFF_MAX_MS,
   ClearboxError,
   CursorExpiredError,
   DecisionError,
+  PAGE_SIZE_MIN,
   ProviderAuthError,
   ProviderConfigError,
   ProviderRateLimitError,
@@ -52,6 +54,14 @@ export interface ClassifyContext {
   attempts: number;
   now: number;
   random?: () => number;
+  /** The account's page size this tick; a budget failure at PAGE_SIZE_MIN backs off instead of halving. */
+  pageSize?: number;
+}
+
+/** A provider or Decision-1 Retry-After never holds an active account back longer than BACKOFF_MAX_MS. */
+function clampRetryAfter(ms: number | null): number | null {
+  if (ms === null || Number.isNaN(ms)) return null;
+  return Math.min(BACKOFF_MAX_MS, Math.max(0, ms));
 }
 
 /** Providers may wrap a fetch failure; the budget error can sit in the cause chain. */
@@ -67,22 +77,29 @@ function findBudgetError(err: unknown): SubrequestBudgetError | null {
 export function classifyFailure(err: unknown, c: ClassifyContext): FailurePlan {
   const plan = (
     errorCode: string,
-    retryAfterMs: number | null,
+    rawRetryAfterMs: number | null,
     extra: Partial<FailurePlan> = {},
-  ): FailurePlan => ({
-    errorCode,
-    status: "active",
-    statusReason: null,
-    retryAfterMs,
-    backoffUntil: c.now + (retryAfterMs ?? backoffMs(c.attempts + 1, c.random)),
-    halvePageSize: false,
-    audit: null,
-    raise: [],
-    provider: null,
-    ...extra,
-  });
+  ): FailurePlan => {
+    const retryAfterMs = clampRetryAfter(rawRetryAfterMs);
+    return {
+      errorCode,
+      status: "active",
+      statusReason: null,
+      retryAfterMs,
+      backoffUntil: c.now + (retryAfterMs ?? backoffMs(c.attempts + 1, c.random)),
+      halvePageSize: false,
+      audit: null,
+      raise: [],
+      provider: null,
+      ...extra,
+    };
+  };
   const budget = findBudgetError(err);
-  if (budget !== null) return plan(budget.code, null, { backoffUntil: null, halvePageSize: true });
+  if (budget !== null) {
+    // At the floor halving cannot help: back off like any other failure instead of retrying every minute.
+    if (c.pageSize !== undefined && c.pageSize <= PAGE_SIZE_MIN) return plan(budget.code, null);
+    return plan(budget.code, null, { backoffUntil: null, halvePageSize: true });
+  }
   if (err instanceof ProviderAuthError) {
     return plan(err.code, null, {
       status: "needs_reauth",

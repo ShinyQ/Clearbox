@@ -70,8 +70,42 @@ export type {
   SentPage,
 } from "./providers/provider.ts";
 export type { OAuthTokens, TokenSource, TokenUpdate } from "./providers/token.ts";
-export { GOOGLE_SCOPES, MICROSOFT_CONSENT_URLS, MICROSOFT_SCOPES } from "./providers/oauth.ts";
-export type { AuthorizeParams, OAuthClientConfig } from "./providers/oauth.ts";
+export {
+  GOOGLE_SCOPES,
+  MICROSOFT_CONSENT_URLS,
+  MICROSOFT_SCOPES,
+  buildAuthorizeUrl,
+  exchangeCode,
+  parseTokenResponse,
+  refreshAccessToken,
+} from "./providers/oauth.ts";
+export type { AuthorizeParams, OAuthClientConfig, TokenEndpoint } from "./providers/oauth.ts";
+export { boundaryFromContentType, buildBatchBody, parseBatchResponse } from "./http/multipart.ts";
+export type { BatchRequestPart, BatchResponsePart } from "./http/multipart.ts";
+export {
+  GMAIL_MODIFY_SCOPE,
+  GOOGLE_TOKEN_ENDPOINT,
+  buildGoogleAuthorizeUrl,
+  classifyGmailApiError,
+  classifyGoogleOAuthError,
+  exchangeGoogleCode,
+  hasGmailScope,
+  refreshGoogleToken,
+  revokeGoogleToken,
+} from "./providers/google/oauth.ts";
+export { buildGmailDeepLink, mapGmailMessage } from "./providers/google/map.ts";
+export { createGmailProvider } from "./providers/google/gmail.ts";
+export {
+  MICROSOFT_TOKEN_ENDPOINT,
+  buildMicrosoftAuthorizeUrl,
+  classifyGraphApiError,
+  classifyMicrosoftOAuthError,
+  exchangeMicrosoftCode,
+  hasGraphScopes,
+  refreshMicrosoftToken,
+} from "./providers/microsoft/oauth.ts";
+export { mapGraphMessage } from "./providers/microsoft/map.ts";
+export { createGraphProvider } from "./providers/microsoft/graph.ts";
 
 export { extractSignals } from "./signals/signals.ts";
 export type { SenderHistory, SignalContext, Signals } from "./signals/signals.ts";

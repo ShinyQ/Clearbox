@@ -5257,6 +5257,16 @@ CPU benchmark (`test/worker/tick/tick-cpu.test.ts`, 25-message page, `FakeEngine
 
 C27 kept: tick audit rows `reauth_required` / `config_error` store `{"reason": <code>}` through the local `auditStmt` in `scan/plan-builders.ts`, while plan 03's `db/audit.ts` normalizes those kinds to `{}`. A5 does not fix these keys; plan 05 should not rely on either shape.
 
+### Lead decision: incremental retention skip
+
+- Rule: during an `incremental` tick, `processAccount` drops every inbox `added` message with `receivedAt < now - DECIDED_TTL_MS` (30 days, from `@clearbox/core`; the earliest a message row can be purged) before `identify` and the context reads, so dropped items cost no D1 reads and no Decision-1 calls. Younger mail is either still stored (skipped as known) or genuinely new.
+- Exception: `receivedAt <= 0` means the date is unknown (provider mapper fallback) and is kept; `guard_too_recent` caps it at keep.
+- Scope: inbox `added` of incremental ticks for both providers. Unaffected: `inbox_backfill`, `sent_backfill`, incremental `sent` items, `removedIds`, `redecide`. `fetched` still counts what the provider returned.
+- Why: Graph delta reports updates (read, flagged, categories) of old mail in `added`, and Gmail history can re-report it (for example an INBOX label re-added); after the nightly purge deletes the row, the known-id check no longer catches it and it would return as a new pending suggestion.
+- Logging: `tick.done` carries `skippedOld` (a count, no ids). `TickReport` is unchanged (frozen for plan 05).
+- Implementation: pure `dropBeyondRetention(messages, now)` in `app/src/worker/scan/ingest.ts`.
+- Tests: `dropBeyondRetention` unit tests in `ingest.test.ts`; `tick-retention.test.ts` covers a Graph delta re-report of a 40-day-old message skipped next to a fresh one that is ingested and decided, the same rule on Gmail history, `skippedOld: 0` when nothing is old, and an `inbox_backfill` page where a 40-day-old message is still ingested.
+
 ### Notes for later plans
 
 - Plan 05:
@@ -5266,7 +5276,7 @@ C27 kept: tick audit rows `reauth_required` / `config_error` store `{"reason": <
 - Plan 06:
   - Runbook: keep the CPU section; it now mentions page-size halving on subrequest budget failures.
   - Contracts 1.1 / 11 should list the extra scan files (deviation 5).
-  - Open product question (lead): Graph delta reports updates to old messages in `added`; once the nightly purge has removed such a message (30 days after a decision, 90 if pending), a later change re-ingests it as a new suggestion. Options: skip incremental items older than the retention window, or keep purged-id tombstones.
+  - Graph delta re-reports of old mail: resolved, see "Lead decision: incremental retention skip" under Execution notes.
   - Lost-lease fencing covers account and sender writes only; message and suggestion inserts stay idempotent but unfenced, so after a stall over 5 minutes some sender counters can stay low. A fenced tick still reports `processed` and drops a rotated refresh token (Microsoft keeps the previous token valid).
   - Global `settings.issues` is read at claim and written at the end of a tick; concurrent ticks on different accounts can lose an issue update, which the next tick repairs.
   - Confirm on Linux CI that the benchmark margin holds (local medians 1 to 2 ms against 8).

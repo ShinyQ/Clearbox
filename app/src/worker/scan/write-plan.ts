@@ -5,9 +5,9 @@ import {
   POLL_INTERVAL_MS,
   SENT_BACKFILL_MAX_MESSAGES,
 } from "@clearbox/core";
-import type { SentItem } from "@clearbox/core";
+import type { SentItem, SubrequestCounter } from "@clearbox/core";
 import type { AccountPhase, AppIssue, AppIssueCode } from "../../shared/api.ts";
-import { chunk, toIso as isoOf } from "../db/sql.ts";
+import { chunk, toIso as isoOf, withCount } from "../db/sql.ts";
 import { truncateText } from "./ingest.ts";
 import type { FinalItem } from "./ingest.ts";
 import type { TokenColumns } from "./tick-tokens.ts";
@@ -49,6 +49,25 @@ export function sumMeta(
   let total = 0;
   for (const r of results) total += r.meta?.[field] ?? 0;
   return total;
+}
+
+/** Runs one statement list as a single D1 batch (one transaction). */
+export type BatchRunner = (counter: SubrequestCounter, stmts: readonly Stmt[]) => Promise<BatchResult[]>;
+
+/**
+ * The shared D1 call for the tick and the nightly job: each non-empty batch reserves one subrequest from the
+ * counter (contracts 8.4); an empty list makes no call. `io` wraps the awaited call (the tick's stopwatch).
+ */
+export function batchRunner(
+  db: D1Database,
+  io: <T>(fn: () => Promise<T>) => Promise<T> = (fn) => fn(),
+): BatchRunner {
+  return async (counter, stmts) => {
+    if (stmts.length === 0) return [];
+    return io(() =>
+      withCount(counter, () => db.batch(stmts.map((s) => db.prepare(s.sql).bind(...s.params)))),
+    );
+  };
 }
 
 export function lastSizeAfter(results: readonly BatchResult[]): number {
@@ -247,7 +266,9 @@ export function computeAdvance(
       return next;
     case "incremental":
       next.incremental_cursor = out.partial ? out.startCursor : out.nextCursor;
-      next.last_incremental_at = now;
+      // A partial poll is not a completed poll: keeping last_incremental_at makes selectKind resume it on the
+      // next tick (C9) instead of switching back to the backfill until the next 30-minute poll.
+      if (!out.partial) next.last_incremental_at = now;
       if (cur.phase === "incremental" && out.caughtUp && !out.partial) {
         next.nextTickAt = now + POLL_INTERVAL_MS;
       }

@@ -209,11 +209,12 @@ export class ProviderMock {
   private inboxListReply(url: URL): Response {
     const top = Number(url.searchParams.get("$top") ?? "10");
     const filter = url.searchParams.get("$filter") ?? "";
-    const le = /receivedDateTime le '?([0-9T:.\-Z]+)'?/.exec(filter)?.[1];
-    const before = le === undefined ? Number.POSITIVE_INFINITY : Date.parse(le);
+    // The Graph provider pages with "receivedDateTime lt <next second>" (keysetUpperBound); "le" kept for safety.
+    const bound = /receivedDateTime (le|lt) '?([0-9T:.\-Z]+)'?/.exec(filter);
+    const before = bound?.[2] === undefined ? Number.POSITIVE_INFINITY : Date.parse(bound[2]);
     const sorted = [...this.inbox]
       .sort((a, b) => b.receivedAt - a.receivedAt)
-      .filter((m) => m.receivedAt <= before);
+      .filter((m) => (bound?.[1] === "lt" ? m.receivedAt < before : m.receivedAt <= before));
     const page = sorted.slice(0, top);
     return HttpResponse.json({
       value: page.map((m) => graphMessage(m, true)),
@@ -237,11 +238,13 @@ export class ProviderMock {
     });
   }
 
+  /**
+   * A request without $deltatoken is the first round after a resync (filtered from the watermark). Real Graph
+   * returns the mail since the watermark in that round, so it serves the page registered as "resync-inbox"
+   * (default: empty, delta link "resync-inbox").
+   */
   private inboxDeltaReply(url: URL): Response {
-    const token = url.searchParams.get("$deltatoken");
-    if (token === null) {
-      return HttpResponse.json({ value: [], "@odata.deltaLink": graphDeltaLink("inbox", "resync-inbox") });
-    }
+    const token = url.searchParams.get("$deltatoken") ?? "resync-inbox";
     if (this.expiredTokens.has(token)) {
       return HttpResponse.json(
         { error: { code: "syncStateNotFound", message: "The sync state is not found." } },
@@ -258,11 +261,9 @@ export class ProviderMock {
     });
   }
 
+  /** Same as inboxDeltaReply: the first round after a resync serves the page registered as "resync-sent". */
   private sentDeltaReply(url: URL): Response {
-    const token = url.searchParams.get("$deltatoken");
-    if (token === null) {
-      return HttpResponse.json({ value: [], "@odata.deltaLink": graphDeltaLink("sentitems", "resync-sent") });
-    }
+    const token = url.searchParams.get("$deltatoken") ?? "resync-sent";
     if (this.expiredTokens.has(token)) {
       return HttpResponse.json(
         { error: { code: "syncStateNotFound", message: "The sync state is not found." } },

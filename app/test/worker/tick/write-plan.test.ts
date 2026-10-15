@@ -22,9 +22,11 @@ import { encryptTokenUpdate } from "../../../src/worker/scan/tick-tokens.ts";
 import {
   applyIssues,
   auditStmt,
+  batchRunner,
   budgetUpsertStmt,
   buildSuccessWrite,
   computeAdvance,
+  stmt,
   utcDate,
 } from "../../../src/worker/scan/write-plan.ts";
 import type { AccountCursorState, Stmt, SuccessWriteInput } from "../../../src/worker/scan/write-plan.ts";
@@ -184,7 +186,20 @@ describe("computeAdvance", () => {
         null,
         NOW,
       ),
-    ).toMatchObject({ incremental_cursor: "r-1", nextTickAt: NOW });
+    ).toMatchObject({
+      incremental_cursor: "r-1",
+      last_incremental_at: CUR.last_incremental_at,
+      nextTickAt: NOW,
+    });
+    // C9 during the backfill interleave: a partial poll is not a completed poll, so the next tick resumes it.
+    expect(
+      computeAdvance(
+        { ...CUR, last_incremental_at: NOW - 31 * MINUTE },
+        { kind: "incremental", startCursor: "i-1", nextCursor: "i-2", caughtUp: true, partial: true },
+        null,
+        NOW,
+      ),
+    ).toMatchObject({ incremental_cursor: "i-1", last_incremental_at: NOW - 31 * MINUTE, nextTickAt: NOW });
     expect(computeAdvance(inc, { kind: "redecide" }, null, NOW)).toMatchObject({
       phase: "incremental",
       nextTickAt: NOW,
@@ -400,5 +415,28 @@ describe("buildSuccessWrite", () => {
         d.date,
       ),
     ).toEqual({ rows_written: 20, ticks: 2, decision_failures: 2, db_size_bytes: 1000 });
+  });
+});
+
+describe("batchRunner", () => {
+  beforeEach(resetDb);
+
+  it("runs one counted D1 batch, and an empty statement list costs nothing", async () => {
+    const counter = createSubrequestCounter(5);
+    const wrapped: number[] = [];
+    const run = batchRunner(env.DB, async (fn) => {
+      wrapped.push(counter.used);
+      return fn();
+    });
+    expect(await run(counter, [])).toEqual([]);
+    expect(counter.used).toBe(0);
+    expect(wrapped).toEqual([]);
+    const res = await run(counter, [stmt("SELECT ?1 AS a", 1), stmt("SELECT ?1 AS b", "x")]);
+    expect(counter.used).toBe(1);
+    expect(wrapped).toEqual([0]);
+    expect(res.map((r) => r.results)).toEqual([[{ a: 1 }], [{ b: "x" }]]);
+    await expect(batchRunner(env.DB)(createSubrequestCounter(0), [stmt("SELECT 1")])).rejects.toMatchObject({
+      code: "subrequest_budget",
+    });
   });
 });

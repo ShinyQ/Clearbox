@@ -1,3 +1,10 @@
+/**
+ * Response header for every fake response. MSW's TLS interceptor adds a "secureConnect" listener each time
+ * it claims a kept-alive socket, so reusing one socket for more than 10 requests prints
+ * MaxListenersExceededWarning. Closing the connection gives every request a fresh socket.
+ */
+export const CLOSE_CONNECTION: Readonly<Record<string, string>> = { connection: "close" };
+
 /** One injected failure: the next `times` requests (default 1) matching method and path get this response. */
 export interface FailRule {
   method: string;

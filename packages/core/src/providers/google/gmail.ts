@@ -347,6 +347,9 @@ async function syncChanges(
   const records: unknown[] = Array.isArray(body.history) ? body.history : [];
   if (!records.every(isHistoryRecord))
     throw new ProviderResponseError({ provider: PROVIDER, status: res.status });
+  // An empty page with a nextPageToken cannot advance the cursor; resync from the watermark instead of looping.
+  if (records.length === 0 && typeof body.nextPageToken === "string")
+    throw new CursorExpiredError({ provider: PROVIDER, cursorKind: "incremental" });
   const scan = scanHistory(records, maxMessages);
   const caughtUp = scan.processed === records.length && typeof body.nextPageToken !== "string";
   const historyId = caughtUp ? body.historyId : (scan.lastId ?? state.historyId);

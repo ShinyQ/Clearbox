@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import type { FakeFolder, FakeMailbox, FakeMessage } from "./fake-mailbox.ts";
+import { CLOSE_CONNECTION } from "./failures.ts";
 
 const ORIGIN = "https://graph.microsoft.com";
 const BASE = `${ORIGIN}/v1.0`;
@@ -20,8 +21,9 @@ interface HeaderReader {
 
 const FOLDER_BY_SEGMENT: Readonly<Record<string, FakeFolder>> = { inbox: "inbox", sentitems: "sent" };
 
+/** Graph returns date-times truncated to the second while Exchange keeps sub-second precision. */
 function iso(epoch: number): string {
-  return new Date(epoch).toISOString().replace(".000Z", "Z");
+  return new Date(Math.floor(epoch / 1000) * 1000).toISOString().replace(".000Z", "Z");
 }
 
 function graphError(status: number, code: string, message = "Synthetic error"): FakeResult {
@@ -160,9 +162,12 @@ function listMessages(box: FakeMailbox, folder: FakeFolder, url: URL): FakeResul
   const top = Number(url.searchParams.get("$top") ?? "10");
   const skip = Number(url.searchParams.get("$skip") ?? "0");
   if (!Number.isFinite(skip) || skip < 0) return graphError(400, "ErrorInvalidRequest");
-  const filter = /^receivedDateTime le (.+)$/.exec(url.searchParams.get("$filter") ?? "");
-  const before = filter === null ? Number.POSITIVE_INFINITY : Date.parse(filter[1] ?? "");
-  const all = box.inFolder(folder).filter((m) => m.receivedAt <= before);
+  // Compares the full-precision receivedAt like Exchange does, not the truncated rendering.
+  const filter = /^receivedDateTime (le|lt) (.+)$/.exec(url.searchParams.get("$filter") ?? "");
+  const bound = filter === null ? Number.POSITIVE_INFINITY : Date.parse(filter[2] ?? "");
+  const all = box
+    .inFolder(folder)
+    .filter((m) => (filter?.[1] === "lt" ? m.receivedAt < bound : m.receivedAt <= bound));
   const page = all.slice(skip, skip + top);
   const body: Record<string, unknown> = { value: page.map((m) => graphMessage(m, selectOf(url), true)) };
   if (skip + top < all.length) {
@@ -235,7 +240,7 @@ export function graphDispatch(
 function toResponse(result: FakeResult): Response {
   return new HttpResponse(JSON.stringify(result.body), {
     status: result.status,
-    headers: { "content-type": "application/json", ...result.headers },
+    headers: { "content-type": "application/json", ...result.headers, ...CLOSE_CONNECTION },
   });
 }
 
@@ -283,7 +288,7 @@ export function graphHandlers(box: FakeMailbox) {
           };
         });
         // Responses come back in any order: reverse them so callers must correlate by id.
-        return HttpResponse.json({ responses: responses.reverse() });
+        return HttpResponse.json({ responses: responses.reverse() }, { headers: CLOSE_CONNECTION });
       });
     }),
     http.all(`${ORIGIN}/*`, ({ request }) => {

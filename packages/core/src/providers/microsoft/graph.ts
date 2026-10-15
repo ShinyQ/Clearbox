@@ -38,12 +38,16 @@ import {
   IMMUTABLE_ID_PREFER,
   decodeIncremental,
   graphUrl,
+  isGraphHeader,
+  keysetUpperBound,
   mapGraphMessage,
   mapGraphSentItem,
+  messagesOf,
+  subRequest,
 } from "./map.ts";
 import type { IncrementalState } from "./map.ts";
 import { classifyGraphApiError, graphMoveResult, isDeltaExpired, subRetryAfter } from "./oauth.ts";
-import type { GraphBatchSubRequest, GraphBatchSubResponse, GraphHeader, GraphMessage } from "./types.ts";
+import type { GraphBatchSubRequest, GraphBatchSubResponse, GraphMessage } from "./types.ts";
 
 const PROVIDER = "outlook";
 const GRAPH_ORIGIN = "https://graph.microsoft.com/";
@@ -118,47 +122,52 @@ function makeClient(deps: GraphProviderDeps): GraphClient {
   return client;
 }
 
-/** One $batch sub-request; every sub-request carries the immutable id preference. */
-function subRequest(id: string, method: "GET" | "POST", url: string, body?: unknown): GraphBatchSubRequest {
-  if (body === undefined) return { id, method, url, headers: { Prefer: IMMUTABLE_ID_PREFER } };
-  return {
-    id,
-    method,
-    url,
-    headers: { "Content-Type": "application/json", Prefer: IMMUTABLE_ID_PREFER },
-    body,
-  };
-}
-
-function messagesOf(body: Record<string, unknown>): GraphMessage[] {
-  const value: unknown[] = Array.isArray(body.value) ? body.value : [];
-  return value.filter((v): v is GraphMessage => isJsonObject(v) && typeof v.id === "string");
-}
-
-function isGraphHeader(value: unknown): value is GraphHeader {
-  return isJsonObject(value) && typeof value.name === "string" && typeof value.value === "string";
+/**
+ * Sends one sub-request per item through $batch, 20 per request, and hands each sub-response (undefined when
+ * missing) to onResponse. 401 sub-responses get one forceRefresh per call and only those items are retried;
+ * a second 401 throws ProviderAuthError("unauthorized").
+ */
+async function batchEach<T>(
+  client: GraphClient,
+  items: readonly T[],
+  toRequest: (item: T, id: string) => GraphBatchSubRequest,
+  onResponse: (item: T, sub: GraphBatchSubResponse | undefined) => void,
+): Promise<void> {
+  let refreshed = false;
+  for (const group of chunkIds(items, BATCH_MAX)) {
+    let pending = group;
+    while (pending.length > 0) {
+      const responses = await client.batch(pending.map((item, i) => toRequest(item, String(i))));
+      const unauthorized: T[] = [];
+      for (const [i, item] of pending.entries()) {
+        const sub = responses.get(String(i));
+        if (sub?.status === 401) unauthorized.push(item);
+        else onResponse(item, sub);
+      }
+      if (unauthorized.length > 0) {
+        if (refreshed) throw new ProviderAuthError({ provider: PROVIDER, reason: "unauthorized" });
+        await client.deps.tokens.forceRefresh();
+        refreshed = true;
+      }
+      pending = unauthorized;
+    }
+  }
 }
 
 /**
  * Maps messages, fetching internetMessageHeaders with $batch (20 per request) for messages that lack the
- * property. Sub-request 404 drops the message; 429 / 5xx / missing throw so the page is retried later;
- * other failures keep the message with no headers.
+ * property. Sub-request 401 refreshes once and retries (batchEach); 404 drops the message; 429 / 5xx /
+ * missing throw so the page is retried later; other failures keep the message with no headers.
  */
 async function withHeaders(client: GraphClient, messages: readonly GraphMessage[]): Promise<MailMessage[]> {
   const missing = messages.filter((m) => m.internetMessageHeaders === undefined);
   const fetched = new Map<string, GraphMessage["internetMessageHeaders"] | null>();
-  for (const group of chunkIds(missing, BATCH_MAX)) {
-    const responses = await client.batch(
-      group.map((m, i) =>
-        subRequest(
-          String(i),
-          "GET",
-          `/me/messages/${encodeURIComponent(m.id)}?$select=internetMessageHeaders`,
-        ),
-      ),
-    );
-    for (const [i, message] of group.entries()) {
-      const sub = responses.get(String(i));
+  await batchEach(
+    client,
+    missing,
+    (m, id) =>
+      subRequest(id, "GET", `/me/messages/${encodeURIComponent(m.id)}?$select=internetMessageHeaders`),
+    (message, sub) => {
       const now = client.deps.now();
       if (sub === undefined) throw new ProviderUnavailableError({ provider: PROVIDER, retryAfterMs: null });
       if (sub.status === 429) {
@@ -171,13 +180,13 @@ async function withHeaders(client: GraphClient, messages: readonly GraphMessage[
         throw new ProviderUnavailableError({ provider: PROVIDER, retryAfterMs: subRetryAfter(sub, now) });
       if (sub.status === 404) {
         fetched.set(message.id, null);
-        continue;
+        return;
       }
       const headers: unknown =
         sub.status === 200 && isJsonObject(sub.body) ? sub.body.internetMessageHeaders : undefined;
       fetched.set(message.id, Array.isArray(headers) ? headers.filter(isGraphHeader) : []);
-    }
-  }
+    },
+  );
   return messages.flatMap((m) => {
     if (m.internetMessageHeaders !== undefined) return [mapGraphMessage(m)];
     const headers = fetched.get(m.id);
@@ -309,7 +318,12 @@ async function listInboxPage(
     $top: String(top),
     $orderby: "receivedDateTime desc",
   };
-  if (before !== null) params.$filter = `receivedDateTime le ${before}`;
+  if (before !== null) {
+    const upper = keysetUpperBound(before);
+    if (upper === null) throw new CursorExpiredError({ provider: PROVIDER, cursorKind: "backfill" });
+    // Overlaps the boundary second; seenAtBefore drops the ids already returned.
+    params.$filter = `receivedDateTime lt ${upper}`;
+  }
   const values = messagesOf(await client.json(graphUrl("/me/mailFolders/inbox/messages", params)));
   const seenSet = new Set(seen);
   const remaining = values.filter((m) => !seenSet.has(m.id));
@@ -418,32 +432,15 @@ async function move(
 ): Promise<ActionResult[]> {
   assertMaxIds(ids.length);
   const results: ActionResult[] = [];
-  let refreshed = false;
-  for (const group of chunkIds(
+  await batchEach(
+    client,
     ids.map((id, index) => ({ id, index })),
-    BATCH_MAX,
-  )) {
-    let pending = group;
-    while (pending.length > 0) {
-      const responses = await client.batch(
-        pending.map(({ id }, i) =>
-          subRequest(String(i), "POST", `/me/messages/${encodeURIComponent(id)}/move`, { destinationId }),
-        ),
-      );
-      const unauthorized: typeof pending = [];
-      for (const [i, item] of pending.entries()) {
-        const sub = responses.get(String(i));
-        if (sub?.status === 401) unauthorized.push(item);
-        else results[item.index] = graphMoveResult(item.id, sub, client.deps.now());
-      }
-      if (unauthorized.length > 0) {
-        if (refreshed) throw new ProviderAuthError({ provider: PROVIDER, reason: "unauthorized" });
-        await client.deps.tokens.forceRefresh();
-        refreshed = true;
-      }
-      pending = unauthorized;
-    }
-  }
+    ({ id }, subId) =>
+      subRequest(subId, "POST", `/me/messages/${encodeURIComponent(id)}/move`, { destinationId }),
+    (item, sub) => {
+      results[item.index] = graphMoveResult(item.id, sub, client.deps.now());
+    },
+  );
   return results;
 }
 

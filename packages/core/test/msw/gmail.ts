@@ -6,6 +6,7 @@ import {
   type FakeMailbox,
   type FakeMessage,
 } from "./fake-mailbox.ts";
+import { CLOSE_CONNECTION } from "./failures.ts";
 
 const API = "https://gmail.googleapis.com";
 const RESPONSE_BOUNDARY = "batch_fake_response_7f3a";
@@ -274,9 +275,9 @@ function isAuthorized(request: Request, box: FakeMailbox): boolean {
 }
 
 function toResponse(result: FakeResult): Response {
-  if (result.body === null)
-    return new HttpResponse(null, { status: result.status, headers: result.headers ?? {} });
-  return HttpResponse.json(result.body, { status: result.status, headers: result.headers ?? {} });
+  const headers = { ...result.headers, ...CLOSE_CONNECTION };
+  if (result.body === null) return new HttpResponse(null, { status: result.status, headers });
+  return HttpResponse.json(result.body, { status: result.status, headers });
 }
 
 /** MSW handlers for gmail.googleapis.com over a FakeMailbox (REST + multipart batch). */
@@ -307,7 +308,7 @@ export function gmailHandlers(box: FakeMailbox) {
         });
         return new HttpResponse(renderBatch(results), {
           status: 200,
-          headers: { "content-type": `multipart/mixed; boundary=${RESPONSE_BOUNDARY}` },
+          headers: { "content-type": `multipart/mixed; boundary=${RESPONSE_BOUNDARY}`, ...CLOSE_CONNECTION },
         });
       }),
     ),

@@ -149,6 +149,23 @@ describe("GmailProvider.syncChanges", () => {
     expect(page.removedIds).toEqual([gone.id]);
   });
 
+  it("throws CursorExpiredError on an empty history page that still has a nextPageToken", async () => {
+    const { incrementalCursor } = await provider.bootstrap();
+    box.failures.add({
+      method: "GET",
+      path: "/gmail/v1/users/me/history",
+      status: 200,
+      body: { historyId: "2100", nextPageToken: "h2050" },
+    });
+    await expect(provider.syncChanges(incrementalCursor, 25)).rejects.toMatchObject({
+      name: "CursorExpiredError",
+      provider: "gmail",
+      cursorKind: "incremental",
+    });
+    expect(box.requests.filter((r) => r === "GET /gmail/v1/users/me/history")).toHaveLength(1);
+    expect(box.requests.some((r) => r.startsWith("POST /batch"))).toBe(false);
+  });
+
   it("rejects a history response without a historyId", async () => {
     server.use(
       http.get("https://gmail.googleapis.com/gmail/v1/users/me/history", () => HttpResponse.json({})),

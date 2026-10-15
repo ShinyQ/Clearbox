@@ -108,6 +108,39 @@ describe("GraphProvider.listInboxPage", () => {
     expect(new Set(seen).size).toBe(5);
   });
 
+  it("returns a sub-second tie group spanning a page boundary, filtering lt the next second", async () => {
+    const t = Date.UTC(2026, 9, 10, 8);
+    for (const offset of [3000, 2900, 2500, 2100, 1000]) box.addMessage({ receivedAt: t + offset });
+    const urls: string[] = [];
+    const provider = createGraphProvider({
+      fetch: (input, init) => {
+        urls.push(input instanceof Request ? input.url : String(input));
+        return fetch(input, init);
+      },
+      tokens,
+      now: () => NOW,
+      archiveFolderId: null,
+    });
+    const first = await provider.listInboxPage(null, 2);
+    expect(JSON.parse(first.nextCursor ?? "null")).toMatchObject({ before: "2026-10-10T08:00:02Z" });
+    const second = await provider.listInboxPage(first.nextCursor, 2);
+    const filter = new URL(urls[urls.length - 1] ?? "").searchParams.get("$filter");
+    expect(filter).toBe("receivedDateTime lt 2026-10-10T08:00:03Z");
+    const third = await provider.listInboxPage(second.nextCursor, 2);
+    expect(third.nextCursor).toBeNull();
+    const seen = [first, second, third].flatMap((p) => p.messages.map((m) => m.providerMessageId));
+    expect(seen).toEqual(["msg0001", "msg0002", "msg0003", "msg0004", "msg0005"]);
+  });
+
+  it("rejects a backfill cursor whose before is not a date", async () => {
+    const cursor = JSON.stringify({ v: 1, before: "not-a-date", seenAtBefore: [] });
+    await expect(makeProvider().listInboxPage(cursor, 2)).rejects.toMatchObject({
+      name: "CursorExpiredError",
+      cursorKind: "backfill",
+    });
+    expect(box.requests).toEqual([]);
+  });
+
   it("encodes the backfill cursor as {v:1,before,seenAtBefore}", async () => {
     const t = Date.UTC(2026, 9, 10, 8);
     box.addMessage({ receivedAt: t + 2000 });
@@ -180,6 +213,29 @@ describe("GraphProvider.listInboxPage", () => {
     });
     const [msg] = (await makeProvider().listInboxPage(null, 25)).messages;
     expect(msg?.headers).toMatchObject({ listId: "<news.shop.example.com>", listUnsubscribe: null });
+  });
+
+  it("refreshes once on a 401 header sub-response and retries only that sub-request", async () => {
+    box.addMessage({ headersOnList: false });
+    box.addMessage({ headersOnList: false });
+    box.failNext({ method: "GET", path: "/me/messages/msg0001", status: 401 });
+    const page = await makeProvider().listInboxPage(null, 25);
+    expect(page.messages.map((m) => m.providerMessageId)).toEqual(["msg0002", "msg0001"]);
+    expect(page.messages.every((m) => m.headers.listUnsubscribe !== null)).toBe(true);
+    expect(tokens.refreshes).toBe(1);
+    expect(box.requests.filter((r) => r === "POST /$batch")).toHaveLength(2);
+    expect(box.requests.filter((r) => r.startsWith("part:GET /me/messages/msg0001"))).toHaveLength(2);
+    expect(box.requests.filter((r) => r.startsWith("part:GET /me/messages/msg0002"))).toHaveLength(1);
+  });
+
+  it("throws ProviderAuthError when a header sub-request is 401 again after the refresh", async () => {
+    box.addMessage({ headersOnList: false });
+    box.failNext({ method: "GET", path: "/me/messages/msg0001", status: 401, times: 2 });
+    await expect(makeProvider().listInboxPage(null, 25)).rejects.toMatchObject({
+      name: "ProviderAuthError",
+      reason: "unauthorized",
+    });
+    expect(tokens.refreshes).toBe(1);
   });
 
   it("refreshes once on 401", async () => {

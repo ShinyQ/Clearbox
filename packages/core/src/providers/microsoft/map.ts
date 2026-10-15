@@ -3,9 +3,9 @@ import { parseAddress } from "../../text/address.ts";
 import { decodeEncodedWords } from "../../text/rfc2047.ts";
 import { collapseWhitespace, truncateChars } from "../../text/truncate.ts";
 import { CursorExpiredError } from "../../model/errors.ts";
-import { buildMailHeaders, parseCursorJson, stringField } from "../oauth.ts";
+import { buildMailHeaders, isJsonObject, parseCursorJson, stringField } from "../oauth.ts";
 import type { SentItem } from "../provider.ts";
-import type { GraphMessage, GraphRecipient } from "./types.ts";
+import type { GraphBatchSubRequest, GraphHeader, GraphMessage, GraphRecipient } from "./types.ts";
 
 export const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 /** Every Graph request and $batch sub-request carries this Prefer value (ids survive moves). */
@@ -124,4 +124,42 @@ export function decodeIncremental(cursor: string): IncrementalState {
     throw new CursorExpiredError({ provider: "outlook", cursorKind: "incremental" });
   }
   return { v: 1, inboxDeltaLink: inbox, sentDeltaLink: sent, watermark };
+}
+
+/** The `value` array of a Graph collection response, keeping only objects with a string id. */
+export function messagesOf(body: Record<string, unknown>): GraphMessage[] {
+  const value: unknown[] = Array.isArray(body.value) ? body.value : [];
+  return value.filter((v): v is GraphMessage => isJsonObject(v) && typeof v.id === "string");
+}
+
+export function isGraphHeader(value: unknown): value is GraphHeader {
+  return isJsonObject(value) && typeof value.name === "string" && typeof value.value === "string";
+}
+
+/**
+ * Exclusive keyset bound for a backfill cursor: the start of the second after `before`, as an ISO string with
+ * second precision. receivedDateTime is returned truncated to the second while Exchange compares sub-second
+ * values, so `le <before>` would skip later messages of the same second. Null when `before` is not a date.
+ */
+export function keysetUpperBound(before: string): string | null {
+  const ms = Date.parse(before);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(Math.floor(ms / 1000) * 1000 + 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+/** One $batch sub-request; every sub-request carries the immutable id preference. */
+export function subRequest(
+  id: string,
+  method: "GET" | "POST",
+  url: string,
+  body?: unknown,
+): GraphBatchSubRequest {
+  if (body === undefined) return { id, method, url, headers: { Prefer: IMMUTABLE_ID_PREFER } };
+  return {
+    id,
+    method,
+    url,
+    headers: { "Content-Type": "application/json", Prefer: IMMUTABLE_ID_PREFER },
+    body,
+  };
 }

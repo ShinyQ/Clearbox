@@ -24,6 +24,8 @@ export interface ConnectContext {
   deps: AppDeps;
   /** `${origin}/oauth/<google|microsoft>/callback` of this request. */
   redirectUri: string;
+  /** Called with infrastructure failures (D1, key import) that are still answered as `profile_failed`. */
+  onUnexpectedError?: (err: unknown) => void;
 }
 
 export type ConnectResult =
@@ -160,7 +162,8 @@ export async function completeConnect(
       logEvent("account.status", { accountId, from: existing.status, to: "active", reason: "reconnected" });
     }
     return { ok: true, accountId, reconnected: existing !== null };
-  } catch {
+  } catch (err) {
+    ctx.onUnexpectedError?.(err);
     return { ok: false, error: "profile_failed" };
   }
 }

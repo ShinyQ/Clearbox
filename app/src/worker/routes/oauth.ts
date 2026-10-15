@@ -1,5 +1,6 @@
 import type { AuthorizeParams, ProviderKind } from "@clearbox/core";
 import { Hono } from "hono";
+import { routePath } from "hono/route";
 import type { Context } from "hono";
 import { z } from "zod";
 import type { OAuthCallbackErrorCode } from "../../shared/api.ts";
@@ -74,7 +75,21 @@ async function handleCallback(
   const redirectUri = new URL(c.req.url).origin + callbackPath(provider);
   if (!oauthClientConfig(config, provider, redirectUri))
     return { ok: false, error: "provider_not_configured" };
-  return completeConnect({ db: c.env.DB, config, deps, redirectUri }, provider, code, verified.payload.v);
+  return completeConnect(
+    { db: c.env.DB, config, deps, redirectUri, onUnexpectedError: (err) => logUnexpected(c, err) },
+    provider,
+    code,
+    verified.payload.v,
+  );
+}
+
+/** Same fields as onApiError's request.error: never the message, which may carry mail data or secrets. */
+function logUnexpected(c: Context<AppEnv>, err: unknown): void {
+  logEvent("request.error", {
+    requestId: c.get("requestId"),
+    route: routePath(c),
+    errorName: err instanceof Error ? err.name : "unknown",
+  });
 }
 
 oauthRoutes.get("/:segment/callback", async (c) => {
@@ -84,7 +99,8 @@ oauthRoutes.get("/:segment/callback", async (c) => {
   let result: Awaited<ReturnType<typeof handleCallback>>;
   try {
     result = await handleCallback(c, provider);
-  } catch {
+  } catch (err) {
+    logUnexpected(c, err);
     result = { ok: false, error: "token_exchange_failed" };
   }
   if (result.ok) {

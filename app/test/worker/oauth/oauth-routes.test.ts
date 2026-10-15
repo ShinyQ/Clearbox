@@ -340,3 +340,104 @@ describe("GET /oauth/:provider/callback", () => {
     expect(lines.join("\n")).not.toContain(email);
   });
 });
+
+describe("unexpected callback failures", () => {
+  const SECRET_MESSAGE = "D1_ERROR: owner@example.test fresh-refresh";
+
+  /** Real D1 for reads and statement building; selected operations throw. */
+  function failingDb(opts: { batch?: boolean; settingsRead?: boolean }): D1Database {
+    return {
+      prepare: (query: string) => {
+        if (opts.settingsRead && query.includes("FROM settings")) throw new TypeError(SECRET_MESSAGE);
+        return env.DB.prepare(query);
+      },
+      batch: async (statements: D1PreparedStatement[]) => {
+        if (opts.batch) throw new TypeError(SECRET_MESSAGE);
+        return env.DB.batch(statements);
+      },
+    } as unknown as D1Database;
+  }
+
+  async function failingCallback(
+    db: D1Database,
+    oauthOverrides: Parameters<typeof fakeOAuth>[0] = {},
+  ): Promise<{ res: Response; lines: string[]; email: string }> {
+    const { app, email } = setup({}, oauthOverrides);
+    const flow = await start(app);
+    const spy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const res = await apiFetch(
+      `/oauth/google/callback?${new URLSearchParams({ code: "secret-code", state: flow.state }).toString()}`,
+      { headers: { Cookie: flow.cookie } },
+      { app, env: { DB: db } },
+    );
+    return { res, lines: spy.mock.calls.map((call) => String(call[0])), email };
+  }
+
+  function requestErrors(lines: string[]): Record<string, unknown>[] {
+    return lines
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((e) => e["evt"] === "request.error");
+  }
+
+  function expectNoSecrets(lines: string[], email: string): void {
+    const all = lines.join("\n");
+    expect(all).not.toMatch(/D1_ERROR|secret-code|fresh-|owner@example\.test/);
+    expect(all).not.toContain(email);
+  }
+
+  it("answers profile_failed and logs one request.error when the account write fails", async () => {
+    const { res, lines, email } = await failingCallback(failingDb({ batch: true }));
+    expect(settingsRedirect(res)).toEqual({ error: "profile_failed", provider: "gmail" });
+    expect(res.headers.get("Set-Cookie")).toContain("Max-Age=0");
+    const errors = requestErrors(lines);
+    expect(errors).toHaveLength(1);
+    const { app: appName, ts, evt, ...fields } = errors[0] ?? {};
+    expect({ appName, evt, ts: typeof ts }).toEqual({
+      appName: "clearbox",
+      evt: "request.error",
+      ts: "string",
+    });
+    expect(fields).toEqual({
+      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      route: "/oauth/:segment/callback",
+      errorName: "TypeError",
+    });
+    expectNoSecrets(lines, email);
+    expect(await findOpenAccountByEmail(env.DB, "gmail", email)).toBeNull();
+  });
+
+  it("answers token_exchange_failed and logs one request.error when raising the client issue fails", async () => {
+    const { res, lines, email } = await failingCallback(failingDb({ settingsRead: true }), {
+      gmail: {
+        exchangeCode: async () => {
+          throw new ProviderConfigError({ provider: "gmail", reason: "invalid_client" });
+        },
+      },
+    });
+    expect(settingsRedirect(res)).toEqual({ error: "token_exchange_failed", provider: "gmail" });
+    const errors = requestErrors(lines);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ route: "/oauth/:segment/callback", errorName: "TypeError" });
+    expect(Object.keys(errors[0] ?? {}).sort()).toEqual([
+      "app",
+      "errorName",
+      "evt",
+      "requestId",
+      "route",
+      "ts",
+    ]);
+    expectNoSecrets(lines, email);
+  });
+
+  it("does not log request.error for expected provider outcomes", async () => {
+    const { res, lines } = await failingCallback(env.DB, {
+      gmail: {
+        exchangeCode: async () => {
+          throw new Error("network");
+        },
+      },
+    });
+    expect(settingsRedirect(res)["error"]).toBe("token_exchange_failed");
+    expect(requestErrors(lines)).toEqual([]);
+  });
+});

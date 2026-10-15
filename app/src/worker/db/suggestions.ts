@@ -1,6 +1,7 @@
 import { DECIDED_TTL_MS, SUGGESTED_ACTIONS } from "@clearbox/core";
 import type { ActionKind, Ceiling, SuggestedAction } from "@clearbox/core";
 import { z } from "zod";
+import type { SuggestionStatus } from "../../shared/api.ts";
 import { base64UrlToBytes, bytesToBase64Url, fromUtf8, utf8 } from "../crypto/base64.ts";
 import type { OpenCounts } from "./accounts.ts";
 import { placeholders } from "./sql.ts";
@@ -347,4 +348,150 @@ export function groupItemsQuery(
     sql,
     params: [accountId, sender, action, after?.c ?? null, after?.r ?? null, after?.i ?? null, limit],
   };
+}
+
+// Execution queries (contracts 7.7, 7.8). Claims are guarded by WHERE status = 'pending'.
+
+export interface TargetRow {
+  message_id: number;
+  account_id: string;
+  status: SuggestionStatus;
+  action: SuggestedAction | null;
+  confidence: number | null;
+  p_delete: number | null;
+  margin: number | null;
+  ceiling: Ceiling;
+  model_version: string | null;
+  policy_version: number;
+  sender: string;
+  sender_domain: string;
+  final_action: ActionKind | null;
+  label_id: number | null;
+  provider_msg_id: string;
+  subject: string | null;
+}
+
+const TARGET_COLUMNS =
+  "s.message_id, s.account_id, s.status, s.action, s.confidence, s.p_delete, s.margin, s.ceiling, s.model_version, " +
+  "s.policy_version, s.sender, s.sender_domain, s.final_action, s.label_id, m.provider_msg_id, m.subject";
+
+export function targetsByIdsQuery(accountIds: readonly string[], ids: readonly number[]): SqlQuery {
+  const a = accountIds.length;
+  const sql = `SELECT ${TARGET_COLUMNS}
+    FROM suggestions s JOIN messages m ON m.id = s.message_id AND m.account_id = s.account_id
+    WHERE s.account_id IN (${placeholders(a)}) AND s.message_id IN (${placeholders(ids.length, a + 1)})`;
+  return { sql, params: [...accountIds, ...ids] };
+}
+
+export function targetsForGroupQuery(
+  accountId: string,
+  sender: string,
+  action: SuggestedAction,
+  asOf: number,
+  limit: number,
+): SqlQuery {
+  const sql = `SELECT ${TARGET_COLUMNS}
+    FROM suggestions s JOIN messages m ON m.id = s.message_id AND m.account_id = s.account_id
+    WHERE s.account_id = ?1 AND s.status = 'pending' AND s.sender = ?2 AND s.action = ?3 AND s.created_at <= ?4
+    ORDER BY COALESCE(s.confidence, 0) DESC, s.message_id
+    LIMIT ?5`;
+  return { sql, params: [accountId, sender, action, asOf, limit] };
+}
+
+export function targetsForCleanupQuery(
+  accountIds: readonly string[],
+  actions: readonly ActionKind[],
+  threshold: number,
+  asOf: number,
+  limit: number,
+): SqlQuery {
+  const a = accountIds.length;
+  const t = a + actions.length + 1;
+  const sql = `SELECT ${TARGET_COLUMNS}
+    FROM suggestions s JOIN messages m ON m.id = s.message_id AND m.account_id = s.account_id
+    WHERE s.account_id IN (${placeholders(a)}) AND s.status = 'pending'
+      AND s.action IN (${placeholders(actions.length, a + 1)}) AND s.confidence >= ?${t} AND s.created_at <= ?${t + 1}
+    ORDER BY s.confidence DESC, s.message_id
+    LIMIT ?${t + 2}`;
+  return { sql, params: [...accountIds, ...actions, threshold, asOf, limit] };
+}
+
+export function remainingGroupQuery(
+  accountId: string,
+  sender: string,
+  action: SuggestedAction,
+  asOf: number,
+): SqlQuery {
+  const sql = `SELECT COUNT(*) AS n FROM suggestions
+    WHERE account_id = ?1 AND status = 'pending' AND sender = ?2 AND action = ?3 AND created_at <= ?4`;
+  return { sql, params: [accountId, sender, action, asOf] };
+}
+
+export function remainingCleanupQuery(
+  accountIds: readonly string[],
+  actions: readonly ActionKind[],
+  threshold: number,
+  asOf: number,
+): SqlQuery {
+  const a = accountIds.length;
+  const t = a + actions.length + 1;
+  const sql = `SELECT COUNT(*) AS n FROM suggestions
+    WHERE account_id IN (${placeholders(a)}) AND status = 'pending'
+      AND action IN (${placeholders(actions.length, a + 1)}) AND confidence >= ?${t} AND created_at <= ?${t + 1}`;
+  return { sql, params: [...accountIds, ...actions, threshold, asOf] };
+}
+
+/** pending -> approved; RETURNING lists the rows this request owns. */
+export function claimQuery(accountId: string, ids: readonly number[], now: number): SqlQuery {
+  const sql = `UPDATE suggestions SET status = 'approved', updated_at = ?2
+    WHERE account_id = ?1 AND status = 'pending' AND message_id IN (${placeholders(ids.length, 3)})
+    RETURNING message_id`;
+  return { sql, params: [accountId, now, ...ids] };
+}
+
+/** Must directly follow the label insert (and the batch insert) in the same D1 batch (decision 9). */
+export function markExecutedQuery(
+  accountId: string,
+  messageId: number,
+  finalAction: ActionKind,
+  decidedVia: "approve" | "override" | "cleanup",
+  decidedAt: number,
+  expiresAt: number,
+): SqlQuery {
+  const sql = `UPDATE suggestions SET status = 'executed', final_action = ?3, decided_via = ?4, decided_at = ?5,
+      updated_at = ?5, expires_at = ?6, exec_error = NULL,
+      batch_id = (SELECT MAX(id) FROM action_batches), label_id = (SELECT MAX(id) FROM labels)
+    WHERE account_id = ?1 AND message_id = ?2 AND status = 'approved'`;
+  return { sql, params: [accountId, messageId, finalAction, decidedVia, decidedAt, expiresAt] };
+}
+
+export function markFailedQuery(accountId: string, messageId: number, code: string, now: number): SqlQuery {
+  const sql = `UPDATE suggestions SET status = 'failed', exec_error = ?3, updated_at = ?4
+    WHERE account_id = ?1 AND message_id = ?2 AND status = 'approved'`;
+  return { sql, params: [accountId, messageId, code, now] };
+}
+
+/** Transient failures go back to the queue (contracts 6.2). */
+export function releaseQuery(accountId: string, ids: readonly number[], now: number): SqlQuery {
+  const sql = `UPDATE suggestions SET status = 'pending', updated_at = ?2
+    WHERE account_id = ?1 AND status = 'approved' AND message_id IN (${placeholders(ids.length, 3)})`;
+  return { sql, params: [accountId, now, ...ids] };
+}
+
+export function undoTargetsQuery(
+  accountIds: readonly string[],
+  batchId: number,
+  ids: readonly number[],
+): SqlQuery {
+  const a = accountIds.length;
+  const sql = `SELECT ${TARGET_COLUMNS}
+    FROM suggestions s JOIN messages m ON m.id = s.message_id AND m.account_id = s.account_id
+    WHERE s.account_id IN (${placeholders(a)}) AND s.batch_id = ?${a + 1} AND s.message_id IN (${placeholders(ids.length, a + 2)})`;
+  return { sql, params: [...accountIds, batchId, ...ids] };
+}
+
+export function markUndoneQuery(accountId: string, messageId: number, now: number): SqlQuery {
+  const sql = `UPDATE suggestions SET status = 'undone', updated_at = ?3
+    WHERE account_id = ?1 AND message_id = ?2 AND status = 'executed'`;
+  return { sql, params: [accountId, messageId, now] };
 }

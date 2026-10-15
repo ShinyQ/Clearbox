@@ -6,6 +6,8 @@ import {
   groupItemsQuery,
   groupsQuery,
   pendingByActionQuery,
+  targetsForCleanupQuery,
+  targetsForGroupQuery,
 } from "../../../src/worker/db/suggestions.ts";
 import type { SqlQuery } from "../../../src/worker/db/sql.ts";
 
@@ -28,6 +30,8 @@ describe("open-suggestion queries use suggestions_open (contracts 6.1)", () => {
       groupsQuery([ACC], { action: null, minConfidence: null, sender: null }, "confidence_desc", null, 50),
     ],
     ["group items", groupItemsQuery(ACC, "news@example.com", "delete", null, 50)],
+    ["cleanup selection", targetsForCleanupQuery([ACC], ["delete", "archive"], 0.8, 1_000, 100)],
+    ["group selection", targetsForGroupQuery(ACC, "news@example.com", "delete", 1_000, 100)],
   ])("%s", async (_name, q) => {
     expect(await plan(q)).toMatch(/USING (?:COVERING )?INDEX suggestions_open/);
   });

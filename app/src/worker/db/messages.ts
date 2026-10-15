@@ -43,7 +43,10 @@ export function insertMessageStmt(db: D1Database, accountId: string, m: MessageI
     );
 }
 
-/** Graph move returns a new immutable id (contracts 7.7). */
+/**
+ * Graph move returns a new immutable id (contracts 7.7). A no-op when another row of the account already holds
+ * that id, so a UNIQUE (account_id, provider_msg_id) collision cannot abort the surrounding D1 batch.
+ */
 export function updateProviderMsgIdStmt(
   db: D1Database,
   accountId: string,
@@ -51,6 +54,9 @@ export function updateProviderMsgIdStmt(
   providerMsgId: string,
 ): D1PreparedStatement {
   return db
-    .prepare("UPDATE messages SET provider_msg_id = ?3 WHERE account_id = ?1 AND id = ?2")
+    .prepare(
+      `UPDATE messages SET provider_msg_id = ?3 WHERE account_id = ?1 AND id = ?2
+         AND NOT EXISTS (SELECT 1 FROM messages WHERE account_id = ?1 AND provider_msg_id = ?3)`,
+    )
     .bind(accountId, messageId, providerMsgId);
 }

@@ -1,0 +1,15 @@
+{
+  "model": "microsoft-decision-1",
+  "answers": {
+    "action": {
+      "type": "choice",
+      "choice": "keep",
+      "probabilities": { "delete": 0.1, "archive": 0.2, "keep": 0.6, "unsure": 0.104 }
+    },
+    "importance": { "type": "score", "score": 3.4 },
+    "is_record": { "type": "noul", "noul": 0 },
+    "is_expired": { "type": "noul", "noul": 1 },
+    "is_from_human": { "type": "noul", "noul": 0.97 }
+  },
+  "usage": { "input_tokens": 431 }
+}

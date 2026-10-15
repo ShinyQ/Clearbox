@@ -1,0 +1,22 @@
+{
+  "model": "microsoft-decision-1",
+  "answers": {
+    "action": {
+      "type": "choice",
+      "choice": "delete",
+      "confidence": 0.93,
+      "probabilities": { "keep": 0.01, "delete": 0.95, "unsure": 0.02, "archive": 0.02 }
+    },
+    "importance": {
+      "type": "score",
+      "score": 0.21,
+      "confidence": 0.7,
+      "legend": { "0": "Noise", "1": "Low", "2": "Moderate", "3": "High", "4": "Critical" },
+      "probabilities": { "0": 0.81, "1": 0.17, "2": 0.02, "3": 0.0, "4": 0.0 }
+    },
+    "is_record": { "type": "noul", "noul": 0.03 },
+    "is_expired": { "type": "noul", "noul": 0.91 },
+    "is_from_human": { "type": "noul", "noul": 0.01 }
+  },
+  "usage": { "input_tokens": 520, "output_tokens": 5 }
+}

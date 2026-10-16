@@ -543,7 +543,7 @@ Deploy with `az deployment group create -g <resource-group> --template-file infr
 9. **Section 10:** do not retry 400/404/413/422 (deterministic failures); retry 408/429/5xx/timeouts only. Log `apim-request-id`, never the body. Unknown answer `type` (for example a refusal) maps to `unsure`.
 10. **Request hygiene:** do not send any extra top-level field (rejected with 400). No temperature or seed exist; tests must not assert exact probabilities.
 11. **Section 7, Data residency:** confirmed `DataZoneStandard` in swedencentral is area `EUR`. Pricing is identical to GlobalStandard.
-12. **Section 9 cost:** $0.042/M input confirmed, output free; expect about $0.25 to $0.34 per 10k emails.
+12. **Section 9 cost:** $0.042/M input confirmed, output free; expect about $0.19 to $0.34 per 10k emails (450 to 800 tokens).
 13. **Context limit** is not a concern (32k model card; Clearbox uses under 1k).
 
 ## 12. Unresolved questions

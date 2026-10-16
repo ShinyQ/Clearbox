@@ -5,7 +5,7 @@ Clearbox scores each email with **Microsoft-Decision-1** on Microsoft Foundry, i
 - an AIServices (Foundry) account in `swedencentral` with a custom subdomain and key auth enabled;
 - a deployment named `decision-1` of model `Microsoft-Decision-1` (format `Microsoft`, version `1`), capacity **300** (for this model one capacity unit is one request per minute), version upgrades off (`NoAutoUpgrade`).
 
-Cost: $0.042 per 1M input tokens, output is free. Clearbox sends about 450 to 800 input tokens per email, about $0.25 to $0.34 per 10,000 emails. Version 1 retires on **2027-02-04** (see [runbook.md](runbook.md)).
+Cost: $0.042 per 1M input tokens, output is free. Clearbox sends about 450 to 800 input tokens per email, about $0.19 to $0.34 per 10,000 emails. Version 1 retires on **2027-02-04** (see [runbook.md](runbook.md)).
 
 ## 1. Prerequisites
 

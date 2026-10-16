@@ -18,17 +18,17 @@ Logs never contain addresses, subjects, tokens or URLs, only ids and counts.
 
 ## 2. Rotate TOKEN_ENC_KEY
 
-`TOKEN_ENC_KEY` encrypts every stored OAuth token (AES-256-GCM, AAD `clearbox|<accountId>|<kind>|v<keyVersion>`). Clearbox v1 holds one key at a time, so rotation means re-encrypting through Reconnect. `accounts.key_version` stays `1`; it is reserved for a future dual-key rotation.
+`TOKEN_ENC_KEY` encrypts every stored OAuth token (AES-256-GCM, AAD `clearbox|<accountId>|<kind>|v<keyVersion>`). Clearbox v1 holds one key at a time, so rotation means reconnecting every account (fresh tokens are issued and encrypted under the new key). `accounts.key_version` stays `1`; it is reserved for a future dual-key rotation.
 
 When: the key may have leaked, or as yearly hygiene.
 
 1. In Clearbox, on the **Accounts** page: **Pause** every account (no tick will try to decrypt with the new key).
 2. `pnpm setup:cf --rotate-token-key`, type `rotate` when asked, keep every other secret (answer no to each "Replace it?" prompt). The script generates the new key, deploys it and never shows it.
-3. Reconnect every account. A paused account does not show a **Reconnect** button, so on the **Accounts** page click **Connect Gmail** or **Connect Outlook** (or **Add account** in the sidebar) and sign in with the same mailbox. Clearbox recognises it and reconnects it in place: fresh tokens encrypted with the new key, cursors, suggestions, labels and priors kept. An account that was not paused and already failed a tick shows **Reconnect** on its card instead.
+3. Reconnect every account. A paused account does not show a **Reconnect** button, so on the **Accounts** page click **Connect Gmail** or **Connect Outlook** (or **Add account** in the sidebar) and sign in with the same mailbox. Pick that exact mailbox in the Google or Microsoft account picker: a different one creates a second account, so check afterwards that the account count did not grow. Clearbox recognises the mailbox and reconnects it in place: fresh tokens encrypted with the new key, cursors, suggestions, labels and priors kept. An account that was not paused and already failed a tick shows **Reconnect** on its card instead. Do not **Undo** or **Clean up** on a paused account until it is reconnected.
 4. **Resume** each account and click **Scan now** once to confirm (`tick.done` in the logs).
 5. If the old key leaked: also revoke the old grants (Google: https://myaccount.google.com/permissions, then reconnect; Microsoft: reconnect issues new tokens, and an admin can revoke sessions for work accounts).
 
-An account you forget to reconnect fails its ticks safely (no actions, status `needs_reauth`) until you reconnect it.
+An account you forget to reconnect stays paused and silently stops syncing. It becomes `needs_reauth` (ticks fail safely, no actions) only if you resume it before reconnecting. Either way, reconnect it.
 
 ## 3. Rotate STATE_SIGNING_KEY
 
@@ -132,7 +132,7 @@ Add `app/migrations/000N_<name>.sql` (never edit an applied file), test it local
 ## 14. Locked out
 
 - Access login works but Clearbox answers 403: `OWNER_EMAIL` differs from your Access identity, or `ACCESS_AUD` belongs to another application. Replace them with `pnpm setup:cf`.
-- 500 `access_misconfigured` everywhere: a required secret is missing or malformed (`config.invalid` event lists names only).
+- 500 `access_misconfigured` everywhere: a required secret is missing or malformed, `AZURE_DECISION_ENDPOINT` is not the https account root (no path, query, fragment or credentials), or `AZURE_DECISION_DEPLOYMENT` is `Microsoft-Decision-1` (`config.invalid` event lists names only).
 - Cron jobs stopped: another Worker took the last Cron Trigger slot (5 per account on Free).
 
 ## 15. Checking tick CPU time after deploy

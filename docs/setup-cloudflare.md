@@ -62,7 +62,7 @@ Until `ACCESS_AUD` and the other Access values are set, every `/api/*` and `/oau
 
 ## 3. Protect the Worker with Cloudflare Access
 
-Access must protect **all traffic** of the Worker, including the `workers.dev` URL. The Worker also verifies the Access JWT itself on every request.
+Access must protect **all traffic** of the Worker, including the `workers.dev` URL. The Worker also verifies the Access JWT itself on `/api/*` and `/oauth/*` (static assets are served without invoking the Worker).
 
 Dashboard:
 
@@ -96,7 +96,7 @@ Expected: a `302` redirect to `https://<team>.cloudflareaccess.com/...` (Access 
 - `pnpm setup:cf` again: reuses the database, keeps existing keys, asks per secret whether to replace it, deploys the current code.
 - Rotate the OAuth state key: `pnpm setup:cf --rotate-state-key` (only in-flight connect flows are affected).
 - Rotate the token key: `pnpm setup:cf --rotate-token-key`. The script asks you to type `rotate` first. Read [runbook.md](runbook.md) before you do: every account must **Reconnect**.
-- Single secret without the script: `npx wrangler secret put <NAME> --name clearbox` (`cf` cannot set a single secret yet).
+- Single secret without the script: `./app/node_modules/.bin/cf workers secrets update <NAME> --worker clearbox` (the value may be left in your shell history), or `npx wrangler secret put <NAME> --name clearbox`.
 - Deploy code only: `pnpm deploy:cf` (needs `app/clearbox.local.json` or `CLEARBOX_D1_ID`).
 
 ## 5. Local development
@@ -119,7 +119,7 @@ pnpm dev                                 # http://localhost:5173
 | `cf is not logged in`                                        | `./app/node_modules/.bin/cf auth login`                                                                                                                                                                                                                                                                                  |
 | `Could not list secrets on Worker "clearbox"`                | A transient or permission error. Nothing was changed. Check `cf auth whoami` and re-run `pnpm setup:cf`.                                                                                                                                                                                                                 |
 | `jurisdiction "us"` (or other)                               | The existing database is not EU. Create a new one (delete or rename the old one, delete `app/clearbox.local.json`, re-run). The jurisdiction cannot be changed after creation.                                                                                                                                           |
-| `500 access_misconfigured`                                   | A required secret is missing or malformed (`OWNER_EMAIL`, `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `TOKEN_ENC_KEY`, `STATE_SIGNING_KEY`). Re-run `pnpm setup:cf`.                                                                                                                                                             |
+| `500 access_misconfigured`                                   | A required secret is missing or malformed (`OWNER_EMAIL`, `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `TOKEN_ENC_KEY`, `STATE_SIGNING_KEY`), `AZURE_DECISION_ENDPOINT` is not the https account root (no path, query, fragment or credentials), or `AZURE_DECISION_DEPLOYMENT` is `Microsoft-Decision-1` (that is the model name, not a deployment name). Re-run `pnpm setup:cf`.                                                                                                                                                             |
 | `403 forbidden` after Access login                           | `OWNER_EMAIL` differs from the Access login email, or `ACCESS_AUD` belongs to another application.                                                                                                                                                                                                                       |
 | The first deploy is rejected because `ACCESS_AUD` is missing | Re-run `pnpm setup:cf` and enter a placeholder such as `pending-access-application-setup-0000` for `ACCESS_AUD` (the Worker still rejects every request, because no Access JWT carries that audience), then create the Access application and replace the value with its real AUD tag.                                  |
 | Cron jobs never run                                          | Account already uses 5 Cron Triggers; remove one from another Worker.                                                                                                                                                                                                                                                    |

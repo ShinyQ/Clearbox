@@ -322,7 +322,7 @@ Worst case per tick: 38 subrequests including D1 calls (39 for "Scan now" with a
 
 **Budget:** an email costs about 4.8 rows written to ingest, 5.3 when the owner decides it, and 3 when it is purged (about 13 over its life). Ticks stop at 65,000 rows per day, the purge at 80,000, and owner actions at 90,000 (90% of the 100k limit), which reserves at least 25,000 rows for the weekly review session. Ingestion is capped at 36,000 emails/day by ticks (1,440 x 25) but in practice by D1: about **13,000 emails/day** during the initial backfill and about **6,800 emails/day** sustained once purges and decisions are counted. Backfill pauses at 450 MB of the 500 MB database limit.
 
-**Cost estimate:** 450 to 800 input tokens per email at $0.042 per million is about **$0.25 to $0.34 per 10k emails**.
+**Cost estimate:** 450 to 800 input tokens per email at $0.042 per million is about **$0.19 to $0.34 per 10k emails**.
 
 **Upgrade path:** on Workers Paid, set `FREE_TIER=false`. That raises the page size to 100 and removes the D1 write gates. No code changes are needed.
 

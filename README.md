@@ -244,9 +244,9 @@ docs/              setup guides, runbook, security checklist, UI mockup, design 
 | ---------------------- | ------------------------------------------------------- | ----: |
 | Core (`packages/core`) | Vitest                                                  |   635 |
 | Worker (`app`)         | Vitest in workerd (`@cloudflare/vitest-plugin`), MSW    |   387 |
-| SPA (`app`)            | Vitest, happy-dom, Testing Library, axe-core            |   422 |
+| SPA (`app`)            | Vitest, happy-dom, Testing Library, axe-core            |   433 |
 | Eval harness (`eval`)  | Vitest                                                  |    55 |
-| Scripts (`scripts`)    | `node:test`                                             |    48 |
+| Scripts (`scripts`)    | `node:test`                                             |    49 |
 
 ### Model evaluation
 
@@ -261,9 +261,9 @@ Deploy Microsoft-Decision-1 first with `infra/azure/deploy-decision.sh` (Bicep, 
 | Cloudflare Workers, D1, Cron Triggers, Workers Logs (Free plan) | $0                                                                                                        |
 | Cloudflare Access (Zero Trust Free, up to 50 users)             | $0                                                                                                        |
 | Gmail API, Microsoft Graph                                      | $0                                                                                                        |
-| Microsoft-Decision-1, DataZoneStandard                          | $0.042 per 1M input tokens, output free; 450 to 800 tokens per email: **about $0.25 to $0.34 per 10,000 emails** |
+| Microsoft-Decision-1, DataZoneStandard                          | $0.042 per 1M input tokens, output free; 450 to 800 tokens per email: **about $0.19 to $0.34 per 10,000 emails** |
 
-A 50,000-email inbox costs roughly $1.30 to $1.70 to sort once.
+A 50,000-email inbox costs roughly $0.95 to $1.70 to sort once.
 
 ## Security
 

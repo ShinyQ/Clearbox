@@ -14,6 +14,7 @@ import {
   partialGroupToast,
   type ActionErrorContext,
 } from "../../lib/copy-actions.ts";
+import { isKeepAction, isKeepOnly } from "../../lib/keep-only.ts";
 import { startOAuth } from "../../lib/oauth-return.ts";
 import type { ActionKind } from "../../lib/view-types.ts";
 import { useToast } from "../../state/ToastProvider.tsx";
@@ -158,6 +159,7 @@ export function useGroupActions(cb: GroupActionCallbacks): GroupActionsApi {
           kind: "action",
           message: partialGroupToast(target, result.executed, group.count),
           batchIds: result.batchIds,
+          keepOnly: isKeepAction(target),
         });
         void qc.invalidateQueries({ queryKey: qk.group(group.key) });
         return false;
@@ -167,6 +169,7 @@ export function useGroupActions(cb: GroupActionCallbacks): GroupActionsApi {
         kind: "action",
         message: message ? message(result.executed) : groupActionToast(target, name, result.executed),
         batchIds: result.batchIds,
+        keepOnly: isKeepAction(target),
       });
       qc.removeQueries({ queryKey: qk.group(group.key) });
       void qc.invalidateQueries({ queryKey: ["queue"] });
@@ -225,6 +228,7 @@ export function useGroupActions(cb: GroupActionCallbacks): GroupActionsApi {
           message:
             action === "approve" ? approveSummaryToast(by) : bulkActionToast(target, executed, touched),
           batchIds,
+          keepOnly: isKeepOnly(by),
         });
       }
       if (firstError) showError(firstError.group, firstError.result);

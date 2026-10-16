@@ -1,10 +1,12 @@
 import { act, screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import type { FakeApiState } from "../msw/fake-api-state.ts";
 import { useUndoStack } from "../../../src/web/state/UndoStackProvider.tsx";
 import { renderWithCore } from "../helpers/core.tsx";
 import { iso, T0 } from "../msw/fixtures.ts";
 import { installFakeApi } from "../msw/handlers.ts";
+import { server } from "../msw/server.ts";
 
 type Stack = ReturnType<typeof useUndoStack>;
 
@@ -63,19 +65,45 @@ describe("UndoStackProvider", () => {
     ]);
   });
 
-  it("says nothing needed restoring when undoing a keep batch", async () => {
-    const state = installFakeApi((s) => {
+  it("says nothing needed restoring when undoing a mixed batch whose items were already back", async () => {
+    installFakeApi((s) => {
       batch11(s);
-      const keep = s.batches.find((b) => b.id === 11);
-      if (keep) keep.byAction = { delete: 0, archive: 0, keep: 5 };
+      const mixed = s.batches.find((b) => b.id === 11);
+      if (mixed) mixed.byAction = { delete: 3, archive: 0, keep: 2 };
     });
+    server.use(
+      http.post("*/api/batches/11/undo", () =>
+        HttpResponse.json({ batchId: 11, results: [], restored: 0, failed: 0, skipped: 5 }),
+      ),
+    );
     let stack: Stack | null = null;
     const { user } = renderWithCore(<Grab onReady={(s) => (stack = s)} />);
-    act(() => stack?.notifyWithUndo({ kind: "action", message: "Kept 5 emails.", batchIds: [11] }));
+    act(() =>
+      stack?.notifyWithUndo({ kind: "action", message: "Done: 3 to Trash, 2 kept.", batchIds: [11] }),
+    );
     await user.click(screen.getByRole("button", { name: "Undo" }));
     await screen.findByText("Nothing needed restoring. These emails were already back or untouched.");
     expect(screen.queryByText(/^Restored/)).toBeNull();
-    expect(state.requests.filter((r) => r.route === "undo")).toHaveLength(1);
+  });
+
+  it("shows a plain toast and pushes no entry for a keep-only notice", async () => {
+    installFakeApi();
+    let stack = null as Stack | null;
+    renderWithCore(<Grab onReady={(s) => (stack = s)} />);
+    act(() =>
+      stack?.notifyWithUndo({ kind: "action", message: "Kept 5 emails.", batchIds: [11], keepOnly: true }),
+    );
+    expect(screen.getByText("Kept 5 emails.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(stack?.size).toBe(0);
+    await act(async () => {
+      await stack?.undoLatest();
+    });
+    expect(
+      screen.getByText(
+        "Nothing to undo here. Actions from earlier sessions can be undone in Activity for 24 hours.",
+      ),
+    ).toBeTruthy();
   });
 
   it("reports an expired undo", async () => {

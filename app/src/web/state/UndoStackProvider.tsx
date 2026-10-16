@@ -29,6 +29,8 @@ export interface UndoNotice {
   message: string;
   batchIds: number[];
   dedupeKey?: string | undefined;
+  /** Keep-only batches have nothing to restore: a plain toast, no Undo, no undo-stack entry. */
+  keepOnly?: boolean | undefined;
   expiresAt?: number | undefined;
 }
 
@@ -102,7 +104,7 @@ export function UndoStackProvider({ children }: { children: ReactNode }) {
 
   const notifyWithUndo = useCallback(
     (n: UndoNotice) => {
-      if (n.batchIds.length === 0) {
+      if (n.batchIds.length === 0 || n.keepOnly) {
         toast.show({ kind: "success", message: n.message, dedupeKey: n.dedupeKey });
         return;
       }

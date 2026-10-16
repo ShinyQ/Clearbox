@@ -161,6 +161,7 @@ export function CleanupProvider({
             kind,
             message: doneToast(mode, outcome.run, preview),
             batchIds: outcome.run.batchIds,
+            keepOnly: mode === "confirm_keeps",
           });
           dispatch({ type: "SETTLE" });
           refresh();
@@ -175,6 +176,7 @@ export function CleanupProvider({
             kind,
             message: partialToast(mode, outcome.run),
             batchIds: outcome.run.batchIds,
+            keepOnly: mode === "confirm_keeps",
           });
         }
       })

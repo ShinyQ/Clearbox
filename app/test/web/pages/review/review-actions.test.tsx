@@ -6,6 +6,7 @@ import { qk } from "../../../../src/web/api/keys.ts";
 import { groupsInCache } from "../../../../src/web/pages/review/group-cache.ts";
 import { useGroupActions, type GroupActionsApi } from "../../../../src/web/pages/review/use-group-actions.ts";
 import { useItemActions } from "../../../../src/web/pages/review/use-item-actions.ts";
+import { useUndoStack, type UndoStackApi } from "../../../../src/web/state/UndoStackProvider.tsx";
 import { renderWithCore } from "../../helpers/core.tsx";
 import { createTestQueryClient } from "../../helpers/query.tsx";
 import { setReducedMotion } from "../../helpers/viewport.ts";
@@ -24,6 +25,7 @@ import { server } from "../../msw/server.ts";
 
 let actions: GroupActionsApi | null = null;
 let items: ReturnType<typeof useItemActions> | null = null;
+let stack: UndoStackApi | null = null;
 const calls = { removed: [] as string[][], restored: [] as string[] };
 
 function Harness() {
@@ -34,6 +36,7 @@ function Harness() {
     errorContext: () => ({ providerLabel: "Gmail", resetTime: "07:00" }),
     accountFor: () => undefined,
   };
+  stack = useUndoStack();
   actions = useGroupActions(cb);
   items = useItemActions(actions, cb);
   return null;
@@ -73,6 +76,48 @@ describe("useGroupActions", () => {
     expect(screen.getByText("Moved 6 emails from Northwind Deals to Trash.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
     expect(calls.removed).toContainEqual([north.key]);
+  });
+
+  it("shows no Undo and pushes no undo entry when a Keep group is approved", async () => {
+    const { state, byName } = setup();
+    await act(async () => {
+      await actions?.act(byName("Mom"), "keep", asOf);
+    });
+    expect(state.requests.some((r) => r.route === "approve")).toBe(true);
+    expect(screen.getByText("Kept 2 emails from Mom. Clearbox will remember.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(stack?.size).toBe(0);
+  });
+
+  it("shows no Undo when a Check group is overridden to Keep", async () => {
+    const { state, byName } = setup();
+    await act(async () => {
+      await actions?.act(byName("Build Bot"), "keep", asOf);
+    });
+    expect(state.requests.some((r) => r.route === "override")).toBe(true);
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(stack?.size).toBe(0);
+  });
+
+  it("shows no Undo on the partial toast of a keep-only group", async () => {
+    const { byName } = setup((s) => {
+      s.retryLaterIds = new Set([1500]);
+    });
+    await act(async () => {
+      await actions?.act(byName("Mom"), "keep", asOf);
+    });
+    expect(screen.getByText(/^Kept 1 of 2 emails\./)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(stack?.size).toBe(0);
+  });
+
+  it("keeps Undo and the undo entry when a Check group is overridden to Trash", async () => {
+    const { byName } = setup();
+    await act(async () => {
+      await actions?.act(byName("Build Bot"), "delete", asOf);
+    });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    expect(stack?.size).toBe(1);
   });
 
   it("rolls back the row and counts on error", async () => {
@@ -172,6 +217,26 @@ describe("useGroupActions", () => {
     expect(screen.getByText("Done: 6 to Trash, 3 archived.")).toBeTruthy();
   });
 
+  it("shows no Undo for a keep-only bulk approve", async () => {
+    const { byName } = setup();
+    await act(async () => {
+      await actions?.bulk([byName("Mom")], "approve", asOf);
+    });
+    expect(screen.getByText("Done: 2 kept.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(stack?.size).toBe(0);
+  });
+
+  it("keeps Undo for a mixed bulk approve that includes keeps", async () => {
+    const { byName } = setup();
+    await act(async () => {
+      await actions?.bulk([byName("Northwind Deals"), byName("Mom")], "approve", asOf);
+    });
+    expect(screen.getByText("Done: 6 to Trash, 2 kept.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    expect(stack?.size).toBe(1);
+  });
+
   it("leaves a running bulk alone when another or an empty bulk is requested", async () => {
     const { state, byName } = setup();
     let release: () => void = () => undefined;
@@ -235,6 +300,16 @@ describe("useItemActions", () => {
     expect(screen.getByText("Northwind Deals is on your Always keep list. 6 emails kept.")).toBeTruthy();
   });
 
+  it("shows no Undo after Always keep", async () => {
+    const { byName } = setup();
+    const north = byName("Northwind Deals");
+    await act(async () => {
+      await items?.alwaysKeep(north, north.sender, asOf);
+    });
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(stack?.size).toBe(0);
+  });
+
   it("adds the sender to Always OK to trash without Undo", async () => {
     const { byName } = setup();
     await act(async () => {
@@ -261,5 +336,20 @@ describe("useItemActions", () => {
     expect(state.requests.find((r) => r.route === "approve")?.body).toEqual({ ids: [1000] });
     expect(screen.getByText("Moved 1 email to Trash.")).toBeTruthy();
     expect(groupsInCache(client).find((g) => g.key === north.key)?.count).toBe(5);
+  });
+
+  it("shows no Undo for a per-email Keep", async () => {
+    const { state, byName } = setup();
+    const mom = byName("Mom");
+    const item = toSuggestionItem(
+      state,
+      pendingItems(state).find((i) => keyOf(i) === mom.key)!,
+    );
+    await act(async () => {
+      await items?.itemAction(mom, item, "keep");
+    });
+    expect(screen.getByText("Kept 1 email.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(stack?.size).toBe(0);
   });
 });

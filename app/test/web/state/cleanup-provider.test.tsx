@@ -224,6 +224,7 @@ describe("CleanupProvider", () => {
     await screen.findByText("Mark 2 emails in 1 sender group as Keep?");
     await user.click(screen.getByRole("button", { name: "Confirm" }));
     await screen.findByText("Kept 2 emails from 1 sender group. Clearbox will remember.");
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
     expect(state.requests.find((r) => r.route === "preview")?.url.search).toContain("actions=keep");
     expect(state.requests.find((r) => r.route === "preview")?.url.search).toContain("threshold=0.5");
   });

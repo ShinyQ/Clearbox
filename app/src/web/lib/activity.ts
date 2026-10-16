@@ -1,4 +1,5 @@
 import type { AccountView, ActionBatchView, ActivityEntry } from "../../shared/api.ts";
+import { isKeepOnly } from "./keep-only.ts";
 import { toPercent } from "./confidence.ts";
 import { formatCount, plural } from "./format.ts";
 
@@ -52,7 +53,9 @@ function batchResult(r: Result): string {
 }
 
 // Batches are kept 7 days, so an older or unknown batch can no longer be undone.
+// A keep-only batch has nothing to restore (the server still reports it undoable), so its cell stays empty.
 function batchLast(e: ActivityEntry, ctx: ActivityContext): ActivityLast {
+  if (isKeepOnly({ delete: num(e.result, "delete"), archive: num(e.result, "archive") })) return null;
   const batch = e.batchId === null ? undefined : ctx.batchesById[e.batchId];
   if (!batch) return { kind: "expired" };
   if (batch.undoneAt) return { kind: "undone" };

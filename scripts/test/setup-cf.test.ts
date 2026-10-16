@@ -366,6 +366,20 @@ describe("runSetup, re-run safety", () => {
     assert.equal(fs.files.has(SECRETS), false);
   });
 
+  it("proceeds to the secret prompts when the list fails with 10007 even though workers get succeeds", async () => {
+    const fs = rerunFs();
+    const stderr =
+      "┌ APIError\n│ [10007] This Worker does not exist on your account.\n│ 404 Not Found · HTTP /accounts/abc/workers/scripts/clearbox/secrets\n└";
+    const { runner } = fakeRunner(
+      rerunResponder({ code: 1, stderr }, { stdout: JSON.stringify({ id: "worker-123" }) }),
+    );
+    const keys = keyFactory();
+    await assert.rejects(
+      runSetup(deps({ runner, prompter: fakePrompter([]), fs, generateKey: keys.generate })),
+      /unexpected string prompt/,
+    );
+  });
+
   it("proceeds to the secret prompts when workers get confirms the Worker is absent", async () => {
     const fs = rerunFs();
     const { runner } = fakeRunner(

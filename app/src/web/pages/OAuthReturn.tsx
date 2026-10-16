@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { consumeOAuthReturn } from "../lib/oauth-return.ts";
 
@@ -6,8 +6,10 @@ import { consumeOAuthReturn } from "../lib/oauth-return.ts";
 export function OAuthReturn() {
   const navigate = useNavigate();
   const { search } = useLocation();
+  // Consuming clears the key; compute once so StrictMode's repeated effects reuse the same target.
+  const [target] = useState(() => consumeOAuthReturn());
   useEffect(() => {
-    void navigate(`${consumeOAuthReturn()}${search}`, { replace: true });
-  }, [navigate, search]);
+    void navigate(`${target}${search}`, { replace: true });
+  }, [navigate, search, target]);
   return null;
 }

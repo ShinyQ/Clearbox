@@ -1,8 +1,10 @@
 import { QueryClientProvider } from "@tanstack/react-query";
+import { StrictMode } from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { OAuthReturn } from "../../src/web/pages/OAuthReturn.tsx";
 import { RouteErrorPage } from "../../src/web/pages/FullPageError.tsx";
 import { appRoutes } from "../../src/web/routes.tsx";
 import { createTestQueryClient } from "./helpers/query.tsx";
@@ -11,15 +13,31 @@ import { installFakeApi } from "./msw/handlers.ts";
 
 afterEach(() => vi.restoreAllMocks());
 
-function renderApp(path: string, mutate?: (s: FakeApiState) => void) {
+function renderApp(path: string, mutate?: (s: FakeApiState) => void, strict = false) {
   const state = installFakeApi(mutate);
   const router = createMemoryRouter(appRoutes(), { initialEntries: [path] });
-  render(
+  const tree = (
     <QueryClientProvider client={createTestQueryClient()}>
       <RouterProvider router={router} />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  render(strict ? <StrictMode>{tree}</StrictMode> : tree);
   return { state, router, user: userEvent.setup() };
+}
+
+// Real pages consume the query after arrival, so the forwarding is observed against a stub target.
+function renderOAuthReturnOnly(path: string, strict = false) {
+  const router = createMemoryRouter(
+    [
+      { path: "/settings/accounts", element: <OAuthReturn /> },
+      { path: "/setup", element: <p>Setup stub</p> },
+      { path: "/accounts", element: <p>Accounts stub</p> },
+    ],
+    { initialEntries: [path] },
+  );
+  const tree = <RouterProvider router={router} />;
+  render(strict ? <StrictMode>{tree}</StrictMode> : tree);
+  return router;
 }
 
 describe("routes (UI spec 3.5)", () => {
@@ -37,6 +55,28 @@ describe("routes (UI spec 3.5)", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/setup"));
     expect(await screen.findByText("Some permissions were not granted.")).toBeTruthy();
     expect(window.sessionStorage.getItem("clearbox.oauthReturn")).toBeNull();
+  });
+
+  it("keeps the remembered OAuth target and query under StrictMode", async () => {
+    window.sessionStorage.setItem("clearbox.oauthReturn", "/setup");
+    const router = renderOAuthReturnOnly("/settings/accounts?error=scope_missing&provider=gmail", true);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/setup"));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(router.state.location.pathname).toBe("/setup");
+    expect(router.state.location.search).toBe("?error=scope_missing&provider=gmail");
+  });
+
+  it("forwards ?connected to the remembered page with the query preserved", async () => {
+    window.sessionStorage.setItem("clearbox.oauthReturn", "/setup");
+    const router = renderOAuthReturnOnly("/settings/accounts?connected=acc_1");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/setup"));
+    expect(router.state.location.search).toBe("?connected=acc_1");
+  });
+
+  it("shows an accessible loading status while accounts load", async () => {
+    renderApp("/");
+    expect(screen.getByRole("status").textContent).toBe("Loading");
+    await screen.findByRole("heading", { level: 1, name: "Review" });
   });
 
   it("defaults the OAuth return to Accounts", async () => {

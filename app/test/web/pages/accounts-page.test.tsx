@@ -1,12 +1,15 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { browser } from "../../../src/web/lib/links.ts";
 import { AccountsPage } from "../../../src/web/pages/AccountsPage.tsx";
 import { expectNoA11yViolations } from "../helpers/axe.ts";
 import { renderPage } from "../helpers/render.tsx";
+import { setViewport } from "../helpers/viewport.ts";
 import type { FakeApiState } from "../msw/fake-api.ts";
 import { ACC_GMAIL, T0 } from "../msw/fixtures.ts";
 import { installFakeApi } from "../msw/handlers.ts";
+import { server } from "../msw/server.ts";
 
 beforeEach(() => vi.useFakeTimers({ now: T0, toFake: ["Date"] }));
 afterEach(() => {
@@ -89,7 +92,9 @@ describe("Accounts page", () => {
 
   it("toasts a fresh connection", async () => {
     setup(undefined, `/accounts?connected=${ACC_GMAIL}`);
-    expect(await screen.findByText("Connected you@example.com. Sorting starts within a minute.")).toBeTruthy();
+    expect(
+      await screen.findByText("Connected you@example.com. Sorting starts within a minute."),
+    ).toBeTruthy();
   });
 
   it("starts Connect and Reconnect through the provider sign-in", async () => {
@@ -133,16 +138,101 @@ describe("Accounts page", () => {
     });
     const scanButton = await screen.findByRole("button", { name: "Scan now you@example.com" });
     await user.click(scanButton);
-    expect(await screen.findByText("A scan is already running for you@example.com. Try again in 5 min.")).toBeTruthy();
+    expect(
+      await screen.findByText("A scan is already running for you@example.com. Try again in 5 min."),
+    ).toBeTruthy();
     state.failures.scan = { status: 409, code: "account_inactive", retryAt, times: 1 };
     await user.click(scanButton);
-    expect(await screen.findByText(/^you@example\.com is retrying after a problem\. Next try at /)).toBeTruthy();
+    expect(
+      await screen.findByText(/^you@example\.com is retrying after a problem\. Next try at /),
+    ).toBeTruthy();
     state.failures.scan = { status: 409, code: "account_inactive", times: 1 };
     await user.click(scanButton);
     expect(await screen.findByText("you@example.com is paused.")).toBeTruthy();
     state.failures.scan = { status: 429, code: "budget_exhausted", retryAt, times: 1 };
     await user.click(scanButton);
-    expect(await screen.findByText(/^Today's free-tier limit is reached\. Scanning resumes after /)).toBeTruthy();
+    expect(
+      await screen.findByText(/^Today's free-tier limit is reached\. Scanning resumes after /),
+    ).toBeTruthy();
+  });
+
+  it("returns focus to Disconnect when the confirm is cancelled in the wide layout", async () => {
+    const { user } = setup();
+    const trigger = await screen.findByRole("button", { name: "Disconnect you@example.com" });
+    await user.click(trigger);
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("Cancel"));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it("returns focus to the actions menu trigger when the confirm is cancelled in the narrow layout", async () => {
+    setViewport(900);
+    const { user } = setup();
+    const trigger = await screen.findByRole("button", { name: "Account actions for you@example.com" });
+    await user.click(trigger);
+    await user.click(await screen.findByRole("menuitem", { name: "Disconnect" }));
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("Cancel"));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it("moves focus to the page heading after a successful disconnect", async () => {
+    const { user } = setup();
+    await user.click(await screen.findByRole("button", { name: "Disconnect you@example.com" }));
+    await user.click(screen.getByRole("button", { name: "Disconnect" }));
+    await waitFor(() => expect(screen.queryByRole("group", { name: "you@example.com" })).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Accounts" }));
+  });
+
+  it("disables Scan now in the menu while a scan is running", async () => {
+    setViewport(900);
+    const { user } = setup();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    server.use(
+      http.post("*/api/accounts/:id/scan", async () => {
+        await gate;
+        return HttpResponse.json({
+          outcome: "idle",
+          accountId: ACC_GMAIL,
+          kind: "incremental",
+          phase: "incremental",
+          fetched: 0,
+          skippedKnown: 0,
+          decided: 0,
+          deferred: 0,
+          unsure: 0,
+          removed: 0,
+          subrequests: 1,
+          rowsWritten: 0,
+          nextTickAt: null,
+          errorCode: null,
+        });
+      }),
+    );
+    const trigger = await screen.findByRole("button", { name: "Account actions for you@example.com" });
+    await user.click(trigger);
+    await user.click(await screen.findByRole("menuitem", { name: "Scan now" }));
+    await user.click(trigger);
+    expect((await screen.findByRole("menuitem", { name: "Scan now" })).hasAttribute("disabled")).toBe(true);
+    release();
+    expect(await screen.findByText("Scan finished. No new emails.")).toBeTruthy();
+  });
+
+  it("keeps a consent banner per Outlook account and lets it be dismissed", async () => {
+    const { user } = setup((s) => {
+      s.accounts.push({ ...s.accounts[1]!, id: "acc_outlook2", email: "work@example.org" });
+    });
+    await user.click(await screen.findByRole("button", { name: "Disconnect you@example.net" }));
+    await user.click(screen.getByRole("button", { name: "Disconnect" }));
+    expect(await screen.findByText("Disconnected you@example.net.")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Disconnect work@example.org" }));
+    await user.click(screen.getByRole("button", { name: "Disconnect" }));
+    expect(await screen.findByText("Disconnected work@example.org.")).toBeTruthy();
+    expect(screen.getByText("Disconnected you@example.net.")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Dismiss: Disconnected you@example.net." }));
+    await waitFor(() => expect(screen.queryByText("Disconnected you@example.net.")).toBeNull());
+    expect(screen.getByText("Disconnected work@example.org.")).toBeTruthy();
   });
 
   it("shows the empty state", async () => {

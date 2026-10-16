@@ -67,6 +67,7 @@ export function AccountCard({
   const status = deriveAccountUiStatus(a, now);
   const [confirming, setConfirming] = useState(false);
   const disconnectRef = useRef<HTMLButtonElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const wide = useMediaQuery(BP.lg);
   const scan = useScanNow([a], a.id);
   const fraction = catchUpFraction(a);
@@ -75,7 +76,8 @@ export function AccountCard({
   if (running) actions.push({ id: "scan", label: "Scan now", primary: false, run: () => void scan.run() });
   if (running || status === "waiting")
     actions.push({ id: "pause", label: "Pause", primary: false, run: () => onPause(true) });
-  if (status === "paused") actions.push({ id: "resume", label: "Resume", primary: true, run: () => onPause(false) });
+  if (status === "paused")
+    actions.push({ id: "resume", label: "Resume", primary: true, run: () => onPause(false) });
   if (status === "needs_reauth" || status === "config_error")
     actions.push({ id: "reconnect", label: "Reconnect", primary: true, run: onReconnect });
   actions.push({ id: "disconnect", label: "Disconnect", primary: false, run: () => setConfirming(true) });
@@ -84,6 +86,7 @@ export function AccountCard({
     id: x.id,
     label: x.label,
     destructive: x.id === "disconnect",
+    disabled: x.id === "scan" && scan.scanning,
     onSelect: x.run,
   }));
   return (
@@ -100,7 +103,12 @@ export function AccountCard({
         <p className="text-small text-ink-3">{accountStatusLine(a, now, dailyRate)}</p>
         {status === "catching_up" ? (
           <div className="mt-1.5">
-            <ProgressBar value={fraction} tone="archive" width={240} label={`Sorting progress for ${a.email}`} />
+            <ProgressBar
+              value={fraction}
+              tone="archive"
+              width={240}
+              label={`Sorting progress for ${a.email}`}
+            />
           </div>
         ) : null}
       </div>
@@ -126,8 +134,18 @@ export function AccountCard({
           label={`Account actions for ${a.email}`}
           align="end"
           items={items}
-          renderTrigger={(t) => (
-            <Button {...t} variant="ghost" size="sm" icon="more" aria-label={`Account actions for ${a.email}`} />
+          renderTrigger={({ ref: menuRef, ...t }) => (
+            <Button
+              {...t}
+              ref={(node) => {
+                menuRef.current = node;
+                menuTriggerRef.current = node;
+              }}
+              variant="ghost"
+              size="sm"
+              icon="more"
+              aria-label={`Account actions for ${a.email}`}
+            />
           )}
         />
       )}
@@ -137,7 +155,7 @@ export function AccountCard({
           busy={disconnecting}
           onCancel={() => {
             setConfirming(false);
-            requestAnimationFrame(() => disconnectRef.current?.focus());
+            requestAnimationFrame(() => (disconnectRef.current ?? menuTriggerRef.current)?.focus());
           }}
           onConfirm={onDisconnect}
         />

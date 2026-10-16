@@ -43,7 +43,7 @@ export function AccountsPage() {
   const qc = useQueryClient();
   const now = useNow();
   const [opening, setOpening] = useState<ProviderKind | null>(null);
-  const [consentBanner, setConsentBanner] = useState<AppBannerSpec | null>(null);
+  const [consentBanners, setConsentBanners] = useState<AppBannerSpec[]>([]);
   const gmailRef = useRef<HTMLButtonElement>(null);
   const toasted = useRef(false);
   const list = accounts.data?.accounts ?? [];
@@ -58,10 +58,15 @@ export function AccountsPage() {
   }, [oauth.add]);
   useEffect(() => {
     if (!accounts.data || toasted.current) return;
-    const focusId = oauth.connected ? `acc_${oauth.connected}` : hash.startsWith("#acc_") ? hash.slice(1) : null;
+    const focusId = oauth.connected
+      ? `acc_${oauth.connected}`
+      : hash.startsWith("#acc_")
+        ? hash.slice(1)
+        : null;
     if (oauth.connected) {
       const a = accounts.data.accounts.find((x) => x.id === oauth.connected);
-      if (a) toast.show({ kind: "success", message: `Connected ${a.email}. Sorting starts within a minute.` });
+      if (a)
+        toast.show({ kind: "success", message: `Connected ${a.email}. Sorting starts within a minute.` });
     }
     toasted.current = true;
     const el = focusId ? document.getElementById(focusId) : null;
@@ -78,7 +83,7 @@ export function AccountsPage() {
   const oauthBanner = oauth.error
     ? oauthErrorBanner(oauth.error, provider, () => connect(provider ?? "gmail"))
     : null;
-  const extra = [oauthBanner, consentBanner].filter((b): b is AppBannerSpec => b !== null);
+  const extra = [oauthBanner, ...consentBanners].filter((b): b is AppBannerSpec => b !== null);
   const providers = me.data?.providers;
 
   const onPause = (id: string, email: string, paused: boolean) =>
@@ -91,13 +96,17 @@ export function AccountsPage() {
             message: paused ? `Paused sorting for ${email}.` : `Resumed sorting for ${email}.`,
           }),
         onError: () =>
-          toast.show({ kind: "error", message: `Couldn't ${paused ? "pause" : "resume"} ${email}. Try again.` }),
+          toast.show({
+            kind: "error",
+            message: `Couldn't ${paused ? "pause" : "resume"} ${email}. Try again.`,
+          }),
       },
     );
 
   const onDisconnect = (id: string, email: string) =>
     disconnect.mutate(id, {
       onSuccess: (res) => {
+        titleRef.current?.focus({ preventScroll: true });
         if (res.revocation === "revoked") {
           toast.show({ kind: "success", message: `Disconnected ${email}. Google access was revoked.` });
         } else if (res.revocation === "failed") {
@@ -106,9 +115,10 @@ export function AccountsPage() {
             message: `Disconnected ${email}. Google did not confirm the revoke; you can remove access at myaccount.google.com/permissions.`,
           });
         } else {
-          setConsentBanner({
-            id: "consent",
+          const banner: AppBannerSpec = {
+            id: `consent-${id}`,
             tone: "info",
+            dismissible: true,
             title: `Disconnected ${email}.`,
             body: "Microsoft has no revoke button for apps, so remove Clearbox's access yourself.",
             actions: res.consentUrls
@@ -117,7 +127,8 @@ export function AccountsPage() {
                   { label: "Work or school account", kind: "link", href: res.consentUrls.work },
                 ]
               : [],
-          });
+          };
+          setConsentBanners((prev) => [...prev.filter((b) => b.id !== banner.id), banner]);
         }
       },
       onError: () => toast.show({ kind: "error", message: GENERIC_ERROR }),

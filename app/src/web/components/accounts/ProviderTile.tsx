@@ -9,8 +9,13 @@ export function ProviderTile({
   active: boolean;
   size?: 34 | 14;
 }) {
-  const tone = !active ? "bg-provider-off" : provider === "gmail" ? "bg-provider-gmail" : "bg-provider-outlook";
-  const dims = size === 34 ? "size-[34px] rounded-lg text-title-sm" : "size-3.5 rounded-xs text-[9px] leading-none";
+  const tone = !active
+    ? "bg-provider-off"
+    : provider === "gmail"
+      ? "bg-provider-gmail"
+      : "bg-provider-outlook";
+  const dims =
+    size === 34 ? "size-[34px] rounded-lg text-title-sm" : "size-3.5 rounded-xs text-[9px] leading-none";
   return (
     <span
       aria-hidden="true"

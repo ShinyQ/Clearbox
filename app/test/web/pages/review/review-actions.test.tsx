@@ -1,4 +1,5 @@
 import { act, screen, waitFor } from "@testing-library/react";
+import { http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import type { QueueSummary, SenderGroup } from "../../../../src/shared/api.ts";
 import { qk } from "../../../../src/web/api/keys.ts";
@@ -19,6 +20,7 @@ import {
 } from "../../msw/fake-api.ts";
 import { iso, T0 } from "../../msw/fixtures.ts";
 import { installFakeApi } from "../../msw/handlers.ts";
+import { server } from "../../msw/server.ts";
 
 let actions: GroupActionsApi | null = null;
 let items: ReturnType<typeof useItemActions> | null = null;
@@ -168,6 +170,32 @@ describe("useGroupActions", () => {
       await actions?.bulk([byName("Northwind Deals"), byName("Contoso Orders")], "approve", asOf);
     });
     expect(screen.getByText("Done: 6 to Trash, 3 archived.")).toBeTruthy();
+  });
+
+  it("leaves a running bulk alone when another or an empty bulk is requested", async () => {
+    const { state, byName } = setup();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    server.use(http.post("*/api/approve", async () => void (await gate)));
+    let running: Promise<string[]> = Promise.resolve([]);
+    act(() => {
+      running = actions?.bulk([byName("Northwind Deals"), byName("Build Bot")], "delete", asOf) ?? running;
+    });
+    await waitFor(() => expect(actions?.bulkProgress).toEqual({ done: 1, total: 2 }));
+    const busy = actions?.busyKeys;
+    let extra: string[][] = [];
+    await act(async () => {
+      extra = await Promise.all([
+        actions?.bulk([], "delete", asOf) ?? Promise.resolve(["unexpected"]),
+        actions?.bulk([byName("Daily Digest")], "delete", asOf) ?? Promise.resolve(["unexpected"]),
+      ]);
+    });
+    expect(extra).toEqual([[], []]);
+    expect(actions?.bulkProgress).toEqual({ done: 1, total: 2 });
+    expect(actions?.busyKeys).toBe(busy);
+    release();
+    await act(() => running);
+    expect(state.requests.filter((r) => r.route === "approve" || r.route === "override")).toHaveLength(2);
   });
 
   it("stops a bulk action at the budget limit and keeps the rest", async () => {

@@ -75,6 +75,7 @@ export function useGroupActions(cb: GroupActionCallbacks): GroupActionsApi {
   });
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const inflight = useRef(new Set<string>());
+  const bulkRunning = useRef(false);
 
   const exit = useCallback(
     (key: string) => {
@@ -177,6 +178,9 @@ export function useGroupActions(cb: GroupActionCallbacks): GroupActionsApi {
 
   const bulk = useCallback<GroupActionsApi["bulk"]>(
     async (groups, action, asOf) => {
+      // A second bulk (or an empty one) must not touch the running bulk's busy keys or progress.
+      if (groups.length === 0 || bulkRunning.current) return [];
+      bulkRunning.current = true;
       setBusyKeys(new Set(groups.map((g) => g.key)));
       const doneKeys: string[] = [];
       const batchIds: number[] = [];
@@ -211,6 +215,7 @@ export function useGroupActions(cb: GroupActionCallbacks): GroupActionsApi {
           if (r.error?.code === "budget_exhausted" || r.error?.code === "network") break;
         }
       }
+      bulkRunning.current = false;
       setBusyKeys(new Set());
       setBulkProgress(null);
       if (executed > 0) {

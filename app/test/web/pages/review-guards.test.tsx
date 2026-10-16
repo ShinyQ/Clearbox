@@ -1,10 +1,12 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewPage } from "../../../src/web/pages/ReviewPage.tsx";
 import { renderPage } from "../helpers/render.tsx";
 import type { FakeApiState } from "../msw/fake-api.ts";
 import { ACC_GMAIL, makeGroupItems, T0 } from "../msw/fixtures.ts";
 import { installFakeApi } from "../msw/handlers.ts";
+import { server } from "../msw/server.ts";
 
 beforeEach(() => vi.useFakeTimers({ now: T0, toFake: ["Date"] }));
 afterEach(() => vi.useRealTimers());
@@ -38,6 +40,28 @@ describe("Clean up gate", () => {
     await user.click(screen.getByRole("button", { name: "Trash 6" }));
     await user.click(approve);
     expect(mutating(state)).toHaveLength(0);
+  });
+});
+
+describe("Bulk action re-entry", () => {
+  it("ignores T while a bulk action runs instead of resetting it or starting another", async () => {
+    const { state, user } = setup();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    server.use(http.post("*/api/approve", async () => void (await gate)));
+    await screen.findByRole("complementary", { name: "Northwind Deals" });
+    await user.keyboard("xjx");
+    expect(screen.getByText(/^2 groups selected/)).toBeTruthy();
+    await user.keyboard("t");
+    expect(await screen.findByText("Working on 1 of 2 groups…")).toBeTruthy();
+    await user.keyboard("t");
+    expect(screen.getByText("Working on 1 of 2 groups…")).toBeTruthy();
+    await user.keyboard("t");
+    expect(screen.getByText("Working on 1 of 2 groups…")).toBeTruthy();
+    release();
+    await screen.findByText(/^Moved [\d,]+ emails from 2 sender groups to Trash\.$/);
+    await waitFor(() => expect(screen.queryByText(/^Working on/)).toBeNull());
+    expect(mutating(state)).toHaveLength(2);
   });
 });
 

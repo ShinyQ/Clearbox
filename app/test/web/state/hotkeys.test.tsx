@@ -4,6 +4,7 @@ import { GSequenceHint } from "../../../src/web/components/shell/GSequenceHint.t
 import { ShortcutHelpDialog } from "../../../src/web/components/shell/ShortcutHelpDialog.tsx";
 import { isTypingTarget, matchesCombo } from "../../../src/web/state/hotkeys-core.ts";
 import { HotkeysProvider, useHotkeys } from "../../../src/web/state/HotkeysProvider.tsx";
+import { useUndoStack, type UndoStackApi } from "../../../src/web/state/UndoStackProvider.tsx";
 import { renderWithCore } from "../helpers/core.tsx";
 import { installFakeApi } from "../msw/handlers.ts";
 
@@ -43,6 +44,7 @@ function Bindings({
   useHotkeys("review", [
     { combo: "t", handler: () => review.t?.() },
     { combo: "a", handler: () => review.a?.() },
+    { combo: "j", handler: () => review.j?.(), repeat: true },
     { combo: "escape", handler: () => review.escape?.() },
     { combo: "mod+enter", handler: () => review.cleanup?.(), allowInInputs: true },
   ]);
@@ -50,16 +52,33 @@ function Bindings({
   return <input aria-label="Search" />;
 }
 
-function setup(review: Record<string, () => void>, confirm?: Record<string, () => void>) {
-  installFakeApi();
-  return renderWithCore(
-    <HotkeysProvider>
-      <Bindings review={review} {...(confirm ? { confirm } : {})} />
-      <GSequenceHint />
-      <ShortcutHelpDialog />
-    </HotkeysProvider>,
-  );
+let stack: UndoStackApi | null = null;
+function GrabUndo() {
+  stack = useUndoStack();
+  return null;
 }
+
+function setup(review: Record<string, () => void>, confirm?: Record<string, () => void>) {
+  const state = installFakeApi();
+  return {
+    state,
+    ...renderWithCore(
+      <HotkeysProvider>
+        <GrabUndo />
+        <Bindings review={review} {...(confirm ? { confirm } : {})} />
+        <GSequenceHint />
+        <ShortcutHelpDialog />
+      </HotkeysProvider>,
+    ),
+  };
+}
+
+const undoCalls = (state: ReturnType<typeof installFakeApi>) =>
+  state.requests.filter((r) => r.route === "undo").length;
+const pushUndo = (batchId: number) =>
+  act(() =>
+    stack?.notifyWithUndo({ kind: "action", message: `Moved batch ${batchId}.`, batchIds: [batchId] }),
+  );
 
 describe("HotkeysProvider", () => {
   afterEach(() => vi.useRealTimers());
@@ -114,5 +133,37 @@ describe("HotkeysProvider", () => {
     expect(review.t).not.toHaveBeenCalled();
     await user.keyboard("{Escape}");
     expect(review.escape).toHaveBeenCalledOnce();
+  });
+
+  it("acts once when an action key is held, but repeats navigation keys", async () => {
+    const review = { t: vi.fn(), j: vi.fn() };
+    const { user } = setup(review);
+    await user.keyboard("{t>4/}");
+    expect(review.t).toHaveBeenCalledOnce();
+    await user.keyboard("{j>4/}");
+    expect(review.j).toHaveBeenCalledTimes(4);
+  });
+
+  it("undoes once with mod+Z, even when held, and never inside a text field", async () => {
+    const { state, user } = setup({});
+    pushUndo(2);
+    pushUndo(3);
+    await user.keyboard("{Control>}{z>3/}{/Control}");
+    await screen.findByText(/^Restored [\d,]+ emails? to your inbox\.$/);
+    expect(undoCalls(state)).toBe(1);
+    await user.click(screen.getByRole("textbox", { name: "Search" }));
+    await user.keyboard("{Control>}z{/Control}");
+    expect(undoCalls(state)).toBe(1);
+  });
+
+  it("runs undoLatest exactly once for a single mod+Z", async () => {
+    const { state, user } = setup({});
+    pushUndo(2);
+    pushUndo(3);
+    await user.keyboard("{Control>}z{/Control}");
+    await screen.findByText(/^Restored [\d,]+ emails? to your inbox\.$/);
+    expect(state.requests.filter((r) => r.route === "undo").map((r) => r.url.pathname)).toEqual([
+      "/api/batches/3/undo",
+    ]);
   });
 });

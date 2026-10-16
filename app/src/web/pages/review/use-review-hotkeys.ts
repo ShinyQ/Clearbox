@@ -17,10 +17,10 @@ export function useReviewHotkeys(h: ReviewHotkeyHandlers, enabled: boolean): voi
   useHotkeys(
     "review",
     [
-      { combo: "j", handler: () => h.move("next") },
-      { combo: "arrowdown", handler: () => h.move("next") },
-      { combo: "k", handler: () => h.move("prev") },
-      { combo: "arrowup", handler: () => h.move("prev") },
+      { combo: "j", handler: () => h.move("next"), repeat: true },
+      { combo: "arrowdown", handler: () => h.move("next"), repeat: true },
+      { combo: "k", handler: () => h.move("prev"), repeat: true },
+      { combo: "arrowup", handler: () => h.move("prev"), repeat: true },
       { combo: "x", handler: () => h.toggleActive() },
       { combo: "shift+x", handler: () => h.rangeToActive() },
       { combo: "t", handler: () => h.act("delete") },

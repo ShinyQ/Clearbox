@@ -15,6 +15,8 @@ export interface Binding {
   combo: string;
   handler: (e: KeyboardEvent) => void;
   allowInInputs?: boolean;
+  /** Auto-repeat (a held key) runs the handler again only when true; action keys act once per press. */
+  repeat?: boolean;
 }
 
 export const G_ROUTES: Readonly<Record<string, string>> = {

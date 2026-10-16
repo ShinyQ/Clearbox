@@ -124,6 +124,7 @@ export function HotkeysProvider({ children }: { children: ReactNode }) {
             if (isSingleKey(b.combo) && (!singleRef.current || blocked)) continue;
             if (typing && !b.allowInInputs && key !== "escape") continue;
             e.preventDefault();
+            if (e.repeat && !b.repeat) return;
             b.handler(e);
             return;
           }

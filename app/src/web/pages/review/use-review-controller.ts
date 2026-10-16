@@ -141,14 +141,14 @@ export function useReviewController() {
   const cleanupPhase = cleanup.state.machine.phase;
   const cleanupBusy =
     cleanupPhase === "preparing" || cleanupPhase === "confirming" || cleanupPhase === "running";
+  const bulkRunning = groupActions.bulkProgress !== null;
+  const selectedIdle = () =>
+    groups.filter((g) => selection.selected.has(g.key) && !groupActions.busyKeys.has(g.key));
   const performAction = async (target: ActionKind) => {
-    if (offline || cleanupBusy) return;
+    if (offline || cleanupBusy || bulkRunning) return;
     if (selection.selected.size > 0) {
-      await groupActions.bulk(
-        groups.filter((g) => selection.selected.has(g.key) && !groupActions.busyKeys.has(g.key)),
-        target,
-        asOf,
-      );
+      const picked = selectedIdle();
+      if (picked.length > 0) await groupActions.bulk(picked, target, asOf);
       return;
     }
     if (
@@ -171,12 +171,9 @@ export function useReviewController() {
 
   const bulkAction = (action: BulkAction) => {
     if (action === "approve") {
-      if (offline || cleanupBusy) return;
-      void groupActions.bulk(
-        groups.filter((g) => selection.selected.has(g.key) && !groupActions.busyKeys.has(g.key)),
-        "approve",
-        asOf,
-      );
+      if (offline || cleanupBusy || bulkRunning) return;
+      const picked = selectedIdle();
+      if (picked.length > 0) void groupActions.bulk(picked, "approve", asOf);
     } else void performAction(action);
   };
 

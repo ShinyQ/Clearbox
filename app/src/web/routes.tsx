@@ -36,6 +36,8 @@ export function appRoutes(): RouteObject[] {
               <Outlet />
             </AppShell>
           ),
+          // Keeps RootLayout's providers (and a running Clean up) mounted when a page fails to render.
+          errorElement: <RouteErrorPage />,
           children: [
             { path: "/review", element: <ReviewPage /> },
             { path: "/activity", element: <ActivityPage /> },

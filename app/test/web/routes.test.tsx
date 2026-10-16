@@ -120,4 +120,26 @@ describe("routes (UI spec 3.5)", () => {
     expect(await screen.findByRole("heading", { name: "Something went wrong on this page" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
   });
+
+  it("keeps the root providers mounted when a page inside the shell fails to render", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    function Boom(): never {
+      throw new Error("boom");
+    }
+    const routes = appRoutes();
+    const shell = routes[0]?.children?.find((r) => r.children !== undefined);
+    const insights = shell?.children?.find((r) => r.path === "/insights");
+    if (!insights) throw new Error("insights route missing");
+    insights.element = <Boom />;
+    installFakeApi();
+    const router = createMemoryRouter(routes, { initialEntries: ["/insights"] });
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole("heading", { name: "Something went wrong on this page" })).toBeTruthy();
+    await userEvent.setup().keyboard("?");
+    expect(await screen.findByRole("heading", { name: "Keyboard shortcuts" })).toBeTruthy();
+  });
 });

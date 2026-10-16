@@ -56,6 +56,26 @@ describe("Rules page", () => {
     await waitFor(() => expect(screen.queryByText("You have unsaved changes.")).toBeNull());
   });
 
+  it("shows Scan history and saves All mail as null (rev 2.4)", async () => {
+    const { state, user } = setup();
+    const select = (await screen.findByRole("combobox", { name: "Scan history" })) as HTMLSelectElement;
+    expect(select.value).toBe("90");
+    expect([...select.options].map((o) => o.text)).toEqual([
+      "Last 30 days",
+      "Last 90 days",
+      "Last year",
+      "All mail",
+    ]);
+    expect(screen.getByText(/New mail is always scanned\./)).toBeTruthy();
+    await user.selectOptions(select, "all");
+    await user.click(screen.getAllByRole("button", { name: "Save changes" })[0]!);
+    expect(await screen.findByText("Rules saved. They apply to new emails from now on.")).toBeTruthy();
+    const body = state.requests.find((r) => r.route === "putPolicy")?.body as {
+      policy: { scanHistoryDays: number | null };
+    };
+    expect(body.policy.scanHistoryDays).toBeNull();
+  });
+
   it("validates record words on the client", async () => {
     const { user } = setup();
     await user.type(await screen.findByRole("textbox", { name: "Record words" }), "a{Enter}");

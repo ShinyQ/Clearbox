@@ -141,7 +141,11 @@ insightsRoutes.get("/", async (c) => {
               email: a.email,
               status: a.status,
               paused: a.paused,
-              sync: toAccountSync(a, counts.get(a.id) ?? { pending: 0, awaitingModel: 0 }),
+              sync: toAccountSync(
+                a,
+                counts.get(a.id) ?? { pending: 0, awaitingModel: 0 },
+                settings.policy.scanHistoryDays,
+              ),
             },
           ],
     ),

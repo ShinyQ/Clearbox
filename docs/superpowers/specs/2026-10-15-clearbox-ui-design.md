@@ -3,7 +3,7 @@
 - **Status:** Ready for implementation (derived from the approved mockup v4)
 - **Date:** 2026-10-15
 - **Owner:** ShinyQ
-- **Revision:** rev 2.3 reconciliation (2026-10-16): copy and behavior from implementation layer 5 (model banner, Scan now toasts, Clean up and keeps wording, Undo and keeps, account card status text). See contracts 12.6.
+- **Revision:** rev 2.3 reconciliation (2026-10-16): copy and behavior from implementation layer 5 (model banner, Scan now toasts, Clean up and keeps wording, Undo and keeps, account card status text). See contracts 12.6. Rev 2.4 (2026-10-16): Scan history rule and window-aware progress copy (5.1, 5.3, 5.5, 5.6, 5.8). See contracts 12.7.
 - **Approved mockup:** [`docs/design/clearbox-ui-v4.html`](../../design/clearbox-ui-v4.html)
 - **Companions:** [`2026-10-15-clearbox-design.md`](2026-10-15-clearbox-design.md) (narrative design, section 11 Review UI, section 7 security) and [`2026-10-15-clearbox-contracts.md`](2026-10-15-clearbox-contracts.md) (REST API in section 7, SPA layout in section 1.1, dependencies in section 2). When this spec and the contracts disagree on an API shape, the contracts win; every place where the UI needs something the contracts do not yet provide is listed in section 9.3 with the interim behavior.
 
@@ -1633,7 +1633,7 @@ Tau used everywhere on this page: `preview.threshold` (falls back to `summary.ta
 | Nothing sure | `preview.count === 0`, `summary.pending.total > 0` | SummaryCard `nothing_sure`; list as usual. |
 | Inbox cleared (after a Clean up) | Clean up finished, `preview.count === 0`, groups remain | SummaryCard is replaced by EmptyState `panel`: "Inbox cleared" / "41 groups are waiting for your call. New mail gets sorted every 30 minutes." / secondary "Review the 41 groups" (switches to the All tab and focuses the first row). Shown until the next preview refetch returns `count > 0`. |
 | All caught up | `summary.pending.total === 0`, accounts exist, no account in backfill | Summary, tabs and work area are replaced by EmptyState `page`: "All caught up" / "Nothing needs your attention. New mail gets sorted every 30 minutes." / secondary "Scan now". |
-| First sort | `pending.total === 0` and any in-scope account has `sync.backfillDone === false` | EmptyState `page`: "Sorting your mailbox" / "Clearbox reads your newest emails first. Your first suggestions appear within a few minutes." + ProgressBar (determinate with A4, else indeterminate, label "Sorting progress") + meta "32,118 emails sorted so far". |
+| First sort | `pending.total === 0` and any in-scope account has `sync.backfillDone === false` | EmptyState `page`: "Sorting your mailbox" / "Clearbox reads your newest emails first. Your first suggestions appear within a few minutes." + ProgressBar (determinate with A4, else indeterminate, label "Sorting progress") + meta "32,118 emails sorted so far". Rev 2.4: while a scan history window applies (`sync.scanHistoryDays !== null`) the ProgressBar is indeterminate and the meta reads "Scanning the last 90 days · 32,118 emails sorted so far" ("the last 30 days", "the last year"). |
 | Catching up | some groups exist and an in-scope account is backfilling | Ready layout; header meta "Sorted 1 min ago · catching up"; summary sub-line appends " Still sorting older mail." |
 | Partial | summary or preview failed but groups loaded (or the reverse) | Failed region shows its own error state (SummaryCard `error` or list `error`); the rest works. |
 | Error | all three queries failed | EmptyState `page`: "Couldn't load Review" / "Check your connection, then try again." / secondary "Try again". |
@@ -1847,7 +1847,7 @@ Table columns: "Account" (strong email), "Status" (`AccountStatusItem variant="i
 | Status | Backlog cell | Last sorted | Pending |
 |---|---|---|---|
 | up to date | "0" | `relativeAgo(lastTickAt)` | `sync.pendingCount` |
-| catching up | with A4: "18,400 emails · about 2 days"; without: "Sorting, 32,118 so far" | as above | as above |
+| catching up | with A4: "18,400 emails · about 2 days"; without: "Sorting, 32,118 so far"; rev 2.4 with a scan history window: "Scanning the last 90 days, 32,118 so far" (no count left, no ETA) | as above | as above |
 | waiting | "Retrying in 3 min" | as above | as above |
 | paused | "Paused" | as above | as above |
 | needs reconnect | "Paused" | as above (often "3 days ago") | as above |
@@ -1909,7 +1909,7 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 | Status | Status line | Actions |
 |---|---|---|
 | up to date | "Gmail · up to date · 32,118 emails sorted · connected 15 Oct" | ghost "Scan now", ghost "Pause", ghost "Disconnect" |
-| catching up | "Outlook · catching up, 18,400 left (about 2 days) · connected 15 Oct" (without A4: "Outlook · catching up, 32,118 sorted so far · connected 15 Oct") | ghost "Scan now", ghost "Pause", ghost "Disconnect" |
+| catching up | "Outlook · catching up, 18,400 left (about 2 days) · connected 15 Oct" (without A4: "Outlook · catching up, 32,118 sorted so far · connected 15 Oct"; rev 2.4 with a scan history window: "Outlook · scanning the last 90 days, 32,118 sorted so far · connected 15 Oct", ProgressBar indeterminate) | ghost "Scan now", ghost "Pause", ghost "Disconnect" |
 | waiting | "Gmail · waiting, Gmail asked Clearbox to slow down · retrying in 3 min" | ghost "Pause", ghost "Disconnect" |
 | paused | "Gmail · paused by you · 32,118 emails sorted" | secondary "Resume", ghost "Disconnect" |
 | needs reconnect | "Gmail · paused, needs reconnect" | secondary "Reconnect", ghost "Disconnect" |
@@ -1954,11 +1954,12 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 |---|---|---|---|---|
 | 1 | "Always keep these senders" | "Never suggested for trash or archive." | ChipInput, placeholder "Add sender or @domain" | `allowlist` |
 | 2 | "Always OK to trash" | "Skip the confidence check for these." | ChipInput, same placeholder | `denylist` |
-| 3 | "Leave recent emails alone" | "Don't suggest anything for emails newer than this." | Select (Off, 1 day, 2, 3, 5, 7, 14, 30 days) | `minAgeDays` |
-| 4 | "Protect starred, flagged and replied threads" | "Always on. These are never trashed." | Toggle locked on | none (fixed guardrail) |
-| 5 | "Receipts and attachments go to Archive, not Trash" | "Always on. Emails with files, and emails whose subject or preview contains one of the words below." + nested ChipInput "Record words" (placeholder "Add a word", validation 2 to 40 characters, max 100) | Toggle locked on | `recordPatterns` |
-| 6 | "Store email previews" | "Keeps a short snippet for 30 days to show in Review. Turn off to store subjects only." | Toggle | `storeSnippets` |
-| 7 | "Remember subjects of emails you decide" | "Keeps the first 60 characters of the subject with each decision to improve suggestions. Turn off to keep only the sender." | Toggle | `labelSubjects` |
+| 3 | "Scan history" (rev 2.4) | "How far back Clearbox sorts mail already in your inbox. New mail is always scanned. A longer window picks up where the last scan stopped; a shorter one keeps existing suggestions." | Select (Last 30 days, Last 90 days, Last year, All mail); default Last 90 days | `scanHistoryDays` (30, 90, 365, null) |
+| 4 | "Leave recent emails alone" | "Don't suggest anything for emails newer than this." | Select (Off, 1 day, 2, 3, 5, 7, 14, 30 days) | `minAgeDays` |
+| 5 | "Protect starred, flagged and replied threads" | "Always on. These are never trashed." | Toggle locked on | none (fixed guardrail) |
+| 6 | "Receipts and attachments go to Archive, not Trash" | "Always on. Emails with files, and emails whose subject or preview contains one of the words below." + nested ChipInput "Record words" (placeholder "Add a word", validation 2 to 40 characters, max 100) | Toggle locked on | `recordPatterns` |
+| 7 | "Store email previews" | "Keeps a short snippet for 30 days to show in Review. Turn off to store subjects only." | Toggle | `storeSnippets` |
+| 8 | "Remember subjects of emails you decide" | "Keeps the first 60 characters of the subject with each decision to improve suggestions. Turn off to keep only the sender." | Toggle | `labelSubjects` |
 
 Below the panel, `text-small text-ink-3`: "Rule changes apply to emails sorted from now on. Suggestions already in Review keep their current verdict." and a link button "Reset to defaults" (fills the form with `defaults`, marks dirty; does not save).
 
@@ -2015,7 +2016,7 @@ After at least one account exists, a fourth block appears under the panel: "Sort
 | Account phase | Text |
 |---|---|
 | `sent_backfill` | "Learning who you write to (step 1 of 3)" |
-| `inbox_backfill` | "Sorting your inbox, newest first (step 2 of 3). 2,400 emails sorted." |
+| `inbox_backfill` | "Sorting your inbox, newest first (step 2 of 3). 2,400 emails sorted." Rev 2.4 with a scan history window: "Sorting the last 90 days of your inbox, newest first (step 2 of 3). 2,400 emails sorted." |
 | `incremental` | "Caught up (step 3 of 3)." |
 
 and a primary button "Go to Review" (disabled with helper "Your first suggestions appear within a few minutes." until `summary.pending.total > 0`; then enabled with helper "412 sender groups are ready."). Accounts poll every 15 s here.

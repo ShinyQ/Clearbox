@@ -41,7 +41,7 @@ describe("accounts repository", () => {
     expect((await listAccounts(env.DB, { includeDisconnected: true })).length).toBe(3);
     expect((await findOpenAccountByEmail(env.DB, "gmail", "one@example.com"))?.id).toBe(a.id);
     expect(await findOpenAccountByEmail(env.DB, "outlook", "one@example.com")).toBeNull();
-    const view = toAccountView(b, { pending: 2, awaitingModel: 1 });
+    const view = toAccountView(b, { pending: 2, awaitingModel: 1 }, 90);
     expect(view).toMatchObject({
       id: b.id,
       provider: "outlook",

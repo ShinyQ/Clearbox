@@ -4,6 +4,8 @@ import {
   fieldErrors,
   policiesEqual,
   removeEntry,
+  scanHistoryDaysOf,
+  scanHistoryValue,
   validateRecordWord,
   validateSenderEntry,
 } from "../../../src/web/lib/rules-draft.ts";
@@ -12,6 +14,14 @@ import { makePolicyResponse } from "../msw/fixtures.ts";
 const { policy } = makePolicyResponse();
 
 describe("rules draft", () => {
+  it("maps Scan history select values to policy days and back (rev 2.4)", () => {
+    for (const days of [30, 90, 365, null] as const) {
+      expect(scanHistoryDaysOf(scanHistoryValue(days))).toBe(days);
+    }
+    expect(scanHistoryValue(null)).toBe("all");
+    expect(policy.scanHistoryDays).toBe(90);
+  });
+
   it("moves an entry between lists", () => {
     const out = addEntry(policy, "allowlist", "promo@northwind.example");
     expect(out.movedFrom).toBe("denylist");

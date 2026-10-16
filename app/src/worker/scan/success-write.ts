@@ -28,7 +28,13 @@ export interface AccountCursorState {
 
 export type PageOutcome =
   | { kind: "sent_backfill"; itemCount: number; nextCursor: string | null }
-  | { kind: "inbox_backfill"; nextCursor: string | null; partial: boolean }
+  | {
+      kind: "inbox_backfill";
+      nextCursor: string | null;
+      partial: boolean;
+      /** Rev 2.4: the page reached past the scan history window (see applyScanWindow). */
+      windowEdge?: boolean;
+    }
   | {
       kind: "incremental";
       startCursor: string;
@@ -76,6 +82,12 @@ export function computeAdvance(
     }
     case "inbox_backfill":
       if (out.partial) return next;
+      if (out.windowEdge === true) {
+        // Rev 2.4: the window is covered. backfill_done stays 0 (older mail exists) and the cursor stays at this
+        // page's start, so widening the window resumes here instead of restarting from the newest mail.
+        next.phase = "incremental";
+        return next;
+      }
       next.backfill_cursor = out.nextCursor;
       if (out.nextCursor === null) {
         next.phase = "incremental";

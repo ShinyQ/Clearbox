@@ -23,6 +23,24 @@ function setup(mutate?: (s: FakeApiState) => void, path = "/accounts") {
 }
 
 describe("Accounts page", () => {
+  it("shows the scan history window instead of a whole-inbox backlog (rev 2.4)", async () => {
+    setup((s) => {
+      s.accounts = s.accounts.map((a) =>
+        a.provider === "outlook" ? { ...a, sync: { ...a.sync, scanHistoryDays: 90 } } : a,
+      );
+    });
+    const outlook = await screen.findByRole("group", { name: "you@example.net" });
+    expect(
+      within(outlook).getByText(/^Outlook · scanning the last 90 days, [\d,]+ sorted so far · connected /),
+    ).toBeTruthy();
+    expect(within(outlook).queryByText(/left \(/)).toBeNull();
+    expect(
+      within(outlook)
+        .getByRole("progressbar", { name: "Sorting progress for you@example.net" })
+        .getAttribute("aria-valuenow"),
+    ).toBeNull();
+  });
+
   it("shows a card per account with status lines, actions and the footer note", async () => {
     const { container } = setup();
     const gmail = await screen.findByRole("group", { name: "you@example.com" });

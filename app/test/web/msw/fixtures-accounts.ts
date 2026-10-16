@@ -25,6 +25,7 @@ export function makeSync(overrides: Partial<AccountSync> = {}): AccountSync {
     lastErrorCode: null,
     pageSize: 25,
     inboxEstimate: null,
+    scanHistoryDays: null,
     ...overrides,
   };
 }

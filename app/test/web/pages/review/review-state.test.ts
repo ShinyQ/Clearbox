@@ -63,7 +63,7 @@ describe("review-state", () => {
 
   it("averages first-sort progress when every estimate is known", () => {
     const accounts = createFakeApiState().accounts;
-    expect(firstSortProgress(accounts)).toEqual({ value: 0.41, sorted: 40_318 });
+    expect(firstSortProgress(accounts)).toEqual({ value: 0.41, sorted: 40_318, scope: null });
     expect(
       firstSortProgress([
         makeAccount({

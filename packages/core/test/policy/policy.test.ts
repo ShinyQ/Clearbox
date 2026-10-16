@@ -7,6 +7,8 @@ import {
   matchRecordPattern,
   matchesSenderList,
   parsePolicy,
+  scanHistoryCutoff,
+  scanHistoryWidened,
 } from "../../src/policy/policy.ts";
 
 describe("SenderEntrySchema", () => {
@@ -30,6 +32,19 @@ describe("PolicySchema", () => {
 
   it("rejects unknown keys (strict)", () => {
     expect(PolicySchema.safeParse({ ...DEFAULT_POLICY, extra: true }).success).toBe(false);
+  });
+
+  it("accepts only 30, 90, 365 or null for scanHistoryDays and requires the key", () => {
+    for (const v of [30, 90, 365, null]) {
+      expect(PolicySchema.safeParse({ ...DEFAULT_POLICY, scanHistoryDays: v }).success).toBe(true);
+    }
+    for (const v of [0, 60, 91, "90", 3650]) {
+      expect(PolicySchema.safeParse({ ...DEFAULT_POLICY, scanHistoryDays: v }).success).toBe(false);
+    }
+    const missing: Record<string, unknown> = { ...DEFAULT_POLICY };
+    delete missing["scanHistoryDays"];
+    expect(PolicySchema.safeParse(missing).success).toBe(false);
+    expect(DEFAULT_POLICY.scanHistoryDays).toBe(90);
   });
 
   it("enforces minAgeDays bounds and integer", () => {
@@ -68,9 +83,41 @@ describe("parsePolicy", () => {
     expect(parsePolicy(JSON.stringify(stored))).toEqual(stored);
   });
 
+  it("defaults scanHistoryDays to 90 for a policy stored before rev 2.4", () => {
+    const legacy: Record<string, unknown> = { ...DEFAULT_POLICY };
+    delete legacy["scanHistoryDays"];
+    const parsed = parsePolicy(JSON.stringify({ ...legacy, minAgeDays: 7 }));
+    expect(parsed.scanHistoryDays).toBe(90);
+    expect(parsed.minAgeDays).toBe(7);
+  });
+
+  it("keeps a stored scanHistoryDays, including null (all mail)", () => {
+    expect(parsePolicy(JSON.stringify({ ...DEFAULT_POLICY, scanHistoryDays: 365 })).scanHistoryDays).toBe(
+      365,
+    );
+    expect(
+      parsePolicy(JSON.stringify({ ...DEFAULT_POLICY, scanHistoryDays: null })).scanHistoryDays,
+    ).toBeNull();
+  });
+
   it("throws ZodError for invalid JSON or an invalid policy", () => {
     expect(() => parsePolicy("{not json")).toThrow(ZodError);
     expect(() => parsePolicy(JSON.stringify({ ...DEFAULT_POLICY, minAgeDays: "3" }))).toThrow(ZodError);
+  });
+});
+
+describe("scan history helpers", () => {
+  it("computes the cutoff, null for all mail", () => {
+    expect(scanHistoryCutoff(90, 100 * 86_400_000)).toBe(10 * 86_400_000);
+    expect(scanHistoryCutoff(null, 1)).toBeNull();
+  });
+
+  it("detects widening; all mail is the widest", () => {
+    expect(scanHistoryWidened(30, 90)).toBe(true);
+    expect(scanHistoryWidened(90, null)).toBe(true);
+    expect(scanHistoryWidened(90, 90)).toBe(false);
+    expect(scanHistoryWidened(365, 30)).toBe(false);
+    expect(scanHistoryWidened(null, 365)).toBe(false);
   });
 });
 

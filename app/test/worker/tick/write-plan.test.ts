@@ -150,6 +150,26 @@ describe("computeAdvance", () => {
     expect(
       computeAdvance(CUR, { kind: "inbox_backfill", nextCursor: null, partial: true }, null, NOW),
     ).toMatchObject({ phase: "inbox_backfill", backfill_cursor: "b-1", nextTickAt: NOW });
+    // Rev 2.4 window edge: incremental, cursor kept at the page start, backfill_done stays 0, even at the end.
+    for (const nextCursor of ["b-2", null]) {
+      expect(
+        computeAdvance(
+          CUR,
+          { kind: "inbox_backfill", nextCursor, partial: false, windowEdge: true },
+          null,
+          NOW,
+        ),
+      ).toMatchObject({ phase: "incremental", backfill_done: 0, backfill_cursor: "b-1", nextTickAt: NOW });
+    }
+    // A partial edge page is resumed first; the edge is decided once the page is complete.
+    expect(
+      computeAdvance(
+        CUR,
+        { kind: "inbox_backfill", nextCursor: "b-2", partial: true, windowEdge: true },
+        null,
+        NOW,
+      ),
+    ).toMatchObject({ phase: "inbox_backfill", backfill_cursor: "b-1" });
     expect(
       computeAdvance(
         CUR,

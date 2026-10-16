@@ -13,6 +13,7 @@ import {
 } from "../db/accounts.ts";
 import type { Account } from "../db/accounts.ts";
 import { auditStmt } from "../db/audit.ts";
+import { readSettings } from "../db/settings.ts";
 import { countOpenByAccount, dismissOpenStmt } from "../db/suggestions.ts";
 import type { AppEnv } from "../env.ts";
 import { logEvent } from "../log.ts";
@@ -31,11 +32,15 @@ export async function loadVisibleAccount(db: D1Database, id: string): Promise<Ac
 
 export async function accountViews(db: D1Database, accounts: readonly Account[]): Promise<AccountView[]> {
   const visible = accounts.filter((a) => a.status !== "disconnected");
-  const counts = await countOpenByAccount(
-    db,
-    visible.map((a) => a.id),
-  );
-  return visible.map((a) => toAccountView(a, counts.get(a.id) ?? { pending: 0, awaitingModel: 0 }));
+  const [counts, settings] = await Promise.all([
+    countOpenByAccount(
+      db,
+      visible.map((a) => a.id),
+    ),
+    readSettings(db),
+  ]);
+  const days = settings.policy.scanHistoryDays;
+  return visible.map((a) => toAccountView(a, counts.get(a.id) ?? { pending: 0, awaitingModel: 0 }, days));
 }
 
 accountsRoutes.get("/", async (c) => {

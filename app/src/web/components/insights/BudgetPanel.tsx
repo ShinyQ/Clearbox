@@ -5,6 +5,7 @@ import {
   deriveAccountUiStatus,
   etaText,
   minutesUntil,
+  scanWindowText,
 } from "../../lib/account-status.ts";
 import { formatCount, formatMb, formatUsd, localResetTime, relativeAgo } from "../../lib/format.ts";
 import { AccountStatusItem } from "../shell/AccountStatusItem.tsx";
@@ -23,6 +24,8 @@ export function backlogText(a: Row, rate: number, now: number): string {
   if (status === "waiting")
     return `Retrying in ${a.sync.backoffUntil ? minutesUntil(a.sync.backoffUntil, now) : 1} min`;
   if (status !== "catching_up") return "Paused";
+  const scope = scanWindowText(a.sync.scanHistoryDays);
+  if (scope !== null) return `Scanning ${scope}, ${formatCount(a.sync.messagesIngested)} so far`;
   const remaining = backlogRemaining(a);
   return remaining === null
     ? `Sorting, ${formatCount(a.sync.messagesIngested)} so far`

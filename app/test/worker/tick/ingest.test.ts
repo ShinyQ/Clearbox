@@ -12,6 +12,7 @@ import { makeMailMessage } from "@clearbox/core/testing";
 import { describe, expect, it } from "vitest";
 import {
   decideStage,
+  applyScanWindow,
   dropBeyondRetention,
   emptyContext,
   finalize,
@@ -75,6 +76,43 @@ describe("dropBeyondRetention", () => {
     const { kept, skippedOld } = dropBeyondRetention(messages, NOW);
     expect(kept.map((m) => m.providerMessageId)).toEqual(["fresh", "edge", "undated"]);
     expect(skippedOld).toBe(2);
+  });
+});
+
+describe("applyScanWindow (rev 2.4)", () => {
+  const cutoff = NOW - 30 * DAY;
+
+  it("drops mail before the cutoff, keeps the cutoff itself and undated mail", () => {
+    const messages = [
+      msg("new", "a@shop.example", { receivedAt: NOW - DAY }),
+      msg("at-cutoff", "a@shop.example", { receivedAt: cutoff }),
+      msg("undated", "a@shop.example", { receivedAt: 0 }),
+      msg("old", "a@shop.example", { receivedAt: cutoff - 1 }),
+    ];
+    const out = applyScanWindow(messages, cutoff);
+    expect(out.kept.map((x) => x.providerMessageId)).toEqual(["new", "at-cutoff", "undated"]);
+    expect(out).toMatchObject({ skippedOld: 1, edgeReached: true });
+  });
+
+  it("reaches the edge only when the page's last (oldest) message is outside the window", () => {
+    const stray = [
+      msg("a", "a@shop.example", { receivedAt: NOW - DAY }),
+      msg("stray-old", "a@shop.example", { receivedAt: cutoff - DAY }),
+      msg("b", "a@shop.example", { receivedAt: NOW - 2 * DAY }),
+    ];
+    expect(applyScanWindow(stray, cutoff)).toMatchObject({ skippedOld: 1, edgeReached: false });
+    const undatedLast = [
+      msg("old", "a@shop.example", { receivedAt: cutoff - DAY }),
+      msg("u", "a@shop.example", { receivedAt: 0 }),
+    ];
+    expect(applyScanWindow(undatedLast, cutoff).edgeReached).toBe(false);
+    expect(applyScanWindow([], cutoff)).toEqual({ kept: [], skippedOld: 0, edgeReached: false });
+  });
+
+  it("keeps everything for all mail (null cutoff)", () => {
+    const messages = [msg("ancient", "a@shop.example", { receivedAt: 1 })];
+    expect(applyScanWindow(messages, null)).toMatchObject({ skippedOld: 0, edgeReached: false });
+    expect(applyScanWindow(messages, null).kept).toHaveLength(1);
   });
 });
 

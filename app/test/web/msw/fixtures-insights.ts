@@ -63,6 +63,7 @@ export function makePolicyResponse(): PolicyResponse {
     storeSnippets: true,
     labelSubjects: true,
     recordPatterns: ["receipt", "invoice", "tax", "statement", "contract", "medical", "legal"],
+    scanHistoryDays: 90 as const,
   };
   return {
     policy: {

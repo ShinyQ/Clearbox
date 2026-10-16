@@ -1,4 +1,4 @@
-import type { Policy } from "@clearbox/core";
+import type { Policy, ScanHistoryDays } from "@clearbox/core";
 import { z } from "zod";
 import { PatchSenderBodySchema } from "../../shared/api.ts";
 import type { ChipValidation } from "../components/ui/ChipInput.tsx";
@@ -18,6 +18,22 @@ export const MIN_AGE_OPTIONS = [
   { value: "0", label: "Off" },
   ...[1, 2, 3, 5, 7, 14, 30].map((d) => ({ value: String(d), label: d === 1 ? "1 day" : `${d} days` })),
 ] as const satisfies readonly { value: string; label: string }[];
+
+/** Rev 2.4 Scan history select; "all" maps to null (all mail). */
+export const SCAN_HISTORY_OPTIONS = [
+  { value: "30", label: "Last 30 days" },
+  { value: "90", label: "Last 90 days" },
+  { value: "365", label: "Last year" },
+  { value: "all", label: "All mail" },
+] as const satisfies readonly { value: string; label: string }[];
+
+export type ScanHistoryValue = (typeof SCAN_HISTORY_OPTIONS)[number]["value"];
+
+export const scanHistoryValue = (days: ScanHistoryDays): ScanHistoryValue =>
+  days === null ? "all" : days === 30 ? "30" : days === 365 ? "365" : "90";
+
+export const scanHistoryDaysOf = (value: ScanHistoryValue): ScanHistoryDays =>
+  value === "all" ? null : value === "30" ? 30 : value === "365" ? 365 : 90;
 
 const other = (list: ListKey): ListKey => (list === "allowlist" ? "denylist" : "allowlist");
 
@@ -58,6 +74,7 @@ const POLICY_KEYS = [
   "storeSnippets",
   "labelSubjects",
   "recordPatterns",
+  "scanHistoryDays",
 ] as const;
 
 /** Maps validation_failed details ({ path, message }[]) to one message per field. */

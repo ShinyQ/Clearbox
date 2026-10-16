@@ -1,4 +1,4 @@
-import type { ProviderKind } from "@clearbox/core";
+import type { ProviderKind, ScanHistoryDays } from "@clearbox/core";
 import type { AccountPhase, AccountStatus, AccountSync, AccountView } from "../../shared/api.ts";
 import type { EncryptedValue } from "../crypto/aead.ts";
 import { bytesFromBlob } from "../crypto/base64.ts";
@@ -317,10 +317,12 @@ export interface OpenCounts {
   awaitingModel: number;
 }
 
-export function toAccountSync(a: Account, counts: OpenCounts): AccountSync {
+export function toAccountSync(a: Account, counts: OpenCounts, scanHistoryDays: ScanHistoryDays): AccountSync {
   return {
     phase: a.phase,
-    backfillDone: a.backfillDone,
+    // Rev 2.4: phase incremental also follows a backfill that stopped at the scan history window edge
+    // (backfill_done stays 0 there so a wider window can resume it).
+    backfillDone: a.backfillDone || a.phase === "incremental",
     messagesIngested: a.messagesIngested,
     pendingCount: counts.pending,
     awaitingModelCount: counts.awaitingModel,
@@ -330,10 +332,11 @@ export function toAccountSync(a: Account, counts: OpenCounts): AccountSync {
     lastErrorCode: a.lastError,
     pageSize: a.pageSize,
     inboxEstimate: a.inboxEstimate,
+    scanHistoryDays,
   };
 }
 
-export function toAccountView(a: Account, counts: OpenCounts): AccountView {
+export function toAccountView(a: Account, counts: OpenCounts, scanHistoryDays: ScanHistoryDays): AccountView {
   if (a.status === "disconnected") throw new Error("disconnected accounts have no view");
   const status: AccountStatus = a.status;
   return {
@@ -344,7 +347,7 @@ export function toAccountView(a: Account, counts: OpenCounts): AccountView {
     statusReason: a.statusReason,
     paused: a.paused,
     archiveSupported: a.provider === "gmail" || a.archiveFolderId !== null,
-    sync: toAccountSync(a, counts),
+    sync: toAccountSync(a, counts, scanHistoryDays),
     createdAt: toIso(a.createdAt),
   };
 }

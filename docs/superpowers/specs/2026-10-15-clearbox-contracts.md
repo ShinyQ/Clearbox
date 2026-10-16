@@ -1,6 +1,6 @@
 # Clearbox: Shared Contracts
 
-- **Status:** Approved, rev 2.3 (pairs with design spec rev 2; rev 2.1, 2.2 and 2.3 changes are summarized in section 12)
+- **Status:** Approved, rev 2.4 (pairs with design spec rev 2; rev 2.1, 2.2, 2.3 and 2.4 changes are summarized in section 12)
 - **Date:** 2026-10-15
 - **Scope:** the single source of truth for every name, type, file path, table, route, env var, constant and dependency version that implementation plans reference. The design spec (`2026-10-15-clearbox-design.md`) is the narrative; when the two disagree, **this document wins** and the spec must be fixed.
 - **Rule for plan authors:** do not invent shared names. If something shared is missing here, add it to this document in the same change that needs it, and keep the spec consistent.
@@ -1156,6 +1156,12 @@ export const SenderEntrySchema = z
   .max(254)
   .regex(/^(@|[^@\s]+@)[a-z0-9-]+(\.[a-z0-9-]+)+$/, "expected user@domain or @domain");
 
+/** Rev 2.4: inbox backfill window in days; null scans all mail. New mail is always scanned. */
+export const SCAN_HISTORY_DAYS_OPTIONS = [30, 90, 365] as const;
+export const DEFAULT_SCAN_HISTORY_DAYS = 90;
+export const ScanHistoryDaysSchema = z.union([z.literal(30), z.literal(90), z.literal(365)]).nullable();
+export type ScanHistoryDays = z.infer<typeof ScanHistoryDaysSchema>;
+
 export const PolicySchema = z
   .object({
     allowlist: z.array(SenderEntrySchema).max(1000),
@@ -1164,6 +1170,7 @@ export const PolicySchema = z
     storeSnippets: z.boolean(),
     labelSubjects: z.boolean(),
     recordPatterns: z.array(z.string().trim().toLowerCase().min(2).max(40)).max(100),
+    scanHistoryDays: ScanHistoryDaysSchema,              // rev 2.4, required in PUT bodies
   })
   .strict();
 
@@ -1176,10 +1183,20 @@ export const DEFAULT_POLICY: Policy = {
   storeSnippets: true,
   labelSubjects: true,
   recordPatterns: ["receipt", "invoice", "tax", "statement", "contract", "medical", "legal"],
+  scanHistoryDays: DEFAULT_SCAN_HISTORY_DAYS,
 };
 
-/** Parses stored JSON; returns DEFAULT_POLICY when input is null; throws ZodError when invalid. */
+/**
+ * Parses stored JSON; returns DEFAULT_POLICY when input is null; throws ZodError when invalid.
+ * Rev 2.4: a stored policy without scanHistoryDays (written before rev 2.4) reads as DEFAULT_SCAN_HISTORY_DAYS.
+ */
 export declare function parsePolicy(json: string | null): Policy;
+
+/** Rev 2.4: now - days * 86_400_000, or null for all mail. */
+export declare function scanHistoryCutoff(days: ScanHistoryDays, now: number): number | null;
+
+/** Rev 2.4: true when `next` reaches further back than `prev` (null, all mail, is the widest). */
+export declare function scanHistoryWidened(prev: ScanHistoryDays, next: ScanHistoryDays): boolean;
 
 /** True when address equals an entry, or an "@domain" entry equals the domain or is a parent domain of it. */
 export declare function matchesSenderList(address: string, domain: string, list: readonly string[]): boolean;
@@ -2134,7 +2151,7 @@ Transitions: `awaiting_model -> pending`; `pending -> approved -> executed | fai
 | Key | JSON value | Written by |
 |---|---|---|
 | `tau_delete` | number in [0.80, 0.99] | migration, nightly calibration |
-| `policy` | `Policy` (absent = `DEFAULT_POLICY`) | `PUT /api/policy`, `PATCH /api/policy/senders` |
+| `policy` | `Policy` (absent = `DEFAULT_POLICY`; rev 2.4: absent `scanHistoryDays` = 90) | `PUT /api/policy`, `PATCH /api/policy/senders` |
 | `policy_version` | integer, +1 per policy change | same |
 | `calibration` | `CalibrationResult` plus `ranAt` (epoch ms) | nightly |
 | `issues` | `AppIssue[]` (7.2) | ticks, OAuth, nightly; cleared when the condition clears |
@@ -2309,7 +2326,7 @@ export interface MeResponse {
 ```ts
 export interface AccountSync {
   phase: AccountPhase;
-  backfillDone: boolean;
+  backfillDone: boolean;                   // rev 2.4: backfill_done = 1 OR phase = 'incremental' (window edge counts)
   messagesIngested: number;
   pendingCount: number;
   awaitingModelCount: number;
@@ -2318,6 +2335,8 @@ export interface AccountSync {
   backoffUntil: string | null;
   lastErrorCode: string | null;
   pageSize: number;
+  inboxEstimate: number | null;            // rev 2.1 A4
+  scanHistoryDays: ScanHistoryDays;        // rev 2.4: policy.scanHistoryDays at read time
 }
 
 export interface AccountView {
@@ -2632,6 +2651,8 @@ export const PatchSenderBodySchema = z.strictObject({
 
 Every change increments `policy_version` and writes audit `policy_updated` (`result` = counts of list sizes only). Adding to one list removes the entry from the other. Policy changes apply to suggestions created afterwards; existing pending suggestions are not recomputed in v1.
 
+Rev 2.4: when `PUT /api/policy` widens `scanHistoryDays` (`scanHistoryWidened(stored, body)`), the same guarded batch also runs `UPDATE accounts SET phase = 'inbox_backfill', next_tick_at = MIN(next_tick_at, now), updated_at = now WHERE phase = 'incremental' AND backfill_done = 0 AND status <> 'disconnected'` under the `policy_version = expectedVersion` predicate. Those are the accounts whose backfill stopped at the old window edge (8.3); their `backfill_cursor` is untouched, so the backfill resumes where it stopped. Accounts with `backfill_done = 1` scanned their whole inbox and are not changed. Narrowing the window changes no account and deletes no suggestion.
+
 ### 7.12 OAuth state cookie
 
 - Name `__Host-clearbox_oauth`; attributes `HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`.
@@ -2852,6 +2873,14 @@ runTick(env, opts):
 - Logging: `tick.done` carries `skippedOld` (a count, no ids). `TickReport` is unchanged.
 - Implementation: pure `dropBeyondRetention(messages, now): { kept, skippedOld }` in `app/src/worker/scan/ingest.ts`.
 
+**Scan history window (rev 2.4, owner decision).** During an `inbox_backfill` tick, `processAccount` computes `cutoff = scanHistoryCutoff(policy.scanHistoryDays, now)` (policy from the claim batch's settings; absent field = 90 days) and drops every page message with `0 < receivedAt < cutoff` before `identify` and the context reads, so dropped items cost no D1 reads, no Decision-1 calls and no writes. `edgeReached` is true when the page's last message (the oldest; pages are newest first) is outside the window. Undated mail (`receivedAt <= 0`) is kept and never marks the edge. A stray old message in the middle of a page is dropped but does not end the backfill.
+
+- Edge reached and the page complete (not `partial`): the backfill ends at the window (8.3). The cursor is not advanced, so a wider window later re-reads this page (its in-window items are skipped as known) and continues.
+- Scope: `inbox_backfill` only. `incremental` (new mail is always scanned, subject only to the retention skip above), `sent_backfill` and `redecide` are unaffected.
+- Logging: the dropped count is added to `skippedOld` in `tick.done`. `TickReport` is unchanged (`fetched` still counts what the provider returned).
+- Budget: no extra subrequest or D1 call (8.4 unchanged); an edge tick writes fewer rows than a normal backfill tick.
+- Implementation: pure `applyScanWindow(messages, cutoff): { kept, skippedOld, edgeReached }` in `app/src/worker/scan/ingest.ts`; `PageOutcome` `inbox_backfill` carries `windowEdge`.
+
 `CLAIM_SQL` (exact; `?1` holder, `?2` now, `?3` expires_at, `?4` accountId or NULL, `?5` force 0/1, `?6` today, `?7` ingest stop rows):
 
 ```sql
@@ -2887,12 +2916,15 @@ A worker test must exercise this statement against the real D1 SQLite (overlap, 
 | `sent_backfill` finished (no next cursor or cap reached) | `inbox_backfill` | `now` |
 | `inbox_backfill`, more pages | stays | `now` |
 | `inbox_backfill`, `nextCursor = null` | `incremental`, `backfill_done = 1` | `now` |
+| `inbox_backfill`, page reached the scan history window edge (rev 2.4; wins over `nextCursor = null`) | `incremental`, `backfill_done` stays 0, `backfill_cursor` unchanged | `now` |
 | `incremental` during `inbox_backfill` phase | stays `inbox_backfill` | `now` |
 | `incremental`, `caughtUp = false` | stays | `now` |
 | `incremental`, `caughtUp = true`, phase `incremental` | stays | `now + POLL_INTERVAL_MS` |
 | `redecide` | unchanged | `now` |
 
 Rev 2.3: the incremental retention skip (8.2) does not change phases or scheduling; a page whose `added` items are all dropped still advances the cursor like any processed page.
+
+Rev 2.4: `phase = 'incremental' AND backfill_done = 0` means "backfill stopped at the scan history window edge, resumable from `backfill_cursor`"; `backfill_done = 1` means the whole inbox was scanned. No schema change: `backfill_done` keeps its `CHECK (backfill_done IN (0, 1))`. Widening the window moves edge-stopped accounts back to `inbox_backfill` (7.11). A stale stored cursor on resume follows the existing rule (restart from the newest mail; known ids are skipped).
 
 `watermark_received_at` = max `receivedAt` ingested so far (any kind). Round robin: the claim orders by `last_tick_at` (nulls first), so accounts with work alternate minute by minute; with one account and a backlog, the account is ticked every minute.
 
@@ -3130,3 +3162,13 @@ Rev 2.3 records decisions and deviations made while building layers 1 to 6 (evid
 - **Logging (9):** `tick.done` adds `skippedOld`; `request.error` is also logged on 200 responses with `errorName: "InvalidStoredReason"` and a `skippedReasons` count, on unexpected OAuth callback and connect failures, on disconnect decrypt failures, and on non-provider errors in provider calls during owner actions.
 - **Audit (12.1 A5):** tick-written `reauth_required` and `config_error` rows store `{ "reason": <code> }` while `db/audit.ts` normalizes owner-path rows of those kinds to `{}` (C27); consumers must not rely on either shape.
 - **UI spec copy:** the model banner sentence "This clears after the next successful sort.", the `decision_not_configured` copy reused by Setup step 2, the Scan now toasts, the zero-executed Clean up toast, the keeps wording, "1 old record removed", the skipped-account line in the Clean up confirm copy and the undo partial toast are now in the UI spec (5.1, 5.2, 5.4, 5.8, 6.8); account cards show status as text without a dot (5.5). These are UI spec edits, not contract changes.
+
+### 12.7 Rev 2.4 (2026-10-16, scan history window)
+
+Owner decision: limit the inbox backfill to recent mail ("Last 90 days, plus all new mail going forward"). Binding; overrides earlier sections where they differ. No D1 migration.
+
+- **Policy (4.6, 6.3, 7.11):** new required field `scanHistoryDays: 30 | 90 | 365 | null` (null = all mail), default 90. A stored policy without the field (every deployment before rev 2.4) reads as 90, so the live backfill stops at 90 days after deploy. `PUT /api/policy` rejects other values with `400 validation_failed`. Widening resumes edge-stopped accounts in the same guarded batch; narrowing changes no account and deletes no suggestion.
+- **Tick (8.2, 8.3):** `inbox_backfill` drops mail older than the window before any read (`applyScanWindow`), and a page that reaches past the window ends the backfill with `phase = 'incremental'`, `backfill_done = 0` and the cursor left at that page's start. Incremental sync, sent backfill and redecide are unchanged. 8.4 subrequest and 6.4 row budgets are unchanged (dropped mail costs nothing).
+- **API (7.2):** `AccountSync.scanHistoryDays` mirrors the policy; `AccountSync.backfillDone` is true once `phase = 'incremental'` (window edge or whole inbox). `inboxEstimate` keeps meaning the whole inbox; with a window it is not the backlog.
+- **Estimate:** no windowed count is fetched. Gmail `resultSizeEstimate` for a `q=after:` query is documented as an estimate and is often far off, and a Graph `$count` with a `receivedDateTime` filter adds a request per day whose behavior on personal Outlook accounts was not verified. The UI therefore shows the window ("Scanning the last 90 days") with no remaining count, fraction or ETA while a window applies; with All mail the A4 behavior is unchanged.
+- **UI spec:** Rules gains the "Scan history" field; Accounts, Insights, Review first sort and Setup name the window instead of a whole-inbox backlog (UI spec 5.1, 5.3, 5.5, 5.6, 5.8).

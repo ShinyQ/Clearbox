@@ -1,4 +1,4 @@
-import { DEFAULT_POLICY, PolicySchema } from "@clearbox/core";
+import { DEFAULT_POLICY, PolicySchema, scanHistoryWidened } from "@clearbox/core";
 import type { Policy } from "@clearbox/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -35,7 +35,12 @@ policyRoutes.get("/", (c) => policyResponse(c));
 
 policyRoutes.put("/", async (c) => {
   const body = parseWith(PutPolicyBodySchema, await readJsonBody(c));
-  const version = await writePolicy(c.env.DB, body.policy, body.expectedVersion, c.get("deps").now());
+  // If the stored policy changes after this read, expectedVersion no longer matches and the whole batch is a no-op.
+  const current = await readSettings(c.env.DB);
+  const resumeBackfill = scanHistoryWidened(current.policy.scanHistoryDays, body.policy.scanHistoryDays);
+  const version = await writePolicy(c.env.DB, body.policy, body.expectedVersion, c.get("deps").now(), {
+    resumeBackfill,
+  });
   if (version === null) throw new ApiError(409, "conflict", "The policy changed; reload and try again");
   return policyResponse(c);
 });

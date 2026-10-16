@@ -40,7 +40,7 @@ export function WeeklyChart({ weeks, state }: WeeklyChartProps) {
         {weeks.map((w, i) => (
           <div key={w.weekStart} className="group relative flex h-full flex-1 items-end">
             <span
-              role="button"
+              role="img"
               tabIndex={0}
               aria-label={`${label(i, w)}: ${formatCount(w.cleaned)} cleaned, ${formatCount(w.undone)} undone`}
               className={`cb-bar-height block min-h-[2px] w-full rounded-t-[4px] rounded-b-[2px] outline-offset-2 ${i === weeks.length - 1 ? "bg-accent" : "bg-accent-bar"}`}

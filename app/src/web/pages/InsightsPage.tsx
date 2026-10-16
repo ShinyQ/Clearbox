@@ -53,6 +53,16 @@ function MatchPanel({ data, now }: { data: Insights; now: number }) {
   );
 }
 
+function LoadingLines() {
+  return (
+    <div aria-hidden="true" className="flex flex-col gap-3 p-4">
+      <SkeletonLine width={200} height={14} />
+      <SkeletonLine width="80%" />
+      <SkeletonLine width="60%" />
+    </div>
+  );
+}
+
 export function InsightsPage() {
   useDocumentTitle("Insights · Clearbox");
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -68,7 +78,7 @@ export function InsightsPage() {
     <div className="max-w-[1040px]">
       <PageHeader title="Insights" titleRef={titleRef} />
       <AppBanners page="insights" awaitingModel={awaiting} />
-      {insights.isError ? (
+      {!data && insights.isError ? (
         <EmptyState
           variant="panel"
           title="Couldn't load insights."
@@ -76,19 +86,19 @@ export function InsightsPage() {
           action={{ label: "Try again", onClick: () => void insights.refetch() }}
         />
       ) : !data ? (
-        <div aria-busy="true" className="flex flex-col gap-3.5">
+        <div aria-busy="true">
           <span className="sr-only">Loading insights</span>
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              aria-hidden="true"
-              className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4"
-            >
-              <SkeletonLine width={200} height={14} />
-              <SkeletonLine width="80%" />
-              <SkeletonLine width="60%" />
-            </div>
-          ))}
+          <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[1.4fr_1fr]">
+            <Panel title="How well Clearbox matches you">
+              <LoadingLines />
+            </Panel>
+            <Panel title="Emails cleaned per week">
+              <WeeklyChart weeks={[]} state="loading" />
+            </Panel>
+          </div>
+          <Panel className="mt-3.5" title="Accounts and daily budget">
+            <LoadingLines />
+          </Panel>
         </div>
       ) : (
         <>

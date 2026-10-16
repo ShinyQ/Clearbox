@@ -13,11 +13,12 @@ import { Table } from "../ui/Table.tsx";
 
 type Row = Insights["accounts"][number];
 
+function toAccountView(a: Row) {
+  return { ...a, statusReason: null, archiveSupported: true, createdAt: "" };
+}
+
 export function backlogText(a: Row, rate: number, now: number): string {
-  const status = deriveAccountUiStatus(
-    { ...a, statusReason: null, archiveSupported: true, createdAt: "" },
-    now,
-  );
+  const status = deriveAccountUiStatus(toAccountView(a), now);
   if (status === "up_to_date") return "0";
   if (status === "waiting")
     return `Retrying in ${a.sync.backoffUntil ? minutesUntil(a.sync.backoffUntil, now) : 1} min`;
@@ -60,7 +61,7 @@ export function BudgetPanel({ insights, freeTier, now, budgetExhausted }: Budget
             key: "status",
             header: "Status",
             render: (a) => {
-              const view = { ...a, statusReason: null, archiveSupported: true, createdAt: "" };
+              const view = toAccountView(a);
               return (
                 <AccountStatusItem
                   account={view}

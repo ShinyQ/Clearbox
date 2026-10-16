@@ -155,7 +155,15 @@ export function buildAppBanners(i: BannerInput): AppBannerSpec[] {
       body: "Clearbox paused reading older mail at 450 MB of 500 MB. Old data is removed nightly, then sorting resumes.",
     });
   }
-  return out.filter((b) => !i.dismissed.has(b.id)).sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone]);
+  return visibleBanners(out, i.dismissed);
+}
+
+/** Drops dismissed banners and orders the rest error, warning, info, success. */
+export function visibleBanners(
+  list: readonly AppBannerSpec[],
+  dismissed: ReadonlySet<string>,
+): AppBannerSpec[] {
+  return list.filter((b) => !dismissed.has(b.id)).sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone]);
 }
 
 /** UI spec 3.4: at most 3 banners; extras collapse into a final info line. */

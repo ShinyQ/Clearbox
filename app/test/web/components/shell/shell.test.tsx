@@ -1,6 +1,7 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { networkFailureStore, sessionErrorStore } from "../../../../src/web/api/client.ts";
+import { FullPageError, type FullPageErrorKind } from "../../../../src/web/pages/FullPageError.tsx";
 import { browser } from "../../../../src/web/lib/links.ts";
 import { expectNoA11yViolations } from "../../helpers/axe.ts";
 import { renderPage } from "../../helpers/render.tsx";
@@ -85,6 +86,27 @@ describe("AppShell", () => {
     expect(document.activeElement).toBe(open);
   });
 
+  it("closes the drawer after any in-drawer navigation, such as an account row link", async () => {
+    installFakeApi();
+    setViewport(900);
+    const { user, router } = renderPage(<Page />, { path: "/review" });
+    await user.click(await screen.findByRole("button", { name: "Open navigation" }));
+    const drawer = screen.getByRole("dialog", { name: "Navigation" });
+    await user.click(await within(drawer).findByRole("link", { name: "you@example.com, up to date" }));
+    expect(screen.queryByRole("dialog", { name: "Navigation" })).toBeNull();
+    expect(router.state.location.pathname).toBe("/accounts");
+  });
+
+  it("has no axe violations with the drawer open", async () => {
+    installFakeApi();
+    setViewport(900);
+    const { user } = renderPage(<Page />, { path: "/review" });
+    await user.click(await screen.findByRole("button", { name: "Open navigation" }));
+    const drawer = screen.getByRole("dialog", { name: "Navigation" });
+    await within(drawer).findByRole("link", { name: "you@example.com, up to date" });
+    await expectNoA11yViolations(document.body);
+  });
+
   it("toasts when the connection comes back", async () => {
     installFakeApi();
     renderPage(<Page />, { path: "/review" });
@@ -92,4 +114,14 @@ describe("AppShell", () => {
     act(() => networkFailureStore.set(0));
     expect(await screen.findByText("Back online.")).toBeTruthy();
   });
+});
+
+describe("FullPageError", () => {
+  it.each<FullPageErrorKind>(["unauthenticated", "forbidden", "access_misconfigured"])(
+    "has no axe violations for %s",
+    async (kind) => {
+      const { container } = render(<FullPageError kind={kind} />);
+      await expectNoA11yViolations(container);
+    },
+  );
 });

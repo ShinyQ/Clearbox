@@ -1,4 +1,4 @@
-/** Open item O1: the lead confirms the public repository URL (decision W14). */
+/** The public repository URL is fixed by decision W14. */
 export const DOCS_BASE_URL = "https://github.com/ShinyQ/Clearbox/blob/main/docs/";
 export const docsUrl = (file: string): string => `${DOCS_BASE_URL}${file}`;
 export const SIGN_OUT_URL = "/cdn-cgi/access/logout";

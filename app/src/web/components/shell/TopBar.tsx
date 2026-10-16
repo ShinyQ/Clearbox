@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useLocation } from "react-router";
 import type { AccountView } from "../../../shared/api.ts";
 import { formatCount } from "../../lib/format.ts";
 import { useHotkeys } from "../../state/HotkeysProvider.tsx";
@@ -17,6 +18,13 @@ export interface TopBarProps {
 /** Below 1024px the sidebar becomes a 48px top bar plus a modal drawer (UI spec 2.8). */
 export function TopBar({ items, accounts, ownerEmail, reviewCount, now }: TopBarProps) {
   const [open, setOpen] = useState(false);
+  const { key } = useLocation();
+  const [seenKey, setSeenKey] = useState(key);
+  // Any navigation, from any link in the drawer, closes it (UI spec 4.2).
+  if (seenKey !== key) {
+    setSeenKey(key);
+    if (open) setOpen(false);
+  }
   const menuRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const close = () => {

@@ -31,7 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const list = accounts.data?.accounts ?? [];
   const owner = me.data?.email ?? "";
   return (
-    <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-[208px_minmax(0,1fr)]">
+    <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-[var(--layout-sidebar)_minmax(0,1fr)]">
       <a
         href="#main"
         className={`sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-(--z-skiplink) ${buttonClass("secondary", "md")}`}

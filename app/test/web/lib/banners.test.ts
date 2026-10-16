@@ -3,6 +3,7 @@ import {
   buildAppBanners,
   collapseBanners,
   MODEL_BODY,
+  visibleBanners,
   type BannerInput,
 } from "../../../src/web/lib/banners.ts";
 import { makeAccount, makeMe, iso, T0 } from "../msw/fixtures.ts";
@@ -92,5 +93,26 @@ describe("buildAppBanners (UI spec 5.1, 5.9 matrix)", () => {
       title: `T${i}.`,
     }));
     expect(collapseBanners(many).map((b) => b.title)).toEqual(["T0.", "T1.", "3 more issues. See Accounts."]);
+  });
+});
+
+describe("visibleBanners", () => {
+  const spec = (id: string, tone: "error" | "warning" | "info") => ({ id, tone, title: `${id}.` });
+
+  it("hides dismissed extra banners", () => {
+    const list = [spec("a", "warning"), spec("b", "info")];
+    expect(visibleBanners(list, new Set(["a"])).map((b) => b.id)).toEqual(["b"]);
+  });
+
+  it("keeps an info extra from pushing an error into the N more line", () => {
+    const list = [
+      spec("extra-info", "info"),
+      spec("w1", "warning"),
+      spec("w2", "warning"),
+      spec("err", "error"),
+    ];
+    const shown = collapseBanners(visibleBanners(list, new Set()));
+    expect(shown.map((b) => b.id)).toEqual(["err", "w1", "more"]);
+    expect(shown.at(-1)?.title).toBe("2 more issues. See Accounts.");
   });
 });

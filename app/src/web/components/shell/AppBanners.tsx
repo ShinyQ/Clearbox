@@ -5,6 +5,7 @@ import {
   bannerDismissKey,
   buildAppBanners,
   collapseBanners,
+  visibleBanners,
   type AppBannerSpec,
   type BannerPage,
 } from "../../lib/banners.ts";
@@ -46,19 +47,17 @@ export function AppBanners({
   const [dismissed, setDismissed] = useState(readDismissed);
   const [initialIds, setInitialIds] = useState<ReadonlySet<string> | null>(null);
   const ready = me.isSuccess && accounts.isSuccess;
-  const list = collapseBanners([
-    ...extra,
-    ...buildAppBanners({
-      page,
-      me: me.data,
-      accounts: accounts.data?.accounts ?? [],
-      offline,
-      awaitingModel,
-      modelUnavailableShare,
-      resetTime: localResetTime(now),
-      dismissed,
-    }),
-  ]);
+  const built = buildAppBanners({
+    page,
+    me: me.data,
+    accounts: accounts.data?.accounts ?? [],
+    offline,
+    awaitingModel,
+    modelUnavailableShare,
+    resetTime: localResetTime(now),
+    dismissed,
+  });
+  const list = collapseBanners(visibleBanners([...extra, ...built], dismissed));
   // Banners present when data first arrives are plain regions; later ones are announced (UI spec 4.19).
   if (ready && initialIds === null) setInitialIds(new Set(list.map((b) => b.id)));
   if (list.length === 0) return null;

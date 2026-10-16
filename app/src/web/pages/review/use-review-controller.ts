@@ -138,7 +138,9 @@ export function useReviewController() {
   // Hotkeys and bulk approve are ignored while Clean up is preparing, confirming or running: its preview
   // and run are tied to the groups as they were, so a concurrent action would make them stale. The mouse
   // path shows the same rule as soft-disabled detail buttons (ReviewWorkArea) instead of a silent no-op.
-  const cleanupBusy = cleanup.busyPhase !== "idle";
+  const cleanupPhase = cleanup.state.machine.phase;
+  const cleanupBusy =
+    cleanupPhase === "preparing" || cleanupPhase === "confirming" || cleanupPhase === "running";
   const performAction = async (target: ActionKind) => {
     if (offline || cleanupBusy) return;
     if (selection.selected.size > 0) {

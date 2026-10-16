@@ -80,6 +80,19 @@ describe("CleanupProvider", () => {
     expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
   });
 
+  it("reports busyPhase only while preparing or running, so confirming keeps the summary label", async () => {
+    setup(bigGroup);
+    act(() => api?.start("cleanup"));
+    expect(api?.busyPhase).toBe("preparing");
+    await screen.findByRole("button", { name: "Clean up" });
+    expect(phase()).toBe("confirming");
+    expect(api?.busyPhase).toBe("idle");
+    act(() => api?.confirm());
+    expect(phase()).toBe("running");
+    expect(api?.busyPhase).toBe("busy");
+    await screen.findByText("250 emails cleaned up from 1 sender group");
+  });
+
   it("cancels with Esc", async () => {
     const { user } = setup(bigGroup);
     act(() => api?.start("cleanup"));

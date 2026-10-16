@@ -215,12 +215,8 @@ export function CleanupProvider({
   const value = useMemo<CleanupApi>(() => {
     const m = state.machine;
     const progressLabel = m.phase === "running" ? `${percentOf(m.run)}%` : null;
-    const busyPhase =
-      m.phase === "preparing"
-        ? "preparing"
-        : m.phase === "running" || m.phase === "confirming"
-          ? "busy"
-          : "idle";
+    // Drives the summary button only (UI spec 4.5): confirming keeps its normal label.
+    const busyPhase = m.phase === "preparing" ? "preparing" : m.phase === "running" ? "busy" : "idle";
     return {
       state,
       start,

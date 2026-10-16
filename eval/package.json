@@ -1,0 +1,18 @@
+{
+  "name": "@clearbox/eval",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eval": "node src/run.ts",
+    "export-labels": "node src/export-labels.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clearbox/core": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "vitest": "5.0.4"
+  }
+}

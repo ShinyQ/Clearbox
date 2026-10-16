@@ -7,6 +7,7 @@ import { qk } from "../../api/keys.ts";
 import { usePatchSender } from "../../api/mutations.ts";
 import { displayName } from "../../components/review/SenderGroupRow.tsx";
 import { actionErrorMessage, GENERIC_ERROR, perEmailToast } from "../../lib/copy-actions.ts";
+import { isKeepAction } from "../../lib/keep-only.ts";
 import { plural } from "../../lib/format.ts";
 import type { ActionKind } from "../../lib/view-types.ts";
 import { useToast } from "../../state/ToastProvider.tsx";
@@ -62,6 +63,7 @@ export function useItemActions(groupActions: GroupActionsApi, cb: GroupActionCal
           kind: "action",
           message: perEmailToast(action),
           batchIds: res.batchId === null ? [] : [res.batchId],
+          keepOnly: isKeepAction(action),
         });
         if (last) {
           cbRef.current.onRemoved([group.key]);

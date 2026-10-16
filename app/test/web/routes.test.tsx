@@ -130,6 +130,7 @@ describe("routes (UI spec 3.5)", () => {
     const shell = routes[0]?.children?.find((r) => r.children !== undefined);
     const insights = shell?.children?.find((r) => r.path === "/insights");
     if (!insights) throw new Error("insights route missing");
+    delete insights.lazy;
     insights.element = <Boom />;
     installFakeApi();
     const router = createMemoryRouter(routes, { initialEntries: ["/insights"] });

@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CF_SEND_TELEMETRY: "false"
+  DO_NOT_TRACK: "1"
+  # Placeholder so app/cloudflare.config.ts resolves in production mode for typecheck and build.
+  # CI never deploys and never talks to Cloudflare.
+  CLEARBOX_D1_ID: 00000000-0000-4000-8000-000000000000
+
+jobs:
+  check:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Lint (ESLint, em dashes, secret patterns)
+        run: pnpm lint
+      - name: Format
+        run: pnpm format:check
+      - name: Typecheck packages
+        run: pnpm typecheck
+      - name: Typecheck scripts
+        run: pnpm exec tsc -p scripts/tsconfig.json
+      - name: Script tests
+        run: node --test "scripts/test/*.test.ts"
+      - name: Unit, worker, SPA and eval tests
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+
+  infra:
+    name: Azure IaC
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: ShellCheck
+        run: shellcheck infra/azure/deploy-decision.sh
+      - name: Script dry run
+        run: infra/azure/deploy-decision.sh --resource-group rg-ci --account ci-account --dry-run --smoke-test
+      - name: Bicep build
+        run: |
+          az bicep install
+          az bicep build --file infra/azure/decision.bicep --stdout > /dev/null
+          az bicep build --file infra/azure/decision-existing.bicep --stdout > /dev/null

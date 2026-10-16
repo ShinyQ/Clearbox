@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node.js 24.13.1, pnpm 12.11.2, TypeScript 6.0.3, zod 4.6.7, Vitest 5.0.4, MSW 3.0.3, Hono 4.13.13, jose 6.2.12, `cf` 1.0.0-beta.17 with `@cloudflare/vite-plugin` 2.0.0-beta.sha-67fa336fd, Vite 8.3.4, `@cloudflare/vitest-plugin` 1.4.2, `@msw/cloudflare` 0.2.0, React 19.3.1, React Router 8.4.0, TanStack Query 5.104.3, Tailwind CSS 4.3.3, happy-dom 21.0.1, Testing Library, axe-core 4.14.0, ESLint 10.12.0, Prettier 3.9.10, Azure Bicep, GitHub Actions.
 
-**Sources of truth:** `docs/superpowers/specs/2026-10-15-clearbox-contracts.md` (rev 2.2; section 12.5 lists what the integration pass changed), `docs/superpowers/specs/2026-10-15-clearbox-design.md` (rev 2), `docs/superpowers/specs/2026-10-15-clearbox-ui-design.md`, `PRODUCT.md`. When a plan and the contracts disagree, contracts rev 2.2 wins; report the difference instead of improvising.
+**Sources of truth:** `docs/superpowers/specs/2026-10-15-clearbox-contracts.md` (rev 2.3; section 12.5 lists what the integration pass changed and section 12.6 the docs reconciliation after layers 1 to 6), `docs/superpowers/specs/2026-10-15-clearbox-design.md` (rev 2), `docs/superpowers/specs/2026-10-15-clearbox-ui-design.md`, `PRODUCT.md`. When a plan and the contracts disagree, contracts rev 2.3 wins; report the difference instead of improvising.
 
 ## Global Constraints
 

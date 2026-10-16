@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Clearbox mark">
+  <defs>
+    <linearGradient id="spark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8b85ff"/>
+      <stop offset="1" stop-color="#7f86eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="#16171b"/>
+  <path d="M13 35 L19.5 18.5 Q20.3 16.5 22.5 16.5 H41.5 Q43.7 16.5 44.5 18.5 L51 35 V44 Q51 49 46 49 H18 Q13 49 13 44 Z" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M13 35 H23.5 L26.5 40 H37.5 L40.5 35 H51" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M25 26 L30 31 L39.5 21.5" fill="none" stroke="url(#spark)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

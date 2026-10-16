@@ -12,3 +12,4 @@ coverage/
 .env.*
 app/clearbox.local.json
 *.secrets.json
+eval/private/

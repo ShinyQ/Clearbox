@@ -50,6 +50,39 @@ describe("Activity page", () => {
     await expectNoA11yViolations(container);
   });
 
+  it("shows no Undo for a keep-only batch even though the server reports it undoable", async () => {
+    setup((s) => {
+      s.batches.unshift({
+        id: 30,
+        kind: "approve",
+        createdAt: iso(T0 - 30 * 60_000),
+        requestedCount: 5,
+        executedCount: 5,
+        failedCount: 0,
+        byAction: { delete: 0, archive: 0, keep: 5 },
+        undoable: true,
+        undoExpiresAt: iso(T0 + 23 * 3_600_000),
+        undoneAt: null,
+        itemIds: [],
+      });
+      s.activity.unshift({
+        id: 30,
+        ts: iso(T0 - 30 * 60_000),
+        kind: "approve",
+        accountId: null,
+        batchId: 30,
+        count: 5,
+        result: { executed: 5, failed: 0, skipped: 0, retryLater: 0, delete: 0, archive: 0, keep: 5 },
+      });
+    });
+    const table = await screen.findByRole("table", { name: "Activity" });
+    const keepRow = (await within(table).findByRole("cell", { name: "Keep · 5 emails" })).closest("tr")!;
+    expect(within(keepRow).queryByRole("button")).toBeNull();
+    expect(within(keepRow).queryByText("Undone")).toBeNull();
+    expect(within(keepRow).queryByText("Undo expired")).toBeNull();
+    expect(within(table).getAllByRole("button", { name: "Undo" })).toHaveLength(1);
+  });
+
   it("undoes a batch and shows the result", async () => {
     const { state, user } = setup();
     await user.click(await screen.findByRole("button", { name: "Undo" }));

@@ -1,6 +1,6 @@
 # Clearbox: Design Spec
 
-- **Status:** Approved, rev 2
+- **Status:** Approved, rev 2 (contracts rev 2.3)
 - **Date:** 2026-10-15
 - **Owner:** ShinyQ
 - **Companion:** [`2026-10-15-clearbox-contracts.md`](2026-10-15-clearbox-contracts.md) holds every exact name, type, table, route, constant and dependency version. This spec is the narrative; when they disagree, the contracts document wins.
@@ -310,7 +310,7 @@ Full DDL, indexes and CHECK constraints are in contracts section 6. Summary:
 
 1. **Claim** (one D1 batch): lease the active, unpaused account that is due (`next_tick_at` and `backoff_until` passed, not leased) with the oldest `last_tick_at`, but only while today's rows written are below 65,000. Nothing is written when no account is due.
 2. **Choose the kind:** re-decide deferred suggestions first; otherwise sent-mail scan (first 1,000 sent messages), inbox backfill (newest to oldest), or incremental sync (whenever 30 minutes have passed, interleaved with backfill).
-3. **Fetch one page** from the provider (token refreshed only when it expires within 5 minutes).
+3. **Fetch one page** from the provider (token refreshed only when it expires within 5 minutes). On an incremental tick, inbox messages received more than 30 days ago are dropped here, before any D1 read or model call: feeds re-report updates to old mail, and once the nightly purge has deleted the row it would otherwise come back as a new suggestion.
 4. **Context** (one D1 batch): known ids, priors, sender counters, correspondents, replied threads, recent labels.
 5. **Decide:** signals, guardrails and state for new messages; up to 25 Decision-1 calls, at most 4 concurrent. A configuration error (401/403/404) or a majority of transient failures aborts the tick without writing; isolated transient failures store the suggestion as `awaiting_model` and retry after 5 and 30 minutes, then fall back to `unsure`.
 6. **Write** (one D1 batch, transactional): messages, suggestions, sender counters, sent sets, dismissals, account cursors and schedule, rotated tokens, lease release.
@@ -322,7 +322,7 @@ Worst case per tick: 38 subrequests including D1 calls (39 for "Scan now" with a
 
 **Budget:** an email costs about 4.8 rows written to ingest, 5.3 when the owner decides it, and 3 when it is purged (about 13 over its life). Ticks stop at 65,000 rows per day, the purge at 80,000, and owner actions at 90,000 (90% of the 100k limit), which reserves at least 25,000 rows for the weekly review session. Ingestion is capped at 36,000 emails/day by ticks (1,440 x 25) but in practice by D1: about **13,000 emails/day** during the initial backfill and about **6,800 emails/day** sustained once purges and decisions are counted. Backfill pauses at 450 MB of the 500 MB database limit.
 
-**Cost estimate:** 450 to 800 input tokens per email at $0.042 per million is about **$0.25 to $0.34 per 10k emails**.
+**Cost estimate:** 450 to 800 input tokens per email at $0.042 per million is about **$0.19 to $0.34 per 10k emails**.
 
 **Upgrade path:** on Workers Paid, set `FREE_TIER=false`. That raises the page size to 100 and removes the D1 write gates. No code changes are needed.
 
@@ -352,7 +352,7 @@ The UI (a desktop-first "Clean up" dashboard for a weekly 5 to 10 minute session
 - **Session and accounts:** `GET /api/me`, accounts list, connect (OAuth start), pause, disconnect, and "Scan now".
 - **Queue:** summary counts per action, sender groups (paged, filter by account and action, sort by confidence), and group detail with items (subject, sender, date, snippet, signals, reasons, deep link to Gmail or Outlook, all plain text).
 - **Actions:** approve exact ids or a whole sender group, override an action (reject = keep), and **Clean up**: approve every pending suggestion at or above a confidence threshold (default current `τ_delete`), 100 per call, with a `remaining` count so the UI can loop.
-- **Undo** for the last 24 hours, by batch.
+- **Undo** for the last 24 hours, by batch. It restores Trash and Archive items; Keep decisions change nothing in the mailbox, so undo skips them (a keep-only batch restores nothing, so the UI shows no Undo for it).
 - **Activity** feed from the audit log.
 - **Insights:** delete precision, label counts, `τ_delete` and calibration curve, today's budget usage, database size, and per-account sync status.
 - **Policy:** allow and deny lists ("Always keep sender", "Always allow delete"), `min_age_days`, record patterns, snippet and label-subject storage.
@@ -362,7 +362,7 @@ The UI (a desktop-first "Clean up" dashboard for a weekly 5 to 10 minute session
 - **Guides:** `docs/setup-cloudflare.md`, `docs/setup-azure.md`, `docs/setup-google.md`, `docs/setup-microsoft.md`, and `docs/runbook.md` (key rotation, re-auth, config errors and client secret expiry, purge, restore, budget exhaustion, Decision-1 version retirement on 2027-02-04).
 - **`pnpm setup:cf`:** creates the D1 database with `cf d1 create --name clearbox --jurisdiction eu`, records its id in the gitignored `app/clearbox.local.json`, applies migrations, sets secrets through a temporary gitignored `--secrets-file`, deploys with **`cf deploy --no-provision`** (auto-provisioning could create a non-EU database), and prints the Access steps (Worker-level application, "All traffic", owner email policy, copy the AUD tag into `ACCESS_AUD`).
 - **Azure:** `infra/azure/` contains Bicep and an az script that create (or reuse) an AIServices account in `swedencentral` and a `Microsoft-Decision-1` deployment named `decision-1` with SKU `DataZoneStandard`, capacity **300** (requests per minute), and `NoAutoUpgrade`.
-- **Local:** `cf dev` (Vite on `http://localhost:5173`) with local D1 (`pnpm db:migrate:local`, which passes `--persist-to .cloudflare/state`), `app/.dev.vars`, and the development-only auth bypass. Trigger crons locally with `/cdn-cgi/local/scheduled?cron=...`.
+- **Local:** `cf dev` (Vite on `http://localhost:5173`) with local D1 (`pnpm db:migrate:local`, which passes `--persist-to .cloudflare/state --mode development` so that it needs no real D1 id), `app/.dev.vars`, and the development-only auth bypass. Trigger crons locally with `/cdn-cgi/local/scheduled?cron=...`.
 - **Cron quota:** Clearbox uses 2 of the 5 Cron Triggers per account on Free; check other Workers on the account first.
 
 ## 13. Testing and evaluation
@@ -403,6 +403,10 @@ The UI (a desktop-first "Clean up" dashboard for a weekly 5 to 10 minute session
 | D1 write budget limits backfill speed | Budget gates, purge bounds, Paid upgrade path |
 
 ## 16. Revision history
+
+### Contracts rev 2.3 (2026-10-16)
+
+Contracts rev 2.3: docs reconciliation after implementation layers 1 to 6 (contracts section 12.6). The contracts layout lists the scan, SPA and docs files the layers added; `db:migrate:local` passes `--mode development`; logging, audit and undo details from layers 3 to 5 are recorded; two lead decisions are adopted: Undo does not apply to keep decisions (the server skips keeps on undo, so a keep-only batch restores nothing and the UI says so) and the incremental tick drops inbox messages older than the 30-day decided retention before identify and Decision-1. The UI spec carries the layer 5 copy. No other behavior of this spec changed.
 
 ### Contracts rev 2.2 (2026-10-15)
 

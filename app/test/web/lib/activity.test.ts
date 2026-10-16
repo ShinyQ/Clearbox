@@ -138,6 +138,41 @@ describe("describeActivity (UI spec 5.4)", () => {
     expect(undo.result).toBe("20 restored · 10 failed");
   });
 
+  it("shows no undo state for keep-only batches and keeps it when a trash or archive part exists", () => {
+    const base = { ts: s.activity[0]!.ts, accountId: null, count: 30 };
+    const counts = { executed: 30, failed: 0, skipped: 0, retryLater: 0, delete: 0, archive: 0, keep: 0 };
+    const batch = (id: number, over: Partial<(typeof s.batches)[number]>) => ({
+      ...s.batches[0]!,
+      id,
+      ...over,
+    });
+    const withBatches = {
+      ...ctx,
+      batchesById: {
+        ...ctx.batchesById,
+        20: batch(20, { undoable: true, byAction: { delete: 0, archive: 0, keep: 30 } }),
+        21: batch(21, { undoable: false, undoneAt: "2026-10-15T08:00:00.000Z" }),
+        22: batch(22, { undoable: false, undoExpiresAt: "2026-10-01T08:00:00.000Z" }),
+        23: batch(23, { undoable: true, byAction: { delete: 0, archive: 10, keep: 20 } }),
+      },
+    };
+    const approve = (batchId: number, result: Record<string, number>) =>
+      describeActivity(
+        { ...base, id: 90 + batchId, batchId, kind: "approve", result: { ...counts, ...result } },
+        withBatches,
+      );
+    expect(approve(20, { keep: 30 }).last).toBeNull();
+    expect(approve(21, { keep: 30 }).last).toBeNull();
+    expect(approve(22, { keep: 30 }).last).toBeNull();
+    expect(approve(23, { archive: 10, keep: 20 }).last).toEqual({ kind: "undo", batchId: 23 });
+    expect(approve(20, { delete: 30 }).last).toEqual({ kind: "undo", batchId: 20 });
+    const cleanup = describeActivity(
+      { ...base, id: 99, batchId: 20, kind: "cleanup", result: { ...counts, keep: 30, groups: 3 } },
+      withBatches,
+    );
+    expect(cleanup.last).toBeNull();
+  });
+
   it("falls back for missing result details", () => {
     const base = { ts: s.activity[0]!.ts, accountId: null, batchId: null, count: 0, result: {} };
     expect(describeActivity({ ...base, id: 80, kind: "policy_updated" }, ctx).result).toBe("Saved");

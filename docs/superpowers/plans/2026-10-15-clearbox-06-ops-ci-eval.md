@@ -6035,3 +6035,71 @@ Plan complete and saved to `docs/superpowers/plans/2026-10-15-clearbox-06-ops-ci
 
 1. **Subagent-Driven (recommended):** a fresh subagent per task with review between tasks (REQUIRED SUB-SKILL: superpowers:subagent-driven-development).
 2. **Inline Execution:** execute tasks in one session with checkpoints (REQUIRED SUB-SKILL: superpowers:executing-plans).
+
+## Execution notes
+
+Executed on branch `feat/clearbox-06-ops-ci-eval` (stacked on `feat/clearbox-05-web-ui`) with superpowers:subagent-driven-development: one implementer per task, a spec and quality review after each task (fix rounds on Tasks 3, 4, 6, 7 and X1), a final whole-branch review and one fix wave. Task 12's README step was replaced by the owner's README brief (style of the ShinyQ-HQ README). Three lead tasks were added: X1 docs reconciliation (contracts rev 2.3), X2 route-level code splitting, X3 hide Undo for keep-only batches. No dependency was added beyond the eval package's pinned `zod` and `vitest` (C4).
+
+### Gate 06 result (local commands)
+
+`pnpm install --frozen-lockfile && pnpm lint && pnpm format:check && CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000 pnpm typecheck && pnpm exec tsc -p scripts/tsconfig.json && node --test "scripts/test/*.test.ts" && pnpm test && CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000 pnpm build` passes: `check-text: 495 files clean`; Prettier clean; script tests `ℹ tests 49`; core `Test Files  40 passed (40)`, `Tests  635 passed (635)`; eval `Test Files  6 passed (6)`, `Tests  55 passed (55)`; app worker `Test Files  49 passed (49)`, `Tests  387 passed (387)`; app web `Test Files  42 passed (42)`, `Tests  433 passed (433)`; build clean (no chunk size warning after X2). Gallery not shipped; built `index.html` inline style/script count `0`; `committed`.
+
+Counts differ from the plan (scripts 43, eval 42) because of regression tests added by review fixes: scripts +6 (setup-cf secrets-list and secrets-file hardening), eval +13 (percentile rank, retry clamp, shared pacer back-off, shuffle errors, pacer guard, report shuffle-error count). Web grew from 422 to 433 (X3). Task 13 Steps 2 to 6 (live) run with the owner after the PR opens; outcomes are recorded below when done.
+
+### Lead notes from earlier layers
+
+| # | Handling |
+|---|---|
+| 1 | `"no-console": "error"` kept; `scripts/**` and `eval/**` already exempt. |
+| 2 | CI runs `pnpm install --frozen-lockfile`, the worker tests (workerd) and the build (esbuild) on ubuntu; the first PR CI run confirms `allowBuilds` false still yields working binaries (see "Live verification"). |
+| 3 | Docs and README use the real `db:migrate:local` (`--mode development`), `fsModuleCache: false` is untouched, build output `app/.cloudflare/output/v0/`. |
+| 4 | No `cf d1 execute` anywhere. `export-labels` uses `cf d1 raw <id> [--local --persist-to .cloudflare/state --mode development] --sql=<sql>` for both modes, run from `app/` (the config resolves the D1 id from `CLEARBOX_D1_ID` or `app/clearbox.local.json`); runbook and checklist use `cf d1 raw ... --sql=`. Every documented `cf` command was checked against `cf` 1.0.0-beta.17 `--help`. |
+| 5, 6 | Guides, runbook, README use the exact routes and labels. |
+| 7 | Docs reconciliation in one commit (174f53b) plus a follow-up (ddf9d5b): contracts rev 2.3 (section 12.6), 1.1 lists the layer 4, 5 and 6 files, 1.3 `db:migrate:local`, 9 `request.error` on 200 for invalid stored reasons, C27 `{reason}` audit shape, incremental retention skip (8.2, 8.3, 6.5, `skippedOld`), Undo not applying to keeps (7.8, UI spec 5.2.4, 5.2.6, 5.4, 6.8), UI spec copy additions, account card status rule; design spec revision history; index points to rev 2.3. |
+| 8 | Done (X2, 5bb47c2): Setup, Activity, Insights, Rules and Accounts are React Router `lazy` routes; main chunk 625 kB to 324 kB plus a 250 kB shared chunk and 6 to 11 kB page chunks. |
+
+### Deviations (fix forward)
+
+| # | Task | Change | Why |
+|---|---|---|---|
+| 1 | 3, final | `setup:cf` treats a failed `cf workers secrets list` as "no secrets" only when `cf workers get clearbox` also reports not found; any other failure aborts before key generation. SIGINT/SIGTERM during the write-to-deploy window deletes `app/deploy.secrets.json`; the write happens inside `try` (owner approved) | A transient list failure silently rotated `TOKEN_ENC_KEY` and made every stored token unreadable; Ctrl+C left secrets on disk |
+| 2 | 4, final | `deploy-decision.sh`: `--existing` accepts account names with uppercase and underscores (new accounts stay lowercase); dry run prints the resource-group commands; clear errors for a bad subscription, a failed group check and a failed smoke-test curl (key unset); account preflight and quota parsing are null-safe (joined single-row queries) | Real existing accounts; silent exits; tsv null fields shifted |
+| 3 | 6 | `percentile` computes the rank as `ceil(p * n / 100)` | `p / 100` float error picked the next rank (p=28, n=25) |
+| 4 | 7 | Retry sleeps clamp to `MAX_RETRY_SLEEP_MS = 60_000`; a rate-limit retry pushes the shared pacer forward (`Pacer.delayUntil`); shuffle-call failures are recorded (`EvalRow.shuffleError`, report count); `createPacer` rejects non-positive rpm | A large `Retry-After` stalled the run; other workers kept hitting a throttled endpoint; silent shuffle failures |
+| 5 | final | `pnpm eval` gives `MaiDecisionEngine` `Date.now` (pacer keeps `performance.now`) | HTTP-date `Retry-After` was computed against a monotonic clock |
+| 6 | 11, 12a | Guides and runbook follow the real scripts; TOKEN_ENC_KEY rotation re-links each paused account with Connect Gmail / Connect Outlook on the same mailbox (Reconnect only shows for `needs_reauth` and `config_error`; `completeConnect` reconnects the existing row in place) | C12 assumed a Reconnect button on paused accounts |
+| 7 | 12b | README written from the owner's brief: centered header, badges, screens table and hero captured from the local app with the synthetic dev seed (headless Chrome over DevTools, `docs/readme/*.png`), mermaid architecture, Quick start with a working local `.dev.vars` snippet (the example's placeholders fail config validation) | Owner request |
+| 8 | X3 | The SPA hides Undo for keep-only batches (toasts, undo stack, Activity rows) and keeps it for mixed batches (`lib/keep-only.ts`); keep-only Activity rows show an empty cell (owner approved) | Lead decision: Undo does not apply to keeps |
+| 9 | final | Cost figures corrected to about $0.19 to $0.34 per 10,000 emails (450 to 800 tokens at $0.042 per million) in README, setup-azure, design spec and research | Arithmetic |
+
+### Live verification
+
+Run on 2026-10-16 with the owner present (sanitized: no account, tenant, subdomain or resource names).
+
+| Item | Outcome |
+|---|---|
+| Linux CI, `allowBuilds` esbuild/workerd false (lead note 2) | PR CI on ubuntu passes "Lint, typecheck, test, build" (worker tests on workerd, build with esbuild) and "Azure IaC". No CI change needed. |
+| Bicep API `2026-07-01`, quota name | `az deployment group what-if` accepted both: 1 create (`<foundry-account>/deployments/decision-1`), everything else ignored. Quota line read "limit 500 RPM, in use 0 RPM, requested 300 RPM". |
+| Decision-1 deployment (Task 13 Step 2) | `deploy-decision.sh --existing --yes --smoke-test`: `Succeeded`, `Microsoft-Decision-1`, version `1`, `DataZoneStandard`, `300`, `NoAutoUpgrade`; smoke test `HTTP 200`, `"model":"microsoft-decision-1"`. |
+| Live eval on the 40 synthetic fixtures (Task 13 Step 3) | Fused: delete precision 100.0% (Wilson 95% lower bound 77.2%), recall 72.2%, harmful deletes 0; model only: precision 88.9%, recall 88.9%. Unsure rate 15.0%. ECE 0.096, Brier 0.069. Shuffle flip rate 0.0%, 0 model and 0 shuffle failures. 80 calls, latency p50 368 ms, p95 404 ms. Input tokens mean 386.6, max 412 (below the 450 to 800 planning range). Exit 0. |
+| Decision-1 429 body and headers (index item 5) | Not observed: no 429 during the eval (concurrency 4, paced under 300 RPM). The fallbacks stay in place. |
+| First deploy without `ACCESS_AUD` (C11, index item 7) | Refused. `cf deploy` reports "The following required secrets have not been set: ACCESS_AUD" for a Worker that does not exist yet. The documented fallback works: deploy once with a placeholder AUD (32 to 128 `[A-Za-z0-9-]`, rejected by every JWT), create the Access application, then replace `ACCESS_AUD`. |
+| Script-less Worker after a refused first deploy | The refused deploy leaves a Worker entity: `cf workers get clearbox` succeeds while `cf workers secrets list` fails with `[10007] This Worker does not exist on your account.` (404). `setup:cf` now treats `[10007]` from the secrets endpoint as "no script, no secrets" (072af11, with a test); every other list failure still aborts before key generation. |
+| `cf deploy --secrets-file` semantics (C9, index item 6) | Merge confirmed: a deploy whose file held only `ACCESS_AUD` kept the other 11 secrets (`cf workers secrets list` shows all 12 as `secret_text`). The deploy output labels secrets "Environment Variable (hidden)" but they are stored as `secret_text`. |
+| Secrets file cleanup | `app/deploy.secrets.json` absent after the failed, the cancelled and the successful runs. |
+| Cron triggers | Both registered (`* * * * *`, `0 2 * * *`) with another Worker on the account; the 5-trigger limit was not hit. |
+| Access application body (Option B) | `cf zero-trust access applications create` accepted `type: self_hosted`, a `worker` destination and an inline policy (a `name` was added: "Owner only"). Unauthenticated `/`, `/review`, `/api/me` and `/oauth/google/start` all 302 to the team's Access login. The owner signed in with One-time PIN. |
+| D1 jurisdiction (open item 2) | `cf d1 get` reports `"jurisdiction": "eu"` (`running_in_region: EEUR`). |
+| Production D1 `CLAIM_SQL` (index item 8) | Accepted: ticks claim the account and advance (sent scan, then inbox backfill). |
+| D1 `batch()` per tick | Tick success batches commit on production (75 messages and suggestions written over three ingest ticks, within the Free limits); no "too many queries" failures. |
+| Hidden-prompt paste over a slow terminal | One run stored a malformed `AZURE_DECISION_KEY`; ticks failed safely with `decision_auth_failed` (nothing ingested, the issue banner shown) until the key was replaced with `cf workers secrets update AZURE_DECISION_KEY --worker clearbox --type secret_text --text "$(az ... --query key1 -o tsv)"`. The issue cleared on the next successful sort. |
+| Google OAuth | A consent screen left in Testing returns `403 access_denied` ("can only be accessed by developer-approved testers"). The owner connected as a test user; publishing the app ("In production") is still required to avoid the 7-day refresh-token expiry. |
+| Entra app registration | Created with `az ad app create` (`AzureADandPersonalMicrosoftAccount`, web redirect URIs, no implicit grant, delegated Graph `Mail.ReadWrite`, `offline_access`, `User.Read`; `requestedAccessTokenVersion` 2) and a 12-month client secret. Outlook not connected yet. |
+
+Also fixed after the PR opened: CodeQL `js/file-system-race` in `scripts/check-text.ts` (stat then read); the size check and read now share one file descriptor.
+
+Small follow-up noted (not fixed): on a re-run where `OWNER_EMAIL` and `ACCESS_TEAM_DOMAIN` are kept, the printed Access instructions show placeholders instead of the stored values (the script cannot read secret values back).
+
+### Deferred minor findings (triaged by the final review as safe to defer)
+
+check-text robustness (bare catch, silent skip over 2 MB, overlapping key rules, `<` prefix exemption, no `main()` coverage); Access Option B command embeds the owner email unescaped; `parseJsonOutput` banner fallback; duplicate UUID regexes; raw-mode prompt chunk handling; `onNodeInterrupt` untested; non-TTY prompter stack trace; `STATE_SIGNING_KEY` rotation unconfirmed; no secrets re-list after the `ACCESS_AUD` deploy; existing-mode account regex rejects `.`; fixture domain guard skips some fields; metrics argument validation; unexpected engine errors scored as `unknown`; no `assertGitIgnored` test; `export-labels` raw parse errors may echo cf output to the local terminal; CI concurrency cancels in-flight `main` runs; Dependabot group split of vite and `@vitejs/*`; AADSTS wording in the Microsoft guide; export window wording; no failed-chunk test and no `HydrateFallback` for lazy routes; small X3 test fixture and import-order nits.

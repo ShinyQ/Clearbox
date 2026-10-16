@@ -84,6 +84,12 @@ interface Words {
   noun: string;
   during: string;
   doneWas: (n: number) => string;
+  nothingLeft: string;
+  prepareFailed: string;
+  failedTitle: (n: number) => string;
+  failedDetail: string;
+  inactiveDetail: (email: string) => string;
+  stuckDetail: string;
 }
 
 const WORDS: Record<CleanupMode, Words> = {
@@ -91,13 +97,30 @@ const WORDS: Record<CleanupMode, Words> = {
     noun: "Clean up",
     during: "Clean up",
     doneWas: (n) => `${plural(n, "email was", "emails were")} cleaned up.`,
+    nothingLeft: "Nothing left to clean up. New suggestions appear after the next sort.",
+    prepareFailed: "Couldn't prepare Clean up. Nothing was changed.",
+    failedTitle: (n) => `${formatCount(n)} could not be moved.`,
+    failedDetail:
+      "They were moved or deleted outside Clearbox, or the mailbox refused the change. They are marked as failed.",
+    inactiveDetail: (email) => `${email} needs to reconnect before its emails can be moved.`,
+    stuckDetail: "The mailbox did not accept more changes right now. Try again in a few minutes.",
   },
   confirm_keeps: {
     noun: "Confirming keeps",
     during: "confirming keeps",
     doneWas: (n) => `${plural(n, "email was", "emails were")} kept.`,
+    nothingLeft: "Nothing left to confirm. New suggestions appear after the next sort.",
+    prepareFailed: "Couldn't prepare Confirm all keeps. Nothing was changed.",
+    failedTitle: (n) => `${formatCount(n)} could not be confirmed.`,
+    failedDetail:
+      "They were deleted or changed outside Clearbox, so they could not be confirmed. They are marked as failed.",
+    inactiveDetail: (email) => `${email} needs to reconnect before its emails can be confirmed.`,
+    stuckDetail: "Clearbox could not confirm more right now. Try again in a few minutes.",
   },
 };
+
+export const nothingLeftToast = (mode: CleanupMode): string => WORDS[mode].nothingLeft;
+export const prepareFailedToast = (mode: CleanupMode): string => WORDS[mode].prepareFailed;
 
 export function partialCopy(
   reason: PartialReason,
@@ -126,18 +149,17 @@ export function partialCopy(
     case "account_inactive":
       return {
         title: `${done} ${rest} ${one ? "was" : "were"} skipped.`,
-        detail: `${ctx.inactiveEmail ?? "An account"} needs to reconnect before its emails can be moved.`,
+        detail: WORDS[mode].inactiveDetail(ctx.inactiveEmail ?? "An account"),
       };
     case "item_failures":
       return {
-        title: `${done} ${formatCount(run.failed)} could not be moved.`,
-        detail:
-          "They were moved or deleted outside Clearbox, or the mailbox refused the change. They are marked as failed.",
+        title: `${done} ${WORDS[mode].failedTitle(run.failed)}`,
+        detail: WORDS[mode].failedDetail,
       };
     case "no_progress":
       return {
         title: `${done} ${rest} ${one ? "is" : "are"} still waiting.`,
-        detail: "The mailbox did not accept more changes right now. Try again in a few minutes.",
+        detail: WORDS[mode].stuckDetail,
       };
     case "network":
       return {

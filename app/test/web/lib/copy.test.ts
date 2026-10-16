@@ -5,7 +5,9 @@ import {
   confirmDetail,
   confirmTitle,
   doneToast,
+  nothingLeftToast,
   partialCopy,
+  prepareFailedToast,
   type CopyContext,
 } from "../../../src/web/lib/copy.ts";
 import { createFakeApiState, previewOf } from "../msw/fake-api.ts";
@@ -148,5 +150,22 @@ describe("singulars and keeps wording (W16, W25)", () => {
       title: "Confirming keeps stopped. 5 emails were kept.",
       detail: "The rest stay in Review.",
     });
+  });
+
+  it("words keeps failures without move or clean up language", () => {
+    const failed = { ...run, executed: 4, failed: 2, total: 6 };
+    expect(partialCopy("item_failures", failed, ctx, "confirm_keeps").title).toBe(
+      "4 emails were kept. 2 could not be confirmed.",
+    );
+    for (const reason of ["account_inactive", "item_failures", "no_progress"] as const) {
+      const c = partialCopy(reason, failed, ctx, "confirm_keeps");
+      expect(`${c.title} ${c.detail}`).not.toMatch(/moved|mailbox|cleaned/);
+    }
+    expect(nothingLeftToast("confirm_keeps")).toBe(
+      "Nothing left to confirm. New suggestions appear after the next sort.",
+    );
+    expect(prepareFailedToast("confirm_keeps")).toBe(
+      "Couldn't prepare Confirm all keeps. Nothing was changed.",
+    );
   });
 });

@@ -10,10 +10,18 @@ import {
   type ReactNode,
 } from "react";
 import { emptyTotals, processedOf, runCleanup } from "../api/cleanup.ts";
+import { isApiError } from "../api/client.ts";
 import { api } from "../api/endpoints.ts";
 import { invalidateAfterActions } from "../api/mutations.ts";
-import { doneToast, partialToast, type CleanupMode } from "../lib/copy.ts";
+import {
+  doneToast,
+  nothingLeftToast,
+  partialToast,
+  prepareFailedToast,
+  type CleanupMode,
+} from "../lib/copy.ts";
 import { plural } from "../lib/format.ts";
+import { reportBug } from "../lib/report.ts";
 import { barVisible, cleanupReducer, INITIAL_CLEANUP, type CleanupState } from "./cleanup-machine.ts";
 import { useAnnounce } from "./LiveAnnouncer.tsx";
 import { useToast } from "./ToastProvider.tsx";
@@ -55,6 +63,12 @@ export function CleanupProvider({
   const undoStack = useUndoStack();
   const signal = useRef({ stop: false });
   const announced = useRef(0);
+  // Set after a partial run that processed emails, so cancelling a later retry refreshes the queues again.
+  const stale = useRef(false);
+  const refresh = useCallback(() => {
+    stale.current = false;
+    invalidateAfterActions(qc).catch((e: unknown) => reportBug("Refreshing after Clean up failed", e));
+  }, [qc]);
   // Lets fetchPreview's "Try again" toast call the latest start() without a declaration cycle.
   const startRef = useRef<(mode: CleanupMode, accountId?: string) => void>(() => undefined);
 
@@ -69,18 +83,16 @@ export function CleanupProvider({
         );
         dispatch({ type: "PREVIEW_OK", preview });
         if (preview.count === 0) {
-          toast.show({
-            kind: "info",
-            message: "Nothing left to clean up. New suggestions appear after the next sort.",
-          });
+          toast.show({ kind: "info", message: nothingLeftToast(mode) });
           void qc.invalidateQueries({ queryKey: ["queue"] });
           void qc.invalidateQueries({ queryKey: ["groups"] });
         }
-      } catch {
+      } catch (e) {
+        if (!isApiError(e)) reportBug("Clean up preview failed unexpectedly", e);
         dispatch({ type: "PREVIEW_FAIL", code: "network" });
         toast.show({
           kind: "error",
-          message: "Couldn't prepare Clean up. Nothing was changed.",
+          message: prepareFailedToast(mode),
           action: { label: "Try again", onAction: () => startRef.current(mode, scope) },
         });
         dispatch({ type: "SETTLE" });
@@ -140,38 +152,58 @@ export function CleanupProvider({
           }
         },
       },
-    ).then((outcome) => {
-      dispatch({ type: "FINISH", outcome });
-      const kind = mode === "confirm_keeps" ? "action" : "cleanup";
-      if (outcome.phase === "done") {
-        undoStack.notifyWithUndo({
-          kind,
-          message: doneToast(mode, outcome.run, preview),
-          batchIds: outcome.run.batchIds,
+    )
+      .then((outcome) => {
+        dispatch({ type: "FINISH", outcome });
+        const kind = mode === "confirm_keeps" ? "action" : "cleanup";
+        if (outcome.phase === "done") {
+          undoStack.notifyWithUndo({
+            kind,
+            message: doneToast(mode, outcome.run, preview),
+            batchIds: outcome.run.batchIds,
+          });
+          dispatch({ type: "SETTLE" });
+          refresh();
+          return;
+        }
+        if (processedOf(outcome.run) > 0) {
+          refresh();
+          stale.current = true;
+        }
+        if (outcome.run.executed > 0) {
+          undoStack.notifyWithUndo({
+            kind,
+            message: partialToast(mode, outcome.run),
+            batchIds: outcome.run.batchIds,
+          });
+        }
+      })
+      .catch((e: unknown) => {
+        reportBug("Clean up failed unexpectedly", e);
+        const m = stateRef.current.machine;
+        dispatch({
+          type: "FINISH",
+          outcome: {
+            phase: "partial",
+            reason: "unexpected",
+            run: m.phase === "running" ? m.run : emptyTotals(preview.count),
+          },
         });
-        dispatch({ type: "SETTLE" });
-        void invalidateAfterActions(qc);
-        return;
-      }
-      if (outcome.run.executed > 0) {
-        undoStack.notifyWithUndo({
-          kind,
-          message: partialToast(mode, outcome.run),
-          batchIds: outcome.run.batchIds,
-        });
-      }
-    });
-  }, [announce, qc, sleep, undoStack]);
+      });
+  }, [announce, refresh, sleep, undoStack]);
 
-  const cancel = useCallback(() => dispatch({ type: "CANCEL" }), []);
+  const cancel = useCallback(() => {
+    dispatch({ type: "CANCEL" });
+    if (stale.current && stateRef.current.machine.phase === "confirming") refresh();
+  }, [refresh]);
   const stop = useCallback(() => {
     signal.current.stop = true;
     dispatch({ type: "STOP" });
   }, []);
   const dismiss = useCallback(() => {
     dispatch({ type: "DISMISS" });
-    void invalidateAfterActions(qc);
-  }, [qc]);
+    refresh();
+  }, [refresh]);
   const retry = useCallback(() => {
     const s = stateRef.current;
     if (s.machine.phase !== "partial") return;

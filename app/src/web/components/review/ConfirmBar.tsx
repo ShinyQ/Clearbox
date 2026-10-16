@@ -42,7 +42,17 @@ export function ConfirmBar(p: ConfirmBarProps) {
         combo: "enter",
         handler: () => {
           const active = document.activeElement;
-          if (active === document.body || (active && rootRef.current?.contains(active))) p.onConfirm();
+          if (
+            !active ||
+            active === document.body ||
+            active === rootRef.current ||
+            active === confirmRef.current
+          ) {
+            p.onConfirm();
+          } else if (rootRef.current?.contains(active) && active instanceof HTMLButtonElement) {
+            // Enter on another bar button runs that button, never the destructive default.
+            active.click();
+          }
         },
       },
       { combo: "escape", handler: () => p.onCancel() },

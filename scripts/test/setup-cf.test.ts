@@ -105,6 +105,7 @@ function deps(over: {
   generateKey?: () => string;
   flags?: SetupFlags;
   logs?: string[];
+  onInterrupt?: SetupDeps["onInterrupt"];
 }): SetupDeps {
   const logs = over.logs ?? [];
   return {
@@ -112,6 +113,7 @@ function deps(over: {
     runner: over.runner,
     prompter: over.prompter,
     fs: over.fs,
+    onInterrupt: over.onInterrupt ?? (() => () => undefined),
     log: (line) => logs.push(line),
     generateKey: over.generateKey ?? (() => Buffer.alloc(32, 9).toString("base64")),
     nodeVersion: "24.13.1",
@@ -291,6 +293,147 @@ describe("runSetup, re-run", () => {
   });
 });
 
+describe("runSetup, re-run safety", () => {
+  const rerunFs = (): ReturnType<typeof fakeFs> =>
+    fakeFs({ ...INSTALLED, [LOCAL]: JSON.stringify({ d1DatabaseId: DB_ID }) });
+  const rerunResponder =
+    (listResult: Partial<RunResult>, getResult: Partial<RunResult>) =>
+    (call: Call): Partial<RunResult> | undefined => {
+      if (call.command === "pnpm" && call.args[0] === "--version") return { stdout: "12.11.2" };
+      if (isCf(call, "d1", "get"))
+        return { stdout: JSON.stringify({ uuid: DB_ID, name: "clearbox", jurisdiction: "eu" }) };
+      if (isCf(call, "workers", "secrets", "list")) return listResult;
+      if (isCf(call, "workers", "get")) return getResult;
+      return undefined;
+    };
+
+  it("aborts without generating or uploading when the secrets list fails for another reason", async () => {
+    const fs = rerunFs();
+    const { runner, calls } = fakeRunner(
+      rerunResponder({ code: 1, stderr: "fetch failed: ETIMEDOUT" }, { code: 1, stderr: "fetch failed" }),
+    );
+    let generated = 0;
+    await assert.rejects(
+      runSetup(
+        deps({
+          runner,
+          prompter: fakePrompter([]),
+          fs,
+          generateKey: () => {
+            generated++;
+            return "unused";
+          },
+        }),
+      ),
+      /Could not list secrets/,
+    );
+    assert.equal(generated, 0);
+    assert.equal(
+      calls.some((c) => c.command === "pnpm" && c.args[1] === "deploy:cf"),
+      false,
+    );
+    assert.equal(fs.files.has(SECRETS), false);
+  });
+
+  it("proceeds to the secret prompts when workers get confirms the Worker is absent", async () => {
+    const fs = rerunFs();
+    const { runner } = fakeRunner(
+      rerunResponder({ code: 1, stderr: "boom" }, { code: 1, stderr: "Worker not found (10007)" }),
+    );
+    const keys = keyFactory();
+    await assert.rejects(
+      runSetup(deps({ runner, prompter: fakePrompter([]), fs, generateKey: keys.generate })),
+      /unexpected string prompt/,
+    );
+  });
+});
+
+describe("runSetup, deploy cleanup", () => {
+  const prompts = (): Answer[] => [
+    "https://acct.services.ai.azure.com",
+    AZURE_KEY,
+    "",
+    "",
+    "",
+    "owner@example.test",
+    "my-team",
+    AUD,
+  ];
+  const absentWorker = (call: Call): Partial<RunResult> | undefined => {
+    if (call.command === "pnpm" && call.args[0] === "--version") return { stdout: "12.11.2" };
+    if (isCf(call, "d1", "get"))
+      return { stdout: JSON.stringify({ uuid: DB_ID, name: "clearbox", jurisdiction: "eu" }) };
+    if (isCf(call, "workers", "secrets", "list")) return { code: 1, stderr: "not found" };
+    return undefined;
+  };
+
+  it("removes the secrets file and surfaces the error when the deploy fails", async () => {
+    const fs = fakeFs({ ...INSTALLED, [LOCAL]: JSON.stringify({ d1DatabaseId: DB_ID }) });
+    let sawFile = false;
+    const { runner } = fakeRunner((call) => {
+      if (call.command === "pnpm" && call.args[1] === "deploy:cf") {
+        sawFile = fs.files.has(SECRETS);
+        return { code: 1 };
+      }
+      return absentWorker(call);
+    });
+    await assert.rejects(runSetup(deps({ runner, prompter: fakePrompter(prompts()), fs })), /Deploy failed/);
+    assert.equal(sawFile, true);
+    assert.equal(fs.files.has(SECRETS), false);
+  });
+
+  it("removes the secrets file on SIGINT/SIGTERM and unregisters the handler afterwards", async () => {
+    const fs = fakeFs({ ...INSTALLED, [LOCAL]: JSON.stringify({ d1DatabaseId: DB_ID }) });
+    let cleanup: (() => void) | undefined;
+    let registered = 0;
+    let unregistered = 0;
+    let removedByInterrupt = false;
+    const { runner } = fakeRunner((call) => {
+      if (call.command === "pnpm" && call.args[1] === "deploy:cf") {
+        assert.equal(fs.files.has(SECRETS), true);
+        cleanup?.();
+        removedByInterrupt = !fs.files.has(SECRETS);
+        return { code: 1 };
+      }
+      return absentWorker(call);
+    });
+    await assert.rejects(
+      runSetup(
+        deps({
+          runner,
+          prompter: fakePrompter(prompts()),
+          fs,
+          onInterrupt: (fn) => {
+            registered++;
+            cleanup = fn;
+            return () => {
+              unregistered++;
+            };
+          },
+        }),
+      ),
+      /Deploy failed/,
+    );
+    assert.equal(registered, 1);
+    assert.equal(removedByInterrupt, true);
+    assert.equal(unregistered, 1);
+  });
+
+  it("cleans a partially written secrets file", async () => {
+    const base = fakeFs({ ...INSTALLED, [LOCAL]: JSON.stringify({ d1DatabaseId: DB_ID }) });
+    const fs: typeof base = {
+      ...base,
+      writeText: (path, text, mode) => {
+        base.writeText(path, text, mode);
+        if (path === SECRETS) throw new Error("disk full");
+      },
+    };
+    const { runner } = fakeRunner(absentWorker);
+    await assert.rejects(runSetup(deps({ runner, prompter: fakePrompter(prompts()), fs })), /disk full/);
+    assert.equal(base.files.has(SECRETS), false);
+  });
+});
+
 describe("runSetup, failures", () => {
   const base = (call: Call): Partial<RunResult> | undefined =>
     call.command === "pnpm" && call.args[0] === "--version" ? { stdout: "12.11.2" } : undefined;
@@ -331,7 +474,7 @@ describe("runSetup, failures", () => {
     const { runner } = fakeRunner((call) => {
       if (isCf(call, "d1", "get"))
         return { stdout: JSON.stringify({ uuid: DB_ID, name: "clearbox", jurisdiction: "eu" }) };
-      if (isCf(call, "workers", "secrets", "list")) return { code: 1 };
+      if (isCf(call, "workers", "secrets", "list")) return { code: 1, stderr: "not found" };
       if (call.command === "git") return { code: 1 };
       return base(call);
     });

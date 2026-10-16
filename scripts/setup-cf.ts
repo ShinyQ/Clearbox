@@ -55,6 +55,8 @@ export interface SetupDeps {
   runner: CommandRunner;
   prompter: Prompter;
   fs: SetupFs;
+  /** Registers a cleanup run on SIGINT/SIGTERM; returns the unregister function. */
+  onInterrupt: (cleanup: () => void) => () => void;
   log: (line: string) => void;
   generateKey: () => string;
   nodeVersion: string;
@@ -150,10 +152,19 @@ async function ensureDatabase(
   return { id: db.uuid, created: true };
 }
 
+const NOT_FOUND = /not found|does not exist|\b10007\b|\b404\b/i;
+
+// An empty set means the Worker is confirmed absent; any other failure aborts so a
+// transient error can never be mistaken for "no secrets" (which would regenerate keys).
 async function listSecretNames(cf: Cf): Promise<Set<string>> {
   const res = await cf(["workers", "secrets", "list", "--worker", WORKER_NAME]);
-  if (res.code !== 0) return new Set(); // Worker not deployed yet
-  return extractSecretNames(parseJsonOutput(res.stdout));
+  if (res.code === 0) return extractSecretNames(parseJsonOutput(res.stdout));
+  if (NOT_FOUND.test(res.stderr)) return new Set();
+  const probe = await cf(["workers", "get", WORKER_NAME]);
+  if (probe.code !== 0 && NOT_FOUND.test(probe.stderr)) return new Set();
+  throw new SetupError(
+    `Could not list secrets on Worker "${WORKER_NAME}": ${firstLine(res.stderr) || "cf workers secrets list failed"}. Nothing was changed; re-run pnpm setup:cf.`,
+  );
 }
 
 async function promptValue(deps: SetupDeps, spec: SecretSpec): Promise<string> {
@@ -246,16 +257,18 @@ async function deploy(
     if (ignored.code !== 0) {
       throw new SetupError(`${SECRETS_FILE_PATH} is not git-ignored. Refusing to write secrets there.`);
     }
-    deps.fs.writeText(file, renderSecretsFile(values), 0o600);
     args.push("--secrets-file", file);
   }
   deps.log(
     names.length > 0 ? `Deploying with secrets: ${names.join(", ")}` : "Deploying (no secret changes)...",
   );
+  const unregister = names.length > 0 ? deps.onInterrupt(() => deps.fs.remove(file)) : (): void => undefined;
   try {
+    if (names.length > 0) deps.fs.writeText(file, renderSecretsFile(values), 0o600);
     const res = await deps.runner.run("pnpm", args, { cwd: join(deps.repoRoot, "app"), env, inherit: true });
     if (res.code !== 0) throw new SetupError("Deploy failed. Fix the error above and re-run pnpm setup:cf.");
   } finally {
+    unregister();
     if (names.length > 0) deps.fs.remove(file);
   }
 }
@@ -310,11 +323,16 @@ export async function runSetup(deps: SetupDeps): Promise<SetupResult> {
   await deploy(deps, collected.values, env);
   let deploys = 1;
 
-  const after = await listSecretNames(cf);
-  const missing = SECRET_NAMES.filter(
-    (n) => !after.has(n) && !(n === "ACCESS_AUD" && collected.accessPending),
-  );
-  if (missing.length > 0) deps.log(`Warning: secrets not reported on the Worker: ${missing.join(", ")}`);
+  try {
+    const after = await listSecretNames(cf);
+    const missing = SECRET_NAMES.filter(
+      (n) => !after.has(n) && !(n === "ACCESS_AUD" && collected.accessPending),
+    );
+    if (missing.length > 0) deps.log(`Warning: secrets not reported on the Worker: ${missing.join(", ")}`);
+  } catch (error) {
+    if (!(error instanceof SetupError)) throw error;
+    deps.log(`Warning: could not verify secrets after the deploy. ${error.message}`);
+  }
 
   const worker = await cf(["workers", "get", WORKER_NAME]);
   const workerId = worker.code === 0 ? workerIdFrom(worker.stdout) : null;
@@ -361,6 +379,19 @@ const nodeFs: SetupFs = {
   exists: (path) => existsSync(path),
 };
 
+function onNodeInterrupt(cleanup: () => void): () => void {
+  const handler = (): void => {
+    cleanup();
+    process.exit(1);
+  };
+  process.on("SIGINT", handler);
+  process.on("SIGTERM", handler);
+  return () => {
+    process.off("SIGINT", handler);
+    process.off("SIGTERM", handler);
+  };
+}
+
 async function main(): Promise<number> {
   const { values } = parseArgs({
     options: {
@@ -375,6 +406,7 @@ async function main(): Promise<number> {
       runner: createNodeRunner(),
       prompter: createTerminalPrompter(),
       fs: nodeFs,
+      onInterrupt: onNodeInterrupt,
       log: (line) => console.log(line),
       generateKey: () => generateKey(),
       nodeVersion: process.versions.node,

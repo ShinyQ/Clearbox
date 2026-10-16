@@ -1,0 +1,184 @@
+[
+  {
+    "status": 400,
+    "body": { "error": "invalid_grant", "error_description": "AADSTS70008: expired", "error_codes": [70008] },
+    "expected": "ProviderAuthError",
+    "reason": "AADSTS70008"
+  },
+  {
+    "status": 400,
+    "body": {
+      "error": "invalid_grant",
+      "error_description": "AADSTS700082: inactive",
+      "error_codes": [700082]
+    },
+    "expected": "ProviderAuthError",
+    "reason": "AADSTS700082"
+  },
+  {
+    "status": 400,
+    "body": { "error": "invalid_grant", "error_description": "AADSTS50173: revoked", "error_codes": [50173] },
+    "expected": "ProviderAuthError",
+    "reason": "AADSTS50173"
+  },
+  {
+    "status": 400,
+    "body": { "error": "invalid_grant", "error_description": "AADSTS70000: invalid", "error_codes": [70000] },
+    "expected": "ProviderAuthError",
+    "reason": "AADSTS70000"
+  },
+  {
+    "status": 400,
+    "body": {
+      "error": "invalid_grant",
+      "error_description": "AADSTS70043: sign-in frequency",
+      "error_codes": [70043]
+    },
+    "expected": "ProviderAuthError",
+    "reason": "AADSTS70043"
+  },
+  {
+    "status": 400,
+    "body": {
+      "error": "interaction_required",
+      "error_description": "AADSTS50076: mfa",
+      "error_codes": [50076]
+    },
+    "expected": "ProviderAuthError",
+    "reason": "AADSTS50076"
+  },
+  {
+    "status": 400,
+    "body": {
+      "error": "interaction_required",
+      "error_description": "AADSTS50079: enrollment",
+      "error_codes": [50079]
+    },
+    "expected": "ProviderAuthError",
+    "reason": "AADSTS50079"
+  },
+  {
+    "status": 400,
+    "body": {
+      "error": "interaction_required",
+      "error_description": "AADSTS50078: mfa expired",
+      "error_codes": [50078]
+    },
+    "expected": "ProviderAuthError",
+    "reason": "AADSTS50078"
+  },
+  {
+    "status": 400,
+    "body": {
+      "error": "interaction_required",
+      "error_description": "AADSTS53003: conditional access",
+      "error_codes": [53003]
+    },
+    "expected": "ProviderAuthError",
+    "reason": "AADSTS53003"
+  },
+  {
+    "status": 400,
+    "body": { "error": "invalid_grant", "error_description": "AADSTS65001: consent", "error_codes": [65001] },
+    "expected": "ProviderAuthError",
+    "reason": "AADSTS65001"
+  },
+  {
+    "status": 400,
+    "body": {
+      "error": "invalid_grant",
+      "error_description": "AADSTS90094: admin consent",
+      "error_codes": [90094]
+    },
+    "expected": "ProviderAuthError",
+    "reason": "admin_consent_required"
+  },
+  {
+    "status": 401,
+    "body": {
+      "error": "invalid_client",
+      "error_description": "AADSTS7000215: bad secret",
+      "error_codes": [7000215]
+    },
+    "expected": "ProviderConfigError",
+    "reason": "AADSTS7000215"
+  },
+  {
+    "status": 401,
+    "body": { "error": "invalid_client", "error_description": "AADSTS7000222: secret expired" },
+    "expected": "ProviderConfigError",
+    "reason": "AADSTS7000222"
+  },
+  {
+    "status": 400,
+    "body": {
+      "error": "unauthorized_client",
+      "error_description": "AADSTS700016: app not found",
+      "error_codes": [700016]
+    },
+    "expected": "ProviderConfigError",
+    "reason": "AADSTS700016"
+  },
+  {
+    "status": 400,
+    "body": {
+      "error": "invalid_request",
+      "error_description": "AADSTS50194: not multitenant",
+      "error_codes": [50194]
+    },
+    "expected": "ProviderConfigError",
+    "reason": "AADSTS50194"
+  },
+  {
+    "status": 400,
+    "body": {
+      "error": "invalid_request",
+      "error_description": "AADSTS50011: redirect mismatch",
+      "error_codes": [50011]
+    },
+    "expected": "ProviderConfigError",
+    "reason": "AADSTS50011"
+  },
+  {
+    "status": 400,
+    "body": {
+      "error": "invalid_grant",
+      "error_description": "AADSTS54005: code already redeemed",
+      "error_codes": [54005]
+    },
+    "expected": "ProviderAuthError",
+    "reason": "invalid_grant"
+  },
+  {
+    "status": 400,
+    "body": { "error": "consent_required", "error_description": "consent" },
+    "expected": "ProviderAuthError",
+    "reason": "consent_required"
+  },
+  {
+    "status": 401,
+    "body": { "error": "invalid_client", "error_description": "no code" },
+    "expected": "ProviderConfigError",
+    "reason": "invalid_client"
+  },
+  {
+    "status": 503,
+    "body": { "error": "temporarily_unavailable", "error_description": "AADSTS90033: busy" },
+    "headers": { "Retry-After": "5" },
+    "expected": "ProviderUnavailableError",
+    "retryAfterMs": 5000
+  },
+  { "status": 500, "body": null, "expected": "ProviderUnavailableError", "retryAfterMs": null },
+  {
+    "status": 429,
+    "body": { "error": "too_many_requests" },
+    "headers": { "Retry-After": "7" },
+    "expected": "ProviderRateLimitError",
+    "retryAfterMs": 7000
+  },
+  {
+    "status": 400,
+    "body": { "error": "invalid_scope", "error_description": "AADSTS70011: scope" },
+    "expected": "ProviderResponseError"
+  }
+]

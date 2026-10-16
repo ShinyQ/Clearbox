@@ -103,6 +103,11 @@ export interface MailProvider {
   syncChanges(cursor: IncrementalCursor, maxMessages: number): Promise<ChangesPage>;
   /** New incremental cursor after expiry; watermark = newest receivedAt already ingested (epoch ms) or null. */
   resyncCursor(watermark: number | null): Promise<IncrementalCursor>;
+  /**
+   * Inbox message count (Gmail labels/INBOX messagesTotal, Graph mailFolders/inbox totalItemCount), one request.
+   * Best effort: null on rate limit, 5xx, network or shape errors; auth, config and budget errors still throw.
+   */
+  inboxEstimate(): Promise<number | null>;
   /** Move to Trash / Deleted Items. Max 100 ids per call. */
   trash(ids: readonly string[]): Promise<ActionResult[]>;
   /** Gmail: remove INBOX; Graph: move to archiveFolderId. Max 100 ids per call. */

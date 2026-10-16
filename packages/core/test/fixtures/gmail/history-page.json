@@ -1,0 +1,37 @@
+{
+  "history": [
+    {
+      "id": "2001",
+      "messagesAdded": [
+        { "message": { "id": "msg0001", "threadId": "thr0001", "labelIds": ["INBOX", "UNREAD"] } }
+      ]
+    },
+    {
+      "id": "2002",
+      "messagesAdded": [{ "message": { "id": "draft01", "threadId": "draft01", "labelIds": ["DRAFT"] } }]
+    },
+    {
+      "id": "2003",
+      "messagesAdded": [{ "message": { "id": "sent01", "threadId": "thr0001", "labelIds": ["SENT"] } }]
+    },
+    {
+      "id": "2004",
+      "labelsAdded": [{ "message": { "id": "msg0002", "threadId": "thr0002" }, "labelIds": ["TRASH"] }]
+    },
+    {
+      "id": "2005",
+      "labelsRemoved": [{ "message": { "id": "msg0003", "threadId": "thr0003" }, "labelIds": ["INBOX"] }]
+    },
+    { "id": "2006", "messagesDeleted": [{ "message": { "id": "msg0004", "threadId": "thr0004" } }] },
+    {
+      "id": "2007",
+      "labelsAdded": [{ "message": { "id": "msg0005", "threadId": "thr0005" }, "labelIds": ["INBOX"] }]
+    },
+    {
+      "id": "2008",
+      "messagesAdded": [{ "message": { "id": "msg0006", "threadId": "thr0006", "labelIds": ["INBOX"] } }]
+    }
+  ],
+  "nextPageToken": "h2008",
+  "historyId": "2100"
+}

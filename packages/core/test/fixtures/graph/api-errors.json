@@ -1,0 +1,48 @@
+[
+  {
+    "status": 401,
+    "body": { "error": { "code": "InvalidAuthenticationToken", "message": "Access token has expired." } },
+    "expected": "ProviderAuthError",
+    "reason": "unauthorized"
+  },
+  {
+    "status": 403,
+    "body": { "error": { "code": "ErrorAccessDenied", "message": "Access is denied." } },
+    "expected": "ProviderAuthError",
+    "reason": "ErrorAccessDenied"
+  },
+  { "status": 403, "body": null, "expected": "ProviderAuthError", "reason": "forbidden" },
+  {
+    "status": 429,
+    "body": { "error": { "code": "TooManyRequests", "message": "Please retry again later." } },
+    "headers": { "Retry-After": "10" },
+    "expected": "ProviderRateLimitError",
+    "retryAfterMs": 10000
+  },
+  {
+    "status": 429,
+    "body": { "error": { "code": "TooManyRequests", "message": "Please retry again later." } },
+    "expected": "ProviderRateLimitError",
+    "retryAfterRange": [60000, 61000]
+  },
+  {
+    "status": 503,
+    "body": { "error": { "code": "ServiceUnavailable", "message": "Unavailable" } },
+    "headers": { "Retry-After": "5" },
+    "expected": "ProviderUnavailableError",
+    "retryAfterMs": 5000
+  },
+  { "status": 504, "body": null, "expected": "ProviderUnavailableError", "retryAfterMs": null },
+  {
+    "status": 400,
+    "body": { "error": { "code": "ErrorInvalidRequest", "message": "Bad request" } },
+    "expected": "ProviderResponseError",
+    "httpStatus": 400
+  },
+  {
+    "status": 404,
+    "body": { "error": { "code": "ErrorItemNotFound", "message": "Not found" } },
+    "expected": "ProviderResponseError",
+    "httpStatus": 404
+  }
+]

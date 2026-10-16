@@ -6035,3 +6035,47 @@ Plan complete and saved to `docs/superpowers/plans/2026-10-15-clearbox-06-ops-ci
 
 1. **Subagent-Driven (recommended):** a fresh subagent per task with review between tasks (REQUIRED SUB-SKILL: superpowers:subagent-driven-development).
 2. **Inline Execution:** execute tasks in one session with checkpoints (REQUIRED SUB-SKILL: superpowers:executing-plans).
+
+## Execution notes
+
+Executed on branch `feat/clearbox-06-ops-ci-eval` (stacked on `feat/clearbox-05-web-ui`) with superpowers:subagent-driven-development: one implementer per task, a spec and quality review after each task (fix rounds on Tasks 3, 4, 6, 7 and X1), a final whole-branch review and one fix wave. Task 12's README step was replaced by the owner's README brief (style of the ShinyQ-HQ README). Three lead tasks were added: X1 docs reconciliation (contracts rev 2.3), X2 route-level code splitting, X3 hide Undo for keep-only batches. No dependency was added beyond the eval package's pinned `zod` and `vitest` (C4).
+
+### Gate 06 result (local commands)
+
+`pnpm install --frozen-lockfile && pnpm lint && pnpm format:check && CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000 pnpm typecheck && pnpm exec tsc -p scripts/tsconfig.json && node --test "scripts/test/*.test.ts" && pnpm test && CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000 pnpm build` passes: `check-text: 495 files clean`; Prettier clean; script tests `ℹ tests 49`; core `Test Files  40 passed (40)`, `Tests  635 passed (635)`; eval `Test Files  6 passed (6)`, `Tests  55 passed (55)`; app worker `Test Files  49 passed (49)`, `Tests  387 passed (387)`; app web `Test Files  42 passed (42)`, `Tests  433 passed (433)`; build clean (no chunk size warning after X2). Gallery not shipped; built `index.html` inline style/script count `0`; `committed`.
+
+Counts differ from the plan (scripts 43, eval 42) because of regression tests added by review fixes: scripts +6 (setup-cf secrets-list and secrets-file hardening), eval +13 (percentile rank, retry clamp, shared pacer back-off, shuffle errors, pacer guard, report shuffle-error count). Web grew from 422 to 433 (X3). Task 13 Steps 2 to 6 (live) run with the owner after the PR opens; outcomes are recorded below when done.
+
+### Lead notes from earlier layers
+
+| # | Handling |
+|---|---|
+| 1 | `"no-console": "error"` kept; `scripts/**` and `eval/**` already exempt. |
+| 2 | CI runs `pnpm install --frozen-lockfile`, the worker tests (workerd) and the build (esbuild) on ubuntu; the first PR CI run confirms `allowBuilds` false still yields working binaries (see "Live verification"). |
+| 3 | Docs and README use the real `db:migrate:local` (`--mode development`), `fsModuleCache: false` is untouched, build output `app/.cloudflare/output/v0/`. |
+| 4 | No `cf d1 execute` anywhere. `export-labels` uses `cf d1 raw <id> [--local --persist-to .cloudflare/state --mode development] --sql=<sql>` for both modes, run from `app/` (the config resolves the D1 id from `CLEARBOX_D1_ID` or `app/clearbox.local.json`); runbook and checklist use `cf d1 raw ... --sql=`. Every documented `cf` command was checked against `cf` 1.0.0-beta.17 `--help`. |
+| 5, 6 | Guides, runbook, README use the exact routes and labels. |
+| 7 | Docs reconciliation in one commit (174f53b) plus a follow-up (ddf9d5b): contracts rev 2.3 (section 12.6), 1.1 lists the layer 4, 5 and 6 files, 1.3 `db:migrate:local`, 9 `request.error` on 200 for invalid stored reasons, C27 `{reason}` audit shape, incremental retention skip (8.2, 8.3, 6.5, `skippedOld`), Undo not applying to keeps (7.8, UI spec 5.2.4, 5.2.6, 5.4, 6.8), UI spec copy additions, account card status rule; design spec revision history; index points to rev 2.3. |
+| 8 | Done (X2, 5bb47c2): Setup, Activity, Insights, Rules and Accounts are React Router `lazy` routes; main chunk 625 kB to 324 kB plus a 250 kB shared chunk and 6 to 11 kB page chunks. |
+
+### Deviations (fix forward)
+
+| # | Task | Change | Why |
+|---|---|---|---|
+| 1 | 3, final | `setup:cf` treats a failed `cf workers secrets list` as "no secrets" only when `cf workers get clearbox` also reports not found; any other failure aborts before key generation. SIGINT/SIGTERM during the write-to-deploy window deletes `app/deploy.secrets.json`; the write happens inside `try` (owner approved) | A transient list failure silently rotated `TOKEN_ENC_KEY` and made every stored token unreadable; Ctrl+C left secrets on disk |
+| 2 | 4, final | `deploy-decision.sh`: `--existing` accepts account names with uppercase and underscores (new accounts stay lowercase); dry run prints the resource-group commands; clear errors for a bad subscription, a failed group check and a failed smoke-test curl (key unset); account preflight and quota parsing are null-safe (joined single-row queries) | Real existing accounts; silent exits; tsv null fields shifted |
+| 3 | 6 | `percentile` computes the rank as `ceil(p * n / 100)` | `p / 100` float error picked the next rank (p=28, n=25) |
+| 4 | 7 | Retry sleeps clamp to `MAX_RETRY_SLEEP_MS = 60_000`; a rate-limit retry pushes the shared pacer forward (`Pacer.delayUntil`); shuffle-call failures are recorded (`EvalRow.shuffleError`, report count); `createPacer` rejects non-positive rpm | A large `Retry-After` stalled the run; other workers kept hitting a throttled endpoint; silent shuffle failures |
+| 5 | final | `pnpm eval` gives `MaiDecisionEngine` `Date.now` (pacer keeps `performance.now`) | HTTP-date `Retry-After` was computed against a monotonic clock |
+| 6 | 11, 12a | Guides and runbook follow the real scripts; TOKEN_ENC_KEY rotation re-links each paused account with Connect Gmail / Connect Outlook on the same mailbox (Reconnect only shows for `needs_reauth` and `config_error`; `completeConnect` reconnects the existing row in place) | C12 assumed a Reconnect button on paused accounts |
+| 7 | 12b | README written from the owner's brief: centered header, badges, screens table and hero captured from the local app with the synthetic dev seed (headless Chrome over DevTools, `docs/readme/*.png`), mermaid architecture, Quick start with a working local `.dev.vars` snippet (the example's placeholders fail config validation) | Owner request |
+| 8 | X3 | The SPA hides Undo for keep-only batches (toasts, undo stack, Activity rows) and keeps it for mixed batches (`lib/keep-only.ts`); keep-only Activity rows show an empty cell (owner approved) | Lead decision: Undo does not apply to keeps |
+| 9 | final | Cost figures corrected to about $0.19 to $0.34 per 10,000 emails (450 to 800 tokens at $0.042 per million) in README, setup-azure, design spec and research | Arithmetic |
+
+### Live verification
+
+Recorded after Phase B (owner present). Items: Linux CI with `allowBuilds` (index note), Decision-1 what-if and deployment, smoke test, live eval numbers and 429 headers (index item 5), `cf deploy --secrets-file` semantics (C9, index item 6), first deploy without `ACCESS_AUD` (C11, index item 7), production D1 `CLAIM_SQL` (index item 8), D1 `batch()` counting, `cf d1 get` jurisdiction, real `cf` not-found stderr for the setup heuristic, Access application body.
+
+### Deferred minor findings (triaged by the final review as safe to defer)
+
+check-text robustness (bare catch, silent skip over 2 MB, overlapping key rules, `<` prefix exemption, no `main()` coverage); Access Option B command embeds the owner email unescaped; `parseJsonOutput` banner fallback; duplicate UUID regexes; raw-mode prompt chunk handling; `onNodeInterrupt` untested; non-TTY prompter stack trace; `STATE_SIGNING_KEY` rotation unconfirmed; no secrets re-list after the `ACCESS_AUD` deploy; existing-mode account regex rejects `.`; fixture domain guard skips some fields; metrics argument validation; unexpected engine errors scored as `unknown`; no `assertGitIgnored` test; `export-labels` raw parse errors may echo cf output to the local terminal; CI concurrency cancels in-flight `main` runs; Dependabot group split of vite and `@vitejs/*`; AADSTS wording in the Microsoft guide; export window wording; no failed-chunk test and no `HydrateFallback` for lazy routes; small X3 test fixture and import-order nits.

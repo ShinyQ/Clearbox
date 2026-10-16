@@ -181,7 +181,7 @@ export function shuffleRobustness(pairs: readonly ShufflePair[]): ShuffleRobustn
 export function percentile(values: readonly number[], p: number): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
-  const rank = Math.max(1, Math.ceil((p / 100) * sorted.length));
+  const rank = Math.max(1, Math.ceil((p * sorted.length) / 100));
   return sorted[Math.min(sorted.length, rank) - 1] ?? null;
 }
 

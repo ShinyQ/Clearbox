@@ -119,6 +119,12 @@ describe("percentile", () => {
     expect(percentile(values, 95)).toBe(10);
     expect(percentile([], 50)).toBeNull();
   });
+
+  it("does not round up when p * n is an exact integer", () => {
+    const values = Array.from({ length: 25 }, (_, i) => i + 1);
+    expect(percentile(values, 28)).toBe(7);
+    expect(percentile(values, 56)).toBe(14);
+  });
 });
 
 describe("argmaxAction", () => {

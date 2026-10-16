@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { isMain } from "./lib/is-main.ts";
@@ -142,11 +142,18 @@ function main(): number {
     if (SKIPPED_FILES.includes(path)) continue;
     const full = join(root, path);
     let bytes: Buffer;
+    let fd: number;
     try {
-      if (statSync(full).size > MAX_FILE_BYTES) continue;
-      bytes = readFileSync(full);
+      fd = openSync(full, "r");
     } catch {
       continue; // deleted but still tracked
+    }
+    try {
+      // Size check and read use the same descriptor, so the file cannot change in between.
+      if (fstatSync(fd).size > MAX_FILE_BYTES) continue;
+      bytes = readFileSync(fd);
+    } finally {
+      closeSync(fd);
     }
     if (isProbablyBinary(bytes)) continue;
     scanned++;

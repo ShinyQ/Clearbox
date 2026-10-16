@@ -6074,7 +6074,31 @@ Counts differ from the plan (scripts 43, eval 42) because of regression tests ad
 
 ### Live verification
 
-Recorded after Phase B (owner present). Items: Linux CI with `allowBuilds` (index note), Decision-1 what-if and deployment, smoke test, live eval numbers and 429 headers (index item 5), `cf deploy --secrets-file` semantics (C9, index item 6), first deploy without `ACCESS_AUD` (C11, index item 7), production D1 `CLAIM_SQL` (index item 8), D1 `batch()` counting, `cf d1 get` jurisdiction, real `cf` not-found stderr for the setup heuristic, Access application body.
+Run on 2026-10-16 with the owner present (sanitized: no account, tenant, subdomain or resource names).
+
+| Item | Outcome |
+|---|---|
+| Linux CI, `allowBuilds` esbuild/workerd false (lead note 2) | PR CI on ubuntu passes "Lint, typecheck, test, build" (worker tests on workerd, build with esbuild) and "Azure IaC". No CI change needed. |
+| Bicep API `2026-07-01`, quota name | `az deployment group what-if` accepted both: 1 create (`<foundry-account>/deployments/decision-1`), everything else ignored. Quota line read "limit 500 RPM, in use 0 RPM, requested 300 RPM". |
+| Decision-1 deployment (Task 13 Step 2) | `deploy-decision.sh --existing --yes --smoke-test`: `Succeeded`, `Microsoft-Decision-1`, version `1`, `DataZoneStandard`, `300`, `NoAutoUpgrade`; smoke test `HTTP 200`, `"model":"microsoft-decision-1"`. |
+| Live eval on the 40 synthetic fixtures (Task 13 Step 3) | Fused: delete precision 100.0% (Wilson 95% lower bound 77.2%), recall 72.2%, harmful deletes 0; model only: precision 88.9%, recall 88.9%. Unsure rate 15.0%. ECE 0.096, Brier 0.069. Shuffle flip rate 0.0%, 0 model and 0 shuffle failures. 80 calls, latency p50 368 ms, p95 404 ms. Input tokens mean 386.6, max 412 (below the 450 to 800 planning range). Exit 0. |
+| Decision-1 429 body and headers (index item 5) | Not observed: no 429 during the eval (concurrency 4, paced under 300 RPM). The fallbacks stay in place. |
+| First deploy without `ACCESS_AUD` (C11, index item 7) | Refused. `cf deploy` reports "The following required secrets have not been set: ACCESS_AUD" for a Worker that does not exist yet. The documented fallback works: deploy once with a placeholder AUD (32 to 128 `[A-Za-z0-9-]`, rejected by every JWT), create the Access application, then replace `ACCESS_AUD`. |
+| Script-less Worker after a refused first deploy | The refused deploy leaves a Worker entity: `cf workers get clearbox` succeeds while `cf workers secrets list` fails with `[10007] This Worker does not exist on your account.` (404). `setup:cf` now treats `[10007]` from the secrets endpoint as "no script, no secrets" (072af11, with a test); every other list failure still aborts before key generation. |
+| `cf deploy --secrets-file` semantics (C9, index item 6) | Merge confirmed: a deploy whose file held only `ACCESS_AUD` kept the other 11 secrets (`cf workers secrets list` shows all 12 as `secret_text`). The deploy output labels secrets "Environment Variable (hidden)" but they are stored as `secret_text`. |
+| Secrets file cleanup | `app/deploy.secrets.json` absent after the failed, the cancelled and the successful runs. |
+| Cron triggers | Both registered (`* * * * *`, `0 2 * * *`) with another Worker on the account; the 5-trigger limit was not hit. |
+| Access application body (Option B) | `cf zero-trust access applications create` accepted `type: self_hosted`, a `worker` destination and an inline policy (a `name` was added: "Owner only"). Unauthenticated `/`, `/review`, `/api/me` and `/oauth/google/start` all 302 to the team's Access login. The owner signed in with One-time PIN. |
+| D1 jurisdiction (open item 2) | `cf d1 get` reports `"jurisdiction": "eu"` (`running_in_region: EEUR`). |
+| Production D1 `CLAIM_SQL` (index item 8) | Accepted: ticks claim the account and advance (sent scan, then inbox backfill). |
+| D1 `batch()` per tick | Tick success batches commit on production (75 messages and suggestions written over three ingest ticks, within the Free limits); no "too many queries" failures. |
+| Hidden-prompt paste over a slow terminal | One run stored a malformed `AZURE_DECISION_KEY`; ticks failed safely with `decision_auth_failed` (nothing ingested, the issue banner shown) until the key was replaced with `cf workers secrets update AZURE_DECISION_KEY --worker clearbox --type secret_text --text "$(az ... --query key1 -o tsv)"`. The issue cleared on the next successful sort. |
+| Google OAuth | A consent screen left in Testing returns `403 access_denied` ("can only be accessed by developer-approved testers"). The owner connected as a test user; publishing the app ("In production") is still required to avoid the 7-day refresh-token expiry. |
+| Entra app registration | Created with `az ad app create` (`AzureADandPersonalMicrosoftAccount`, web redirect URIs, no implicit grant, delegated Graph `Mail.ReadWrite`, `offline_access`, `User.Read`; `requestedAccessTokenVersion` 2) and a 12-month client secret. Outlook not connected yet. |
+
+Also fixed after the PR opened: CodeQL `js/file-system-race` in `scripts/check-text.ts` (stat then read); the size check and read now share one file descriptor.
+
+Small follow-up noted (not fixed): on a re-run where `OWNER_EMAIL` and `ACCESS_TEAM_DOMAIN` are kept, the printed Access instructions show placeholders instead of the stored values (the script cannot read secret values back).
 
 ### Deferred minor findings (triaged by the final review as safe to defer)
 

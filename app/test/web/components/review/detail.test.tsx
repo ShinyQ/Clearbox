@@ -1,5 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { SenderGroup, SuggestionItem } from "../../../../src/shared/api.ts";
 import { DetailPanel, type DetailPanelProps } from "../../../../src/web/components/review/DetailPanel.tsx";
@@ -148,5 +149,101 @@ describe("DetailPanel", () => {
     expect(dialog.getAttribute("aria-modal")).toBe("false");
     await user.keyboard("{Escape}");
     expect(p.onClose).toHaveBeenCalledOnce();
+  });
+
+  describe("sheet mode and focus trap", () => {
+    const sheet = (g: SenderGroup, over: Partial<DetailPanelProps> = {}) =>
+      props(g, { mode: "sheet", ...over });
+    const focusables = (dialog: HTMLElement) => [
+      ...dialog.querySelectorAll<HTMLElement>("a[href], button:not([disabled])"),
+    ];
+    const mount = (p: DetailPanelProps) =>
+      renderWithCore(
+        <HotkeysProvider>
+          <DetailPanel {...p} />
+        </HotkeysProvider>,
+      );
+
+    it("renders a modal dialog with Back first in the tab order", async () => {
+      installFakeApi();
+      const { user } = mount(sheet(byName("Contoso Orders")));
+      const dialog = screen.getByRole("dialog", { name: "Contoso Orders" });
+      expect(dialog.getAttribute("aria-modal")).toBe("true");
+      await user.tab();
+      expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Back" }));
+      expect(focusables(dialog)[0]).toBe(document.activeElement);
+    });
+
+    it("wraps Tab from the last control to the first and Shift+Tab back", async () => {
+      installFakeApi();
+      const { user } = mount(sheet(byName("Contoso Orders")));
+      const items = focusables(screen.getByRole("dialog", { name: "Contoso Orders" }));
+      items.at(-1)!.focus();
+      await user.tab();
+      expect(document.activeElement).toBe(items[0]);
+      await user.tab({ shift: true });
+      expect(document.activeElement).toBe(items.at(-1));
+    });
+
+    it("pulls focus back inside when Tab is pressed from outside the dialog", () => {
+      installFakeApi();
+      renderWithCore(
+        <HotkeysProvider>
+          <button type="button">outside</button>
+          <DetailPanel {...sheet(byName("Contoso Orders"))} />
+        </HotkeysProvider>,
+      );
+      const items = focusables(screen.getByRole("dialog", { name: "Contoso Orders" }));
+      const outside = screen.getByRole("button", { name: "outside" });
+      outside.focus();
+      fireEvent.keyDown(outside, { key: "Tab" });
+      expect(document.activeElement).toBe(items[0]);
+      outside.focus();
+      fireEvent.keyDown(outside, { key: "Tab", shiftKey: true });
+      expect(document.activeElement).toBe(items.at(-1));
+    });
+
+    it("installs the trap when the group arrives after the sheet is already open", async () => {
+      installFakeApi();
+      const g = byName("Contoso Orders");
+      function Late() {
+        const [ready, setReady] = useState(false);
+        return (
+          <HotkeysProvider>
+            <button type="button" onClick={() => setReady(true)}>
+              load
+            </button>
+            <DetailPanel {...sheet(g, ready ? {} : { group: null, items: [] })} />
+          </HotkeysProvider>
+        );
+      }
+      const { user } = renderWithCore(<Late />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+      await user.click(screen.getByRole("button", { name: "load" }));
+      const items = focusables(screen.getByRole("dialog", { name: "Contoso Orders" }));
+      items.at(-1)!.focus();
+      await user.tab();
+      expect(document.activeElement).toBe(items[0]);
+    });
+  });
+
+  it("disables the More menu's policy items while an action is busy", async () => {
+    installFakeApi();
+    const { user } = renderWithCore(
+      <HotkeysProvider>
+        <DetailPanel {...props(byName("Northwind Deals"), { busyAction: "delete" })} />
+      </HotkeysProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    const isDisabled = (name: string | RegExp) =>
+      (screen.getByRole("menuitem", { name }) as HTMLButtonElement).disabled;
+    expect(isDisabled(/Always OK to trash/)).toBe(true);
+    expect(isDisabled(/Always keep everything from/)).toBe(true);
+    expect(isDisabled("Copy sender address")).toBe(false);
+  });
+
+  it("omits the dangling separator when the account is unknown", () => {
+    render(<DetailPanel {...props(byName("Northwind Deals"), { account: null })} />);
+    expect(screen.getByText("promo@northwind.example")).toBeTruthy();
   });
 });

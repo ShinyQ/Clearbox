@@ -58,6 +58,7 @@ function specs(g: SenderGroup): Spec[] {
 export function DetailActions(p: DetailActionsProps) {
   const known = p.group.sender !== "";
   const short = truncateName(p.name);
+  const locked = p.disabled || p.busyAction !== null;
   const items: MenuItem[] = [
     ...(known
       ? [
@@ -65,12 +66,14 @@ export function DetailActions(p: DetailActionsProps) {
             id: "deny",
             label: `Always OK to trash ${short}`,
             icon: "trash" as const,
+            disabled: locked,
             onSelect: () => p.onAlwaysTrash(p.group.sender),
           },
           {
             id: "allow-domain",
             label: `Always keep everything from @${p.group.domain}`,
             icon: "shield" as const,
+            disabled: locked,
             onSelect: () => p.onAlwaysKeep(`@${p.group.domain}`),
           },
         ]

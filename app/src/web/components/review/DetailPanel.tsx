@@ -67,7 +67,7 @@ export function DetailPanel({ headingRef, ...p }: DetailPanelProps) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const floating = p.mode !== "inline";
   useHotkeys("slideover", [{ combo: "escape", handler: () => p.onClose() }], floating && p.open);
-  useFocusTrap(rootRef, p.mode === "sheet" && p.open);
+  useFocusTrap(rootRef, p.mode === "sheet" && p.open && p.group !== null);
   if (!p.group || !p.open) return null;
   const g = p.group;
   const name = displayName(g);
@@ -92,7 +92,9 @@ export function DetailPanel({ headingRef, ...p }: DetailPanelProps) {
           >
             {name.text}
           </h2>
-          <p className="truncate text-small text-ink-3">{`${g.sender || "Unknown sender"} · ${p.account?.email ?? ""}`}</p>
+          <p className="truncate text-small text-ink-3">
+            {[g.sender || "Unknown sender", p.account?.email].filter(Boolean).join(" · ")}
+          </p>
         </div>
         {p.mode === "slideover" ? (
           <Button variant="ghost" size="sm" icon="close" aria-label="Close" onClick={p.onClose} />

@@ -277,3 +277,21 @@
     outline-offset: -2px;
   }
 }
+
+/* Plan 05 additions: indeterminate progress (UI spec 4.17) and chip fade-in (UI spec 4.27). */
+@keyframes cb-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+@keyframes cb-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

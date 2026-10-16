@@ -28,6 +28,8 @@ export interface DetailPanelProps {
   tau: number;
   account: AccountView | null;
   busyAction: ActionKind | null;
+  /** Soft-disables the action buttons (for example while Clean up runs). */
+  actionsDisabled?: boolean;
   busyItemIds: ReadonlySet<number>;
   now: number;
   platform: Platform;
@@ -164,7 +166,7 @@ export function DetailPanel({ headingRef, ...p }: DetailPanelProps) {
         group={g}
         name={name.text}
         busyAction={p.busyAction}
-        disabled={needsReconnect}
+        disabled={needsReconnect || p.actionsDisabled === true}
         onAction={p.onAction}
         onAlwaysKeep={p.onAlwaysKeep}
         onAlwaysTrash={p.onAlwaysTrash}

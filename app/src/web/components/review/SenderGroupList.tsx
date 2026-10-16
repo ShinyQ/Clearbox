@@ -24,7 +24,8 @@ export interface SenderGroupListProps {
   state: "loading" | "ready" | "empty" | "error";
   tab: TabKey;
   groups: readonly SenderGroup[];
-  tau: number;
+  /** Null until a tau source resolves; rows render only once it is known. */
+  tau: number | null;
   accountsById: Readonly<Record<string, AccountView>>;
   showAccount: boolean;
   activeKey: string | null;
@@ -104,6 +105,7 @@ export function SenderGroupList(p: SenderGroupListProps) {
   const label = TAB_LABEL[p.tab];
   const total = p.totalInTab ?? loaded.length;
   const capped = total > 1000;
+  const tau = p.tau;
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const row = (e.target as HTMLElement).closest<HTMLElement>("[role='row'][data-group-key]");
@@ -192,7 +194,7 @@ export function SenderGroupList(p: SenderGroupListProps) {
           </div>
         )}
       </div>
-      {p.state === "loading" ? (
+      {p.state === "loading" || tau === null ? (
         <>
           <VisuallyHidden>Loading sender groups</VisuallyHidden>
           <SkeletonRows count={8} />
@@ -202,7 +204,7 @@ export function SenderGroupList(p: SenderGroupListProps) {
           <SenderGroupRow
             key={g.key}
             group={g}
-            tau={p.tau}
+            tau={tau}
             rowIndex={i}
             active={g.key === p.activeKey}
             selected={p.selected.has(g.key)}

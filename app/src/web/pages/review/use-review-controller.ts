@@ -10,12 +10,14 @@ import {
 } from "../../api/queries.ts";
 import type { BulkAction } from "../../components/review/SelectionToolbar.tsx";
 import { providerName } from "../../lib/account-status.ts";
+import { GENERIC_ERROR } from "../../lib/copy-actions.ts";
 import { formatCount, localResetTime } from "../../lib/format.ts";
 import { TAB_ACTION, TAB_KEYS, type ActionKind, type GroupSort, type TabKey } from "../../lib/view-types.ts";
 import { useCleanup } from "../../state/CleanupProvider.tsx";
 import { useAnnounce } from "../../state/LiveAnnouncer.tsx";
 import { useOffline } from "../../state/offline.ts";
 import { useDocumentTitle } from "../../state/use-document-title.ts";
+import { useToast } from "../../state/ToastProvider.tsx";
 import { useNow } from "../../state/use-now.ts";
 import { usePlatform } from "../../state/use-platform.ts";
 import { useSelection } from "../../state/use-selection.ts";
@@ -41,6 +43,7 @@ import { useNewSuggestions } from "./use-new-suggestions.ts";
 import { useReviewHotkeys } from "./use-review-hotkeys.ts";
 import { useReviewParams } from "./use-review-params.ts";
 import { useScanNow } from "./use-scan-now.ts";
+import { loadKeysForSelectAll } from "./select-all.ts";
 
 const status = (q: { isPending: boolean; isError: boolean }): LoadStatus =>
   q.isError ? "error" : q.isPending ? "pending" : "success";
@@ -52,6 +55,7 @@ export function useReviewController() {
   const platform = usePlatform();
   const offline = useOffline();
   const announce = useAnnounce();
+  const toast = useToast();
   const cleanup = useCleanup();
   const phase = cleanup.state.machine.phase;
   const me = useMe();
@@ -131,7 +135,9 @@ export function useReviewController() {
     if (activeKey) request(activeKey);
   };
 
-  // UI spec 6.2: action keys are ignored while Clean up is preparing or running and for busy rows.
+  // Hotkeys and bulk approve are ignored while Clean up is preparing, confirming or running: its preview
+  // and run are tied to the groups as they were, so a concurrent action would make them stale. The mouse
+  // path shows the same rule as soft-disabled detail buttons (ReviewWorkArea) instead of a silent no-op.
   const cleanupBusy = cleanup.busyPhase !== "idle";
   const performAction = async (target: ActionKind) => {
     if (offline || cleanupBusy) return;
@@ -173,18 +179,9 @@ export function useReviewController() {
   };
 
   const selectAllInTab = async () => {
-    let data = groupsQ.data;
-    let more = groupsQ.hasNextPage;
-    while (more && flattenGroups(data).length < 1000) {
-      const r = await groupsQ.fetchNextPage();
-      data = r.data;
-      more = r.hasNextPage;
-    }
-    selection.selectAll(
-      flattenGroups(data)
-        .slice(0, 1000)
-        .map((g) => g.key),
-    );
+    const keys = await loadKeysForSelectAll(groupsQ);
+    if (keys) selection.selectAll(keys);
+    else toast.show({ kind: "error", message: GENERIC_ERROR });
   };
 
   const resetView = (update: Parameters<typeof params.update>[0]) => {
@@ -248,6 +245,7 @@ export function useReviewController() {
     platform,
     offline,
     cleanup,
+    cleanupBusy,
     me,
     accounts,
     accountsById,

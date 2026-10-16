@@ -8,7 +8,7 @@ import { Button } from "../components/ui/Button.tsx";
 import { EmptyState } from "../components/ui/EmptyState.tsx";
 import { ProgressBar } from "../components/ui/ProgressBar.tsx";
 import { Select } from "../components/ui/Select.tsx";
-import { formatCount } from "../lib/format.ts";
+import { formatCount, plural } from "../lib/format.ts";
 import { startOAuth } from "../lib/oauth-return.ts";
 import { firstSortProgress, isCatchingUp } from "./review/review-state.ts";
 import { ReviewWorkArea } from "./review/ReviewWorkArea.tsx";
@@ -135,7 +135,7 @@ export function ReviewPage() {
                 title="Inbox cleared"
                 body={`${formatCount(summary?.groups ?? 0)} ${summary?.groups === 1 ? "group is" : "groups are"} waiting for your call. New mail gets sorted every 30 minutes.`}
                 action={{
-                  label: `Review the ${formatCount(summary?.groups ?? 0)} groups`,
+                  label: `Review the ${plural(summary?.groups ?? 0, "group", "groups")}`,
                   onClick: () => c.changeTab("all"),
                 }}
                 actionRef={c.emptyActionRef}
@@ -148,7 +148,7 @@ export function ReviewPage() {
               pendingTotal={summary?.pending.total ?? 0}
               awaitingModel={summary?.awaitingModel ?? 0}
               groupsLeft={preview && typeof preview.groupsLeft === "number" ? preview.groupsLeft : null}
-              tau={c.tau ?? 0}
+              tau={c.tau}
               catchingUp={isCatchingUp(c.scope)}
               cleanupPhase={c.cleanup.busyPhase}
               offline={c.offline}

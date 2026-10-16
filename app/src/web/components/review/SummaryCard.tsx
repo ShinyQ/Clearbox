@@ -15,7 +15,7 @@ export interface SummaryCardProps {
   pendingTotal: number;
   awaitingModel: number;
   groupsLeft: number | null;
-  tau: number;
+  tau: number | null;
   catchingUp: boolean;
   cleanupPhase: "idle" | "preparing" | "busy";
   offline: boolean;
@@ -96,7 +96,7 @@ export function SummaryCard({ buttonRef, ...p }: SummaryCardProps) {
   const sub =
     p.state === "error"
       ? "Your sender groups below still work."
-      : p.state === "nothing_sure"
+      : p.state === "nothing_sure" && p.tau !== null
         ? nothingSureSubline(p.groupsLeft, emailsLeft, p.tau)
         : summarySubline({
             groups: p.preview?.groups ?? 0,

@@ -7,8 +7,8 @@ import type { ReviewController } from "./use-review-controller.ts";
 export function ReviewWorkArea({ c }: { c: ReviewController }) {
   const g = c.activeGroup;
   const detailPages = c.detailQ.data?.pages ?? [];
-  const inline = c.detailMode === "inline" && g !== null;
-  const tau = c.tau ?? 0;
+  const tau = c.tau;
+  const inline = c.detailMode === "inline" && g !== null && tau !== null;
   return (
     <div
       className={`overflow-clip rounded-b-xl border border-t-0 border-line bg-surface ${inline ? "xl:grid xl:grid-cols-[minmax(0,1fr)_300px]" : ""}`}
@@ -16,7 +16,7 @@ export function ReviewWorkArea({ c }: { c: ReviewController }) {
       <div className={`min-w-0 ${inline ? "xl:border-r xl:border-line" : ""}`}>
         <SenderGroupList
           state={
-            c.groupsQ.isPending
+            c.groupsQ.isPending || tau === null
               ? "loading"
               : c.groupsQ.isError
                 ? "error"
@@ -49,38 +49,41 @@ export function ReviewWorkArea({ c }: { c: ReviewController }) {
           onMove={c.move}
         />
       </div>
-      <DetailPanel
-        mode={c.detailMode}
-        open={c.detailMode === "inline" ? g !== null : c.detailOpen}
-        group={g}
-        items={detailPages.flatMap((p) => p.items.items)}
-        detailState={c.detailQ.isPending ? "loading" : c.detailQ.isError ? "error" : "ready"}
-        hasMoreItems={c.detailQ.hasNextPage}
-        loadingMoreItems={c.detailQ.isFetchingNextPage}
-        tau={tau}
-        account={g ? (c.accountsById[g.accountId] ?? null) : null}
-        busyAction={
-          c.groupActions.busyAction && g && c.groupActions.busyAction.key === g.key
-            ? c.groupActions.busyAction.action
-            : null
-        }
-        busyItemIds={c.itemActions.busyItemIds}
-        now={c.now}
-        platform={c.platform}
-        headingRef={c.headingRef}
-        onAction={(a) => void c.performAction(a)}
-        onAlwaysKeep={(entry) => g && void c.itemActions.alwaysKeep(g, entry, c.asOf)}
-        onAlwaysTrash={() => g && void c.itemActions.alwaysTrash(g)}
-        onCopyAddress={() => g && void c.itemActions.copyAddress(g)}
-        onItemAction={(id, a) => {
-          const item = detailPages.flatMap((p) => p.items.items).find((i) => i.id === id);
-          if (g && item) void c.itemActions.itemAction(g, item, a);
-        }}
-        onLoadMoreItems={() => void c.detailQ.fetchNextPage()}
-        onClose={c.closeDetail}
-        onRetry={() => void c.detailQ.refetch()}
-        onReconnect={(a) => startOAuth(a.provider, { returnTo: "/accounts", loginHint: a.email })}
-      />
+      {tau === null ? null : (
+        <DetailPanel
+          mode={c.detailMode}
+          open={c.detailMode === "inline" ? g !== null : c.detailOpen}
+          group={g}
+          items={detailPages.flatMap((p) => p.items.items)}
+          detailState={c.detailQ.isPending ? "loading" : c.detailQ.isError ? "error" : "ready"}
+          hasMoreItems={c.detailQ.hasNextPage}
+          loadingMoreItems={c.detailQ.isFetchingNextPage}
+          tau={tau}
+          account={g ? (c.accountsById[g.accountId] ?? null) : null}
+          busyAction={
+            c.groupActions.busyAction && g && c.groupActions.busyAction.key === g.key
+              ? c.groupActions.busyAction.action
+              : null
+          }
+          actionsDisabled={c.cleanupBusy}
+          busyItemIds={c.itemActions.busyItemIds}
+          now={c.now}
+          platform={c.platform}
+          headingRef={c.headingRef}
+          onAction={(a) => void c.performAction(a)}
+          onAlwaysKeep={(entry) => g && void c.itemActions.alwaysKeep(g, entry, c.asOf)}
+          onAlwaysTrash={() => g && void c.itemActions.alwaysTrash(g)}
+          onCopyAddress={() => g && void c.itemActions.copyAddress(g)}
+          onItemAction={(id, a) => {
+            const item = detailPages.flatMap((p) => p.items.items).find((i) => i.id === id);
+            if (g && item) void c.itemActions.itemAction(g, item, a);
+          }}
+          onLoadMoreItems={() => void c.detailQ.fetchNextPage()}
+          onClose={c.closeDetail}
+          onRetry={() => void c.detailQ.refetch()}
+          onReconnect={(a) => startOAuth(a.provider, { returnTo: "/accounts", loginHint: a.email })}
+        />
+      )}
     </div>
   );
 }

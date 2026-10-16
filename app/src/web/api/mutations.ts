@@ -12,6 +12,7 @@ export const ACTION_CACHE_PREFIXES = [
   "accounts",
   "batches",
   "activity",
+  "insights",
 ] as const;
 
 export async function invalidateAfterActions(qc: QueryClient): Promise<void> {

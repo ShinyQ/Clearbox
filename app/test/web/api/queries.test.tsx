@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { delay, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { qk } from "../../../src/web/api/keys.ts";
-import { usePatchAccount } from "../../../src/web/api/mutations.ts";
+import { invalidateAfterActions, usePatchAccount } from "../../../src/web/api/mutations.ts";
 import { accountsInterval, flattenGroups, useAccounts, useGroups } from "../../../src/web/api/queries.ts";
 import type { AccountsResponse } from "../../../src/shared/api.ts";
 import { createTestQueryClient, queryWrapper } from "../helpers/query.tsx";
@@ -84,5 +84,16 @@ describe("usePatchAccount", () => {
     );
     await waitFor(() => expect(mutation.result.current.isError).toBe(true));
     expect(seen).toEqual([true, false, true]);
+  });
+});
+
+describe("invalidateAfterActions", () => {
+  it("marks Insights stale without fetching it while no page shows it", async () => {
+    const state = installFakeApi();
+    const client = createTestQueryClient();
+    client.setQueryData(qk.insights, state.insights);
+    await invalidateAfterActions(client);
+    expect(client.getQueryState(qk.insights)?.isInvalidated).toBe(true);
+    expect(state.requests.filter((r) => r.route === "insights")).toHaveLength(0);
   });
 });

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { browser } from "../../../src/web/lib/links.ts";
@@ -109,6 +109,18 @@ describe("Accounts page", () => {
     await user.click(screen.getByRole("button", { name: "Connect Gmail" }));
     expect(assign).toHaveBeenLastCalledWith("/oauth/google/start");
     expect(window.sessionStorage.getItem("clearbox.oauthReturn")).toBe("/accounts");
+  });
+
+  it("resets the connecting state when the page comes back from the back-forward cache", async () => {
+    const assign = vi.spyOn(browser, "assign").mockImplementation(() => undefined);
+    const { user } = setup();
+    await user.click(await screen.findByRole("button", { name: "Connect Gmail" }));
+    expect(screen.getByRole("button", { name: "Opening Google…" })).toBeTruthy();
+    const e = new Event("pageshow");
+    Object.defineProperty(e, "persisted", { value: true });
+    act(() => void window.dispatchEvent(e));
+    expect(screen.getByRole("button", { name: "Connect Gmail" }).getAttribute("aria-busy")).not.toBe("true");
+    assign.mockRestore();
   });
 
   it("explains a provider that is not configured", async () => {

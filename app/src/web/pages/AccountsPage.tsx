@@ -20,6 +20,7 @@ import { startOAuth } from "../lib/oauth-return.ts";
 import type { ProviderKind } from "../lib/view-types.ts";
 import { useToast } from "../state/ToastProvider.tsx";
 import { useDocumentTitle } from "../state/use-document-title.ts";
+import { usePageshowReset } from "../state/use-pageshow-reset.ts";
 import { useNow } from "../state/use-now.ts";
 import { useRouteFocus } from "../state/use-route-focus.ts";
 
@@ -43,6 +44,7 @@ export function AccountsPage() {
   const qc = useQueryClient();
   const now = useNow();
   const [opening, setOpening] = useState<ProviderKind | null>(null);
+  usePageshowReset(() => setOpening(null));
   const [consentBanners, setConsentBanners] = useState<AppBannerSpec[]>([]);
   const gmailRef = useRef<HTMLButtonElement>(null);
   const toasted = useRef(false);

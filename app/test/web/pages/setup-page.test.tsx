@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { browser } from "../../../src/web/lib/links.ts";
@@ -113,6 +113,18 @@ describe("Setup page", () => {
     assign.mockRestore();
   });
 
+  it("resets the connecting state when the page comes back from the back-forward cache", async () => {
+    const assign = vi.spyOn(browser, "assign").mockImplementation(() => undefined);
+    const { user } = setup((s) => void (s.accounts = []));
+    await user.click(await screen.findByRole("button", { name: "Connect Gmail" }));
+    expect(screen.getByRole("button", { name: "Opening Google…" })).toBeTruthy();
+    pageshow(false);
+    expect(screen.getByRole("button", { name: "Opening Google…" })).toBeTruthy();
+    pageshow(true);
+    expect(screen.getByRole("button", { name: "Connect Gmail" }).getAttribute("aria-busy")).not.toBe("true");
+    assign.mockRestore();
+  });
+
   it("never claims success when the checks fail to load", async () => {
     installFakeApi();
     server.use(
@@ -130,3 +142,9 @@ describe("Setup page", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 });
+
+function pageshow(persisted: boolean) {
+  const e = new Event("pageshow");
+  Object.defineProperty(e, "persisted", { value: persisted });
+  act(() => void window.dispatchEvent(e));
+}

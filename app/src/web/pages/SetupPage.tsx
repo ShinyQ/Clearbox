@@ -16,6 +16,7 @@ import { NOT_CONFIGURED, oauthErrorBanner } from "../lib/oauth-errors.ts";
 import { startOAuth } from "../lib/oauth-return.ts";
 import type { ProviderKind } from "../lib/view-types.ts";
 import { useDocumentTitle } from "../state/use-document-title.ts";
+import { usePageshowReset } from "../state/use-pageshow-reset.ts";
 import { useRouteFocus } from "../state/use-route-focus.ts";
 import { firstSortProgress } from "./review/review-state.ts";
 
@@ -93,6 +94,7 @@ export function SetupPage() {
     ["decision_not_configured", "decision_auth_failed", "decision_deployment_not_found"] as const
   ).find((c) => issues.has(c));
   const [opening, setOpening] = useState<ProviderKind | null>(null);
+  usePageshowReset(() => setOpening(null));
   const connect = (p: ProviderKind) => {
     setOpening(p);
     startOAuth(p, { returnTo: "/setup" });

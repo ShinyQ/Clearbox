@@ -1,1 +1,236 @@
 @import "tailwindcss";
+/* Component geometry, reduced motion, forced colors and keyframes. */
+@import "./styles-layers.css";
+
+/* Clearbox design tokens v1 (light). Source: docs/superpowers/specs/2026-10-15-clearbox-ui-design.md section 2. */
+@theme static {
+  --color-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --text-*: initial;
+  --font-weight-*: initial;
+  --breakpoint-*: initial;
+
+  /* Surfaces and lines */
+  --color-canvas: #fbfbfc;
+  --color-surface: #ffffff;
+  --color-surface-raised: #fcfcfd;
+  --color-surface-sunk: #f4f5f7;
+  --color-surface-hover: #f8f8fa;
+  --color-surface-selected: #f3f4ff;
+  --color-track: #f4f5f7;
+  --color-skeleton-highlight: #ecedf1;
+  --color-line: #e8e9ed;
+  --color-line-subtle: #f0f1f4;
+  --color-line-control: #868a95;
+  --color-tick: #7c808c;
+  --color-neutral-fill: #d9dbe3;
+
+  /* Ink */
+  --color-ink: #16171b;
+  --color-ink-2: #4a4d57;
+  --color-ink-3: #686c77;
+  --color-primary: #16171b;
+  --color-primary-hover: #2a2c33;
+  --color-on-primary: #ffffff;
+  --color-inverse: #16171b;
+  --color-on-inverse: #ffffff;
+  --color-on-inverse-2: #c9cad1;
+  --color-on-inverse-3: #a9abb5;
+  --color-inverse-track: #33353d;
+  --color-inverse-line: #4a4c55;
+  --color-white: #ffffff;
+  --color-transparent: transparent;
+
+  /* Accent */
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-accent-soft: #eef0ff;
+  --color-accent-bar: #7f86eb;
+  --color-focus: #4f46e5;
+  --color-spark-from: #8b85ff;
+  --color-spark-to: #4f46e5;
+
+  /* Verdicts */
+  --color-trash: #d93636;
+  --color-trash-hover: #c42b2b;
+  --color-trash-soft: #fdeeee;
+  --color-trash-ink: #b42323;
+  --color-trash-line: #f5c9c9;
+  --color-archive: #2f6fdb;
+  --color-archive-soft: #ecf2fd;
+  --color-archive-ink: #1f58b8;
+  --color-archive-line: #c9daf7;
+  --color-keep: #1f9d55;
+  --color-keep-soft: #eaf7ef;
+  --color-keep-ink: #167a41;
+  --color-keep-line: #c3e8d1;
+  --color-check: #b76e00;
+  --color-check-soft: #fff5e0;
+  --color-check-ink: #8f5600;
+  --color-check-line: #f4ddb0;
+  --color-check-ink-strong: #6e4300;
+
+  /* Confidence bands (fills are owner-binding; -ink variants are for text) */
+  --color-band-very-sure: #1f9d55;
+  --color-band-very-sure-ink: #167a41;
+  --color-band-sure: #6cc08b;
+  --color-band-sure-ink: #2f7a4d;
+  --color-band-likely: #e0a030;
+  --color-band-likely-ink: #8f5600;
+  --color-band-unsure: #e5762e;
+  --color-band-unsure-ink: #b4501a;
+
+  /* Account status */
+  --color-status-ok: #1f9d55;
+  --color-status-sync: #2f6fdb;
+  --color-status-warn: #b76e00;
+  --color-status-error: #d93636;
+  --color-status-off: #868a95;
+
+  /* Provider tiles */
+  --color-provider-gmail: #d93025;
+  --color-provider-outlook: #0f6cbd;
+  --color-provider-off: #6b6f7a;
+
+  /* Sender monogram palette (index = fnv1a32(domain) % 12) */
+  --color-avatar-0: #b42323;
+  --color-avatar-1: #b4501a;
+  --color-avatar-2: #8f5600;
+  --color-avatar-3: #167a41;
+  --color-avatar-4: #0f766e;
+  --color-avatar-5: #0e7490;
+  --color-avatar-6: #1f58b8;
+  --color-avatar-7: #4f46e5;
+  --color-avatar-8: #7c3aed;
+  --color-avatar-9: #a21caf;
+  --color-avatar-10: #be185d;
+  --color-avatar-11: #475569;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-micro: 0.65625rem;
+  --text-micro--line-height: 1rem;
+  --text-caption: 0.6875rem;
+  --text-caption--line-height: 0.875rem;
+  --text-meta: 0.71875rem;
+  --text-meta--line-height: 1rem;
+  --text-small: 0.75rem;
+  --text-small--line-height: 1.0625rem;
+  --text-body: 0.78125rem;
+  --text-body--line-height: 1.125rem;
+  --text-base: 0.8125rem;
+  --text-base--line-height: 1.45;
+  --text-title-sm: 0.875rem;
+  --text-title-sm--line-height: 1.25rem;
+  --text-title-sm--letter-spacing: -0.01em;
+  --text-title: 0.9375rem;
+  --text-title--line-height: 1.3125rem;
+  --text-title--letter-spacing: -0.01em;
+  --text-title-lg: 0.96875rem;
+  --text-title-lg--line-height: 1.375rem;
+  --text-title-lg--letter-spacing: -0.01em;
+  --text-h1: 1.0625rem;
+  --text-h1--line-height: 1.5rem;
+  --text-h1--letter-spacing: -0.015em;
+  --text-stat: 1.25rem;
+  --text-stat--line-height: 1.625rem;
+  --text-stat--letter-spacing: -0.02em;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-emphasis: 560;
+  --font-weight-semibold: 620;
+  --font-weight-heading: 650;
+  --font-weight-heavy: 700;
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-card: 0 1px 2px rgba(16, 17, 22, 0.04), 0 4px 14px rgba(16, 17, 22, 0.06);
+  --shadow-nav: 0 1px 2px rgba(16, 17, 22, 0.06);
+  --shadow-button-primary: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-bar: 0 12px 30px -10px rgba(16, 17, 22, 0.45);
+  --shadow-toast: 0 10px 28px -8px rgba(16, 17, 22, 0.4);
+  --shadow-overlay: 0 2px 6px rgba(16, 17, 22, 0.05), 0 24px 60px -24px rgba(16, 17, 22, 0.25);
+
+  /* Breakpoints (desktop-first design, min-width variants) */
+  --breakpoint-sm: 40rem; /* 640px */
+  --breakpoint-lg: 64rem; /* 1024px */
+  --breakpoint-xl: 80rem; /* 1280px */
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-spin: spin 0.8s linear infinite;
+
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}
+
+:root {
+  color-scheme: light;
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 250ms;
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-confirm: 20;
+  --z-slideover: 30;
+  --z-drawer: 40;
+  --z-popover: 50;
+  --z-dialog: 60;
+  --z-toast: 70;
+  --z-skiplink: 80;
+  --layout-sidebar: 208px;
+  --layout-detail: 300px;
+  --layout-slideover: 340px;
+  --layout-row-height: 56px;
+}
+
+@layer base {
+  html {
+    background: var(--color-canvas);
+  }
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    color: var(--color-ink);
+    background: var(--color-canvas);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  [data-inverse] :focus-visible {
+    outline-color: var(--color-on-inverse);
+  }
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+}

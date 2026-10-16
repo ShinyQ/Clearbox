@@ -87,7 +87,7 @@ Expected: the upstream surface test and the extended isolation test pass; every 
 - [ ] **Gate 05 (after plan 05)**
 
 Run: `pnpm test && CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000 pnpm typecheck && pnpm lint && pnpm format:check && CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000 pnpm build`
-Expected: every file under `app/test/web` passes (axe checks included) and `placeholder.test.tsx` no longer exists; typecheck, ESLint (React hooks rules and the CSP block) and `check-text` clean.
+Expected: core `Test Files  40 passed (40)`, `Tests  635 passed (635)`; app worker `Test Files  49 passed (49)`, `Tests  387 passed (387)`; app web `Test Files  42 passed (42)`, `Tests  422 passed (422)` (every file under `app/test/web`, axe checks included; plan 05 Execution notes explain the counts) and `placeholder.test.tsx` no longer exists; typecheck, ESLint (React hooks rules and the CSP block) and `check-text` clean.
 
 Run: `grep -rl "Components · Clearbox" app/.cloudflare/output/v0 || echo "gallery not shipped"`
 Expected: `gallery not shipped`.

@@ -1,0 +1,60 @@
+/* v1.1 OPTIONAL. Import from styles.css only when dark mode is approved. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-canvas: #0f1013;
+    --color-surface: #16171b;
+    --color-surface-raised: #131418;
+    --color-surface-sunk: #1d1f24;
+    --color-surface-hover: #1b1d22;
+    --color-surface-selected: #23254a;
+    --color-track: #26282e;
+    --color-skeleton-highlight: #24262c;
+    --color-line: #2a2c33;
+    --color-line-subtle: #222429;
+    --color-line-control: #777b86;
+    --color-tick: #8e929c;
+    --color-neutral-fill: #3a3d45;
+
+    --color-ink: #ecedf0;
+    --color-ink-2: #b4b7c0;
+    --color-ink-3: #9599a3;
+    --color-primary: #ecedf0;
+    --color-primary-hover: #ffffff;
+    --color-on-primary: #16171b;
+    --color-inverse: #26282e;
+    --color-on-inverse: #ecedf0;
+    --color-on-inverse-2: #c9cad1;
+    --color-on-inverse-3: #a9abb5;
+    --color-inverse-track: #3a3d45;
+    --color-inverse-line: #4a4c55;
+
+    --color-accent: #8b85ff;
+    --color-accent-hover: #a5a0ff;
+    --color-accent-soft: #24224a;
+    --color-accent-bar: #5a5fb8;
+    --color-focus: #8b85ff;
+
+    --color-trash-soft: #3a1c1e;
+    --color-trash-ink: #ff9a9a;
+    --color-trash-line: #5a2a2d;
+    --color-archive-soft: #172540;
+    --color-archive-ink: #9dbef7;
+    --color-archive-line: #26406b;
+    --color-keep-soft: #13301f;
+    --color-keep-ink: #7bd9a3;
+    --color-keep-line: #1f4d33;
+    --color-check-soft: #33260f;
+    --color-check-ink: #f2c46d;
+    --color-check-line: #5a4317;
+    --color-check-ink-strong: #f2c46d;
+
+    --color-band-very-sure-ink: #4cc883;
+    --color-band-sure-ink: #8fd3a8;
+    --color-band-likely-ink: #e9b455;
+    --color-band-unsure-ink: #f0915a;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.35);
+    --shadow-overlay: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}

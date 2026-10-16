@@ -15249,3 +15249,77 @@ git add app/test/web/fixtures/dev-seed.sql
 git commit -m "test(web): add synthetic local seed for visual QA"
 ```
 
+
+## Execution notes
+
+Executed on branch `feat/clearbox-05-web-ui` (stacked on `feat/clearbox-04-scan-pipeline`) with superpowers:subagent-driven-development: one implementer per task, a spec and quality review after each task (fix rounds on Tasks 1, 3, 5, 6, 9, 14 to 21, 23, 25 and the Task 26 QA wave), a final whole-branch review and one fix wave. No dependency was added; `packages/core`, contracts, the UI spec, the design spec and `PRODUCT.md` were not edited. No Produces name or label that plan 06 quotes changed.
+
+### Gate 05 result
+
+`pnpm test && CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000 pnpm typecheck && pnpm lint && pnpm format:check && CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000 pnpm build` passes: core `Test Files  40 passed (40)`, `Tests  635 passed (635)`; app worker `Test Files  49 passed (49)`, `Tests  387 passed (387)`; app web `Test Files  42 passed (42)`, `Tests  422 passed (422)`; `placeholder.test.tsx` is deleted; ESLint clean; `check-text: 452 tracked files clean`; Prettier clean; the build writes `app/.cloudflare/output/v0/` (one 621 kB JS chunk, Vite size warning only). `grep -rl "Components · Clearbox" app/.cloudflare/output/v0 || echo "gallery not shipped"` prints `gallery not shipped`; the `index.html` inline style or script count is `0`; `committed`.
+
+Counts: core and worker are unchanged from Gate 04 (plan 05 touches neither). The web run grew from plan 03's 1 placeholder test to 42 files and 422 tests: the planned files plus regression tests for the fix rounds (for example undo partial results, focus traps, StrictMode OAuth return, key repeat, Clean up gating, per-target restore).
+
+### Manual visual QA (Task 26 Step 4)
+
+Run against `pnpm dev` with `test/web/fixtures/dev-seed.sql` at 1440, 1280 and 1024 wide (plus 1100, 900, 390; reduced motion for rows 1, 9, 20), driving headless Chrome over the DevTools Protocol from a throwaway Node script (no repository dependency). Screenshots and the full findings live under the git-ignored `.superpowers/qa-05/` (not committed).
+
+- First pass: 13 rows PASS, 7 GAP (rows 2, 4, 7, 9, 11, 19, 20). Global checks clean on every page: no em dashes, no colored edge stripes (selection is a soft tint), every confidence shows a percentage and a band word, every verdict an icon and a word, ticks at 86% on every meter (99.5% with tau 0.995), band fills and inks match the owner hexes.
+- Material gaps fixed (tests where testable, re-captured): selection toolbar taller than the header row and wrapping at 1280 (G1); summary and detail skeletons causing layout shift (G2); confidence label overflowing the 300px verdict card (G3); summary button reading "Cleaning up…" while only confirming (G4); detail More menu clipped by the panel and items overlapping (G6, Menu now `position: fixed` through `--cb-menu-x/y`, flips and clamps); summary card not stacking below 1024 (G7). Also fixed: Select chevron detached (C7), help dialog "1 to 5" (C9), no meters below 1024 (C10), keeps confirm bar label (C11), detail actions in two deliberate rows (C12).
+- G5 is intended: the model banner adds "This clears after the next successful sort." for `decision_auth_failed` and `decision_deployment_not_found` (layer note 6). Lead: update UI spec 5.1.
+- Deferred cosmetic: 12h clock zero padding in en-US (C1), threshold table column alignment (C2), Activity "When" wrapping (C3), empty ChipInput indent (C4), gallery Kbd label and confidence scale card (C5, C6), Setup sorting lines not naming the account (C8).
+- Not checked on screen (covered by tests): live busy rows via T, reset-database states (no accounts, first sort, empty Activity, Setup before accounts), the needs-reconnect detail panel (the seed has no pending groups for that account), the error boundary, and real Clean up runs and Undo (seeded tokens cannot reach a mailbox; states checked in `/dev/components`).
+
+All 20 rows are ticked after the fix wave, with the not-on-screen items above covered by the test suite.
+
+### Lead notes from earlier layers
+
+| # | Handling |
+|---|---|
+| 1 | Clean up counts and execution come from the server preview (active accounts only); the confirm copy adds "Emails from <email> are skipped until you reconnect it." for every non-active account (`needs_reauth` and `config_error`); done and partial toasts report only executed items; "left for you" uses `QueueSummary.pending.total`, consistent with `CleanupPreview.groupsLeft`, which already counts inactive accounts' groups as left. "Confirm all keeps" uses keeps wording and covers every visible account. |
+| 2 | The undo stack consumes an entry before calling the server and never offers a retry; partial results report "Restored N emails. Some could not be restored."; an undo that restored nothing and failed nothing (keep batches) shows an info toast; Activity offers Undo again only when nothing was restored and something failed (the server keeps that batch undoable). The fake API undo now skips keep items like the server. |
+| 3 | `decision_not_configured` copy explains that the endpoint must be https and the deployment cannot be named `Microsoft-Decision-1`; Setup step 2 reuses the same copy. |
+| 4 | `ReasonList` renders 0 to 3 reasons and nothing for an empty list. |
+| 5 | Scan now: `account_inactive` with `retryAt` reads "<email> is retrying after a problem. Next try at HH:MM."; without it "<email> is paused."; `account_busy` and `budget_exhausted` use `retryAt`; a 200 `TickReport` with `outcome: "error"` reads "Scan hit a problem. Clearbox will retry automatically."; `idle` reads "No new emails.". Accounts cards reuse the same hook. |
+| 6 | See G5 above; `decision_not_configured` does not promise anything about clearing. |
+| 7 | Gate 05 reads `app/.cloudflare/output/v0/`; the seed is applied after `pnpm db:migrate:local`. |
+| 8 | See "Counts" above. |
+
+### Deviations (fix forward)
+
+| # | Task | Change | Why |
+|---|---|---|---|
+| 1 | 1 | `test/web/msw/fixtures.ts` and `fake-api.ts` are barrels over `fixtures-*.ts` and `fake-api-state.ts`; `setup.ts` drops happy-dom's non-2xx fetch log and lone offline `TypeError` (`test/web/node-console.d.ts`) | 300-line rule; pristine test output |
+| 2 | 2 | `readTokens()` uppercases hex | Prettier lowercases CSS hex |
+| 3 | 3 | `scaleBands`: Likely is `70 to toPercent(tau) - 1` (no cap at 94); Very sure starts at `max(95, toPercent(tau))` | UI spec 4.12 wins over the plan code; tau is always a whole percent (core `round2` on `TAU_STEP`) |
+| 4 | 4, 6 | `ApiError.retryAt`; `runCleanup` reports unexpected errors with `reportBug`; `actOnGroup` counts only failed and retry-later codes and keeps non-API errors as `details` | Scan-now cases; UI spec 5.2.2; Reconnect hint accuracy |
+| 5 | 9 | Undo settles every batch and reports partial results; the originating toast is reused (`UndoEntry.toastId`); `toast.update` re-shows a missing toast; focus-within resets when the toast turns busy | UI spec 5.2.2; stale Undo after mod+Z; stuck timer |
+| 6 | 10, final | `useHotkeys` bindings ignore key auto-repeat unless `repeat: true` (J, K, arrows) | Holding T trashed group after group; holding mod+Z walked the undo stack |
+| 7 | 14 | `use-focus-trap` listens on `document` and reads the root lazily; the sheet activates it only when mounted | Trap never installed on late mount |
+| 8 | 15 | Enter in the confirm bar confirms only from the body, the bar or the confirm button (other focused bar buttons run their own action); queues refresh after partial runs; run rejections end in an `unexpected` partial; keeps wording ("Nothing left to confirm…", "Couldn't prepare Confirm all keeps. Nothing was changed.", "N could not be confirmed."); zero-executed done toast "Nothing needed cleaning up (N were already handled)." | Enter on Cancel ran a destructive Clean up; stale lists; stuck machine; accurate copy |
+| 9 | 16 | Drawer closes on any location change; `visibleBanners()` filters and orders `extra` banners | UI spec 4.2, 3.4 |
+| 10 | 17 | Failed group or item actions restore only their own target (`captureGroupPositions`, `restoreGroup`, `captureItemPositions`, `restoreItem`); `formatClock` in `lib/format.ts` | The plan's whole-cache snapshot resurrected concurrent successful actions |
+| 11 | 18 | Controller split into `use-review-focus.ts`, `use-review-effects.ts`, `select-all.ts` (bounded at 20 page fetches, stops on error); T/A/E/X and bulk approve gated while Clean up prepares, confirms or runs; detail actions soft-disabled meanwhile (`actionsDisabled`); `tau: number \| null` shows loading instead of `tau ?? 0`; `ReviewWorkArea` takes `{ c }` | 300-line rule; infinite paging loop; brief gated preparing only; no constant tau |
+| 12 | 19 | Insights keeps loaded data on a failed background refetch; chart bars are focusable `role="img"` | Transient errors blanked the page; bars had no action |
+| 13 | 20 | "1 old record removed" (W16); focus moves to the "Undone" text after Undo; table waits for activity, accounts and batches | Natural singular; focus loss; flashes of "Undo expired" |
+| 14 | 21, 23, final | Accounts focus returns to the menu trigger in the narrow layout and to the h1 after disconnect; consent banners per account and dismissible; Connect buttons show "Opening Google…" / "Opening Microsoft…" and reset on a back-forward cache restore (`use-pageshow-reset.ts`); Setup never shows success rows without data | Accessibility; stuck buttons |
+| 15 | 25 | `OAuthReturn` reads the remembered target once (`useState` initializer); `RootRedirect` shows a loading status | StrictMode double effects in development sent first-run OAuth returns to `/accounts` |
+| 16 | 26 | Seed applied with `cf d1 raw <id> --local --persist-to .cloudflare/state --sql="$(cat test/web/fixtures/dev-seed.sql)"` (needs `CLEARBOX_D1_ID`; `--sql=` with an equals sign because the file starts with `--`) | `cf d1 execute` does not exist in `cf` 1.0.0-beta.17 (index item 12) |
+| 17 | final | `styles.css` split into `styles.css` (tokens, base) and `styles-layers.css`; an `errorElement` on the AppShell route keeps root providers mounted on a page error; `insights` joins `ACTION_CACHE_PREFIXES`; config errors count as skipped accounts in Clean up copy | 300-line rule; a page error mid Clean up unmounted the run; stale Insights |
+
+### Routes and labels for plan 06 docs
+
+Routes: `/` (redirects to `/setup` without accounts, else `/review`), `/setup`, `/review`, `/activity`, `/insights`, `/rules`, `/accounts`, OAuth landing `/settings/accounts?connected=<id>` or `?error=<code>&provider=<kind>` (forwards to the remembered page or `/accounts`), `/dev/components` (development only). Sidebar: Review, Activity, Insights, Rules, the Accounts list with "Add account". Labels verbatim: "Connect Gmail", "Connect Outlook", "Scan now", "Pause", "Resume", "Disconnect", "Reconnect", "Undo", "Clean up", "Confirm all keeps", banners "Google sign-in is misconfigured." and "Microsoft sign-in is misconfigured.".
+
+### Notes for later plans
+
+- Plan 06 / lead:
+  - Contract conflict: UI spec 5.2.6 promises Undo for keep decisions, but contracts 7.8 and the server skip keep items on undo. The UI shows an info toast ("Nothing needed restoring…") instead of a false success; decide whether the server should reset keeps to pending or the UI should drop Undo on keep toasts.
+  - Add to the UI spec: the G5 banner sentence, the Scan now retrying and failed-tick toasts, the zero-executed Clean up toast, the keeps partial wording, "1 old record removed".
+  - Contracts 1.1: add `src/web/lib/`, `src/web/state/` and the extra modules (W4 plus `pages/review/select-all.ts`, `use-review-focus.ts`, `use-review-effects.ts`, `state/use-pageshow-reset.ts`, `styles-layers.css`).
+  - The production bundle is one 621 kB chunk (191 kB gzip); consider route-level splitting.
+  - Spec 5.5 account cards show status as text without a dot while the global rule says "dot plus text"; reconcile.
+
+### Deferred minor findings (triaged by the final review as safe to defer)
+
+Test depth (opaque-redirect branch, runtime parsing for some endpoints, Dialog Escape and focus return, Menu typeahead, W16 singular copy in SummaryCard, item-action failure restore, cancel after retry); envelope-less 403 not mapped to `forbidden`; Enter bindings still call `preventDefault` on focused links and buttons outside the confirm bar while it is open; ConfidenceLabel says "left for you" for a Keep verdict in the Likely band (spec 4.12 literal, W17 covers row names); Menu, Tabs and Dialog polish (modifier chords, chip removal focus, Dialog children mounted while closed); `use-media-query` resubscribes per render; Table remounts across 40rem; skeleton and SR loading text gaps; consent dismissal persists per session; Gmail revoke-failed toast has no link; override loop resends permanently failed ids; Scan now in all-accounts mode is silent when every account is paused; cosmetic QA items C1 to C6 and C8.

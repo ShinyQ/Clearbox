@@ -1,0 +1,143 @@
+import type { ActionBatchView, ActivityEntry } from "../../../src/shared/api.ts";
+import { ACC_GMAIL, ACC_OUTLOOK, DAY, HOUR, T0, iso } from "./fixtures-accounts.ts";
+
+export function defaultBatches(): (ActionBatchView & { itemIds: number[] })[] {
+  const byAction = (d: number, a: number) => ({ delete: d, archive: a, keep: 0 });
+  return [
+    {
+      id: 3,
+      kind: "cleanup",
+      createdAt: iso(T0 - 1 * HOUR),
+      requestedCount: 1284,
+      executedCount: 1280,
+      failedCount: 0,
+      byAction: byAction(1102, 178),
+      undoable: true,
+      undoExpiresAt: iso(T0 + 23 * HOUR),
+      undoneAt: null,
+      itemIds: [],
+    },
+    {
+      id: 2,
+      kind: "approve",
+      createdAt: iso(T0 - 3 * HOUR),
+      requestedCount: 248,
+      executedCount: 248,
+      failedCount: 0,
+      byAction: byAction(248, 0),
+      undoable: false,
+      undoExpiresAt: iso(T0 + 21 * HOUR),
+      undoneAt: iso(T0 - 2 * HOUR),
+      itemIds: [],
+    },
+    {
+      id: 1,
+      kind: "override",
+      createdAt: iso(T0 - 2 * DAY),
+      requestedCount: 12,
+      executedCount: 12,
+      failedCount: 0,
+      byAction: byAction(12, 0),
+      undoable: false,
+      undoExpiresAt: iso(T0 - 1 * DAY),
+      undoneAt: null,
+      itemIds: [],
+    },
+  ];
+}
+
+export function defaultActivity(): ActivityEntry[] {
+  const counts = {
+    executed: 0,
+    failed: 0,
+    skipped: 0,
+    retryLater: 0,
+    delete: 0,
+    archive: 0,
+    keep: 0,
+    groups: 0,
+  };
+  return [
+    {
+      id: 9,
+      ts: iso(T0 - 1 * HOUR),
+      kind: "cleanup",
+      accountId: null,
+      batchId: 3,
+      count: 1284,
+      result: { ...counts, executed: 1280, skipped: 4, delete: 1102, archive: 178, groups: 371 },
+    },
+    {
+      id: 8,
+      ts: iso(T0 - 2 * HOUR),
+      kind: "undo",
+      accountId: ACC_GMAIL,
+      batchId: 2,
+      count: 248,
+      result: { restored: 248, failed: 0 },
+    },
+    {
+      id: 7,
+      ts: iso(T0 - 3 * HOUR),
+      kind: "approve",
+      accountId: ACC_GMAIL,
+      batchId: 2,
+      count: 248,
+      result: { ...counts, executed: 248, delete: 248 },
+    },
+    {
+      id: 6,
+      ts: iso(T0 - 2 * DAY),
+      kind: "override",
+      accountId: ACC_GMAIL,
+      batchId: 1,
+      count: 12,
+      result: { ...counts, executed: 12, delete: 12 },
+    },
+    {
+      id: 5,
+      ts: iso(T0 - 2 * DAY - HOUR),
+      kind: "policy_updated",
+      accountId: null,
+      batchId: null,
+      count: 0,
+      result: { allow: 3, deny: 1 },
+    },
+    {
+      id: 4,
+      ts: iso(T0 - 3 * DAY),
+      kind: "calibration",
+      accountId: null,
+      batchId: null,
+      count: 312,
+      result: { tauDelete: 0.86 },
+    },
+    {
+      id: 3,
+      ts: iso(T0 - 3 * DAY - HOUR),
+      kind: "purge",
+      accountId: null,
+      batchId: null,
+      count: 4210,
+      result: {},
+    },
+    {
+      id: 2,
+      ts: iso(T0 - 4 * DAY),
+      kind: "reauth_required",
+      accountId: ACC_OUTLOOK,
+      batchId: null,
+      count: 0,
+      result: { reason: "invalid_grant" },
+    },
+    {
+      id: 1,
+      ts: iso(T0 - 30 * DAY),
+      kind: "account_connected",
+      accountId: ACC_GMAIL,
+      batchId: null,
+      count: 0,
+      result: {},
+    },
+  ];
+}

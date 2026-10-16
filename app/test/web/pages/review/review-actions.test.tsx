@@ -87,6 +87,52 @@ describe("useGroupActions", () => {
     expect(calls.restored).toEqual([north.key]);
   });
 
+  it("restores only the failed group when concurrent actions end differently", async () => {
+    const { client, groups, byName } = setup((s) => {
+      s.failures.approve = { status: 500, code: "internal", times: 1 };
+    });
+    const failing = byName("Northwind Deals");
+    const succeeding = byName("Daily Digest");
+    const before = client.getQueryData<QueueSummary>(qk.summary())?.pending.total ?? 0;
+    let results: boolean[] = [];
+    await act(async () => {
+      results = await Promise.all([
+        actions?.act(failing, "delete", asOf) ?? false,
+        actions?.act(succeeding, "delete", asOf) ?? false,
+      ]);
+    });
+    expect(results).toEqual([false, true]);
+    expect(groupsInCache(client).map((g) => g.key)).toEqual(
+      groups.map((g) => g.key).filter((k) => k !== succeeding.key),
+    );
+    await waitFor(() =>
+      expect(client.getQueryData<QueueSummary>(qk.summary())?.pending.total).toBe(before - succeeding.count),
+    );
+    expect(calls.restored).toEqual([failing.key]);
+  });
+
+  it("keeps the row in its exiting state until the request settles, then cancels the exit on error", async () => {
+    const { client, byName } = setup((s) => {
+      s.failures.approve = { status: 500, code: "internal", times: 1 };
+    });
+    setReducedMotion(false);
+    const north = byName("Northwind Deals");
+    let pending: Promise<boolean> | undefined;
+    act(() => {
+      pending = actions?.act(north, "delete", asOf);
+    });
+    expect(actions?.exitingKeys.has(north.key)).toBe(true);
+    await act(async () => {
+      await pending;
+    });
+    expect(actions?.exitingKeys.has(north.key)).toBe(false);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    expect(groupsInCache(client).map((g) => g.key)).toContain(north.key);
+    expect(calls.removed).toEqual([]);
+  });
+
   it("re-inserts a partially executed group with the remaining count", async () => {
     const { client, byName } = setup((s) => {
       s.retryLaterIds = new Set([1004, 1005]);

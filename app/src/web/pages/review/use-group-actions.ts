@@ -20,11 +20,11 @@ import { useToast } from "../../state/ToastProvider.tsx";
 import { useUndoStack } from "../../state/UndoStackProvider.tsx";
 import {
   adjustSummary,
+  captureGroupPositions,
   patchGroupCount,
   removeGroupFromCache,
-  restoreSnapshot,
+  restoreGroup,
   rowExitDelayMs,
-  takeSnapshot,
 } from "./group-cache.ts";
 
 const DEPS = { approve: api.approve, override: api.override, groupDetail: api.groupDetail };
@@ -128,7 +128,7 @@ export function useGroupActions(cb: GroupActionCallbacks): GroupActionsApi {
     async (group, target, asOf, message) => {
       if (inflight.current.has(group.key)) return false;
       inflight.current.add(group.key);
-      const snap = takeSnapshot(qc);
+      const positions = captureGroupPositions(qc, group.key);
       setBusyAction({ key: group.key, action: target });
       adjustSummary(qc, group.accountId, group.action, -group.count, -1);
       cbRef.current.onDelta(-group.count, -1);
@@ -139,7 +139,8 @@ export function useGroupActions(cb: GroupActionCallbacks): GroupActionsApi {
       const done = result.executed + result.skipped;
       if (done === 0) {
         cancelExit(group.key);
-        restoreSnapshot(qc, snap);
+        restoreGroup(qc, positions);
+        adjustSummary(qc, group.accountId, group.action, group.count, 1);
         cbRef.current.onDelta(group.count, 1);
         cbRef.current.onRestored(group.key);
         showError(group, result);
@@ -147,9 +148,9 @@ export function useGroupActions(cb: GroupActionCallbacks): GroupActionsApi {
       }
       if (done < group.count) {
         cancelExit(group.key);
-        restoreSnapshot(qc, snap);
+        restoreGroup(qc, positions);
         patchGroupCount(qc, group.key, group.count - done);
-        adjustSummary(qc, group.accountId, group.action, -done, 0);
+        adjustSummary(qc, group.accountId, group.action, group.count - done, 1);
         cbRef.current.onDelta(group.count - done, 1);
         cbRef.current.onRestored(group.key);
         undo.notifyWithUndo({

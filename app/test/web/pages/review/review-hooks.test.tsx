@@ -1,5 +1,6 @@
 import { act, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { configureFormat } from "../../../../src/web/lib/format.ts";
 import { useNewSuggestions } from "../../../../src/web/pages/review/use-new-suggestions.ts";
 import {
   useReviewHotkeys,
@@ -123,24 +124,57 @@ describe("useScanNow", () => {
     ).toBeTruthy();
   });
 
-  it("stops at the free-tier limit", async () => {
+  it("stops at the free-tier limit and resumes at the local reset time", async () => {
+    vi.useFakeTimers({ now: T0, toFake: ["Date"] });
+    configureFormat({ locale: "en-GB", timeZone: "UTC" });
     const { state, run } = setup();
     state.failures.scan = { status: 429, code: "budget_exhausted", times: 1 };
     await act(run);
     expect(state.requests.filter((r) => r.route === "scan")).toHaveLength(1);
     expect(
-      screen.getByText(/^Today's free-tier limit is reached\. Scanning resumes after \d\d:\d\d\.$/),
+      screen.getByText("Today's free-tier limit is reached. Scanning resumes after 00:00."),
     ).toBeTruthy();
+  });
+
+  it("uses retryAt for the free-tier resume time when the API sends it", async () => {
+    vi.useFakeTimers({ now: T0, toFake: ["Date"] });
+    configureFormat({ locale: "en-GB", timeZone: "UTC" });
+    const { state, run } = setup();
+    state.failures.scan = {
+      status: 429,
+      code: "budget_exhausted",
+      times: 1,
+      retryAt: iso(T0 + 3 * 3_600_000),
+    };
+    await act(run);
+    expect(
+      screen.getByText("Today's free-tier limit is reached. Scanning resumes after 13:00."),
+    ).toBeTruthy();
+  });
+
+  it("reports a failed scan tick as an error, not as finished", async () => {
+    const { state, run } = setup(ACC_GMAIL);
+    state.scanOutcome = "error";
+    await act(run);
+    expect(screen.getByText("Scan hit a problem. Clearbox will retry automatically.")).toBeTruthy();
+    expect(screen.queryByText(/Scan finished/)).toBeNull();
+  });
+
+  it("keeps an idle tick as no new emails", async () => {
+    const { state, run } = setup(ACC_GMAIL);
+    state.scanOutcome = "idle";
+    state.scanDecided = 0;
+    await act(run);
+    expect(screen.getByText("Scan finished. No new emails.")).toBeTruthy();
   });
 
   it("says when a backed-off account retries and when it needs to reconnect", async () => {
     vi.useFakeTimers({ now: T0, toFake: ["Date"] });
+    configureFormat({ locale: "en-GB", timeZone: "UTC" });
     const { state, run } = setup(ACC_GMAIL);
     state.failures.scan = { status: 409, code: "account_inactive", times: 1, retryAt: iso(T0 + 10 * 60_000) };
     await act(run);
-    expect(
-      screen.getByText(/^you@example\.com is retrying after a problem\. Next try at \d\d:\d\d\.$/),
-    ).toBeTruthy();
+    expect(screen.getByText("you@example.com is retrying after a problem. Next try at 10:10.")).toBeTruthy();
     state.failures.scan = { status: 409, code: "account_inactive", times: 1 };
     await act(run);
     expect(screen.getByText("you@example.com is paused.")).toBeTruthy();

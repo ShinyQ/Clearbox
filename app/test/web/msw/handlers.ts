@@ -81,7 +81,7 @@ export function fakeApiHandlers(s: FakeApiState) {
     route("scan", "post", "/api/accounts/:id/scan", ({ params }) => {
       if (!s.accounts.some((a) => a.id === params.id)) return errorResponse(404, "not_found");
       return HttpResponse.json({
-        outcome: "processed",
+        outcome: s.scanOutcome,
         accountId: params.id ?? null,
         kind: "incremental",
         phase: "incremental",
@@ -94,7 +94,7 @@ export function fakeApiHandlers(s: FakeApiState) {
         subrequests: 5,
         rowsWritten: 10,
         nextTickAt: null,
-        errorCode: null,
+        errorCode: s.scanOutcome === "error" ? "provider_error" : null,
       });
     }),
     route("patchAccount", "patch", "/api/accounts/:id", ({ params, body }) => {

@@ -91,6 +91,7 @@ export interface FakeApiState {
   insights: Insights;
   policy: PolicyResponse;
   scanDecided: number;
+  scanOutcome: "processed" | "idle" | "error";
   failures: Partial<Record<RouteName, Failure>>;
   retryLaterIds: Set<number>;
   retryLaterCode: ItemErrorCode;
@@ -113,6 +114,7 @@ export function createFakeApiState(): FakeApiState {
     insights: makeInsights(accounts),
     policy: makePolicyResponse(),
     scanDecided: 0,
+    scanOutcome: "processed",
     failures: {},
     retryLaterIds: new Set(),
     retryLaterCode: "unavailable",

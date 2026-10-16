@@ -24,8 +24,15 @@ export function useScanNow(accounts: readonly AccountView[], accountId: string |
     for (const a of targets) {
       try {
         const r = await api.scanAccount(a.id);
-        sorted += r.decided + r.unsure;
-        finished = true;
+        if (r.outcome === "error") {
+          toast.show({
+            kind: "error",
+            message: "Scan hit a problem. Clearbox will retry automatically.",
+          });
+        } else {
+          sorted += r.decided + r.unsure;
+          finished = true;
+        }
       } catch (e) {
         const code = isApiError(e) ? e.code : null;
         const retryAt = isApiError(e) ? e.retryAt : undefined;
@@ -46,7 +53,7 @@ export function useScanNow(accounts: readonly AccountView[], accountId: string |
         } else if (code === "budget_exhausted") {
           toast.show({
             kind: "info",
-            message: `Today's free-tier limit is reached. Scanning resumes after ${localResetTime(Date.now())}.`,
+            message: `Today's free-tier limit is reached. Scanning resumes after ${retryAt ? formatClock(retryAt) : localResetTime(Date.now())}.`,
           });
           break;
         } else {

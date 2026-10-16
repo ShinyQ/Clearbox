@@ -13,11 +13,11 @@ import { useToast } from "../../state/ToastProvider.tsx";
 import { useUndoStack } from "../../state/UndoStackProvider.tsx";
 import {
   adjustSummary,
-  patchGroupCount,
+  bumpGroupCount,
+  captureItemPositions,
   removeGroupFromCache,
   removeItemFromDetail,
-  restoreSnapshot,
-  takeSnapshot,
+  restoreItem,
 } from "./group-cache.ts";
 import type { GroupActionCallbacks, GroupActionsApi } from "./use-group-actions.ts";
 
@@ -44,9 +44,9 @@ export function useItemActions(groupActions: GroupActionsApi, cb: GroupActionCal
     async (group: SenderGroup, item: SuggestionItem, action: ActionKind) => {
       setBusy(item.id, true);
       const last = group.count === 1;
-      const snap = takeSnapshot(qc, [qk.group(group.key)]);
+      const positions = captureItemPositions(qc, group.key, item.id);
       removeItemFromDetail(qc, group.key, item.id);
-      patchGroupCount(qc, group.key, group.count - 1);
+      bumpGroupCount(qc, group.key, -1);
       adjustSummary(qc, group.accountId, group.action, -1, last ? -1 : 0);
       cbRef.current.onDelta(-1, last ? -1 : 0);
       try {
@@ -66,11 +66,15 @@ export function useItemActions(groupActions: GroupActionsApi, cb: GroupActionCal
         if (last) {
           cbRef.current.onRemoved([group.key]);
           removeGroupFromCache(qc, group.key);
+          qc.removeQueries({ queryKey: qk.group(group.key) });
+        } else {
+          void qc.invalidateQueries({ queryKey: qk.group(group.key) });
         }
-        void qc.invalidateQueries({ queryKey: qk.group(group.key) });
         void qc.invalidateQueries({ queryKey: ["queue"] });
       } catch (e) {
-        restoreSnapshot(qc, snap);
+        restoreItem(qc, positions);
+        bumpGroupCount(qc, group.key, 1);
+        adjustSummary(qc, group.accountId, group.action, 1, last ? 1 : 0);
         cbRef.current.onDelta(1, last ? 1 : 0);
         const codes = (e as { codes?: Record<string, number> }).codes ?? {};
         groupActions.showError(group, { executed: 0, codes, error: isApiError(e) ? e : null });

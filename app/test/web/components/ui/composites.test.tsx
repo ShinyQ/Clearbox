@@ -176,6 +176,31 @@ describe("Menu and Dialog", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
+  it("positions the list fixed at the trigger, flips up near the viewport bottom and lets items grow", async () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(100);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(220);
+    render(
+      <Menu
+        label="More actions"
+        align="end"
+        items={[{ id: "copy", label: "Copy sender address", onSelect: () => undefined }]}
+        renderTrigger={(p) => <Button {...p} variant="ghost" icon="more" aria-label="More actions" />}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "More actions" });
+    const bottom = window.innerHeight - 20;
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ x: 500, y: bottom - 30, width: 30, height: 30 }),
+    );
+    await userEvent.click(trigger);
+    const menu = screen.getByRole("menu");
+    expect(menu.classList.contains("fixed")).toBe(true);
+    expect(menu.style.getPropertyValue("--cb-menu-y")).toBe(`${bottom - 30 - 4 - 100}px`);
+    expect(menu.style.getPropertyValue("--cb-menu-x")).toBe(`${530 - 220}px`);
+    expect(screen.getByRole("menuitem").className).toContain("min-h-[30px]");
+    vi.restoreAllMocks();
+  });
+
   it("renders a modal dialog with a close button", async () => {
     const onClose = vi.fn();
     render(

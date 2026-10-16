@@ -86,36 +86,46 @@ export function DetailActions(p: DetailActionsProps) {
       onSelect: p.onCopyAddress,
     },
   ];
+  // Two deliberate rows (UI spec 4.14): the verdict actions fill the first, the ghost "Always keep"
+  // and the More menu share the second, so nothing wraps one button at a time in a 300px panel.
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {specs(p.group).map((s) => (
-        <Button
-          key={s.action}
-          variant={s.variant}
-          icon={s.icon}
-          aria-keyshortcuts={KEY[s.action]}
-          loading={p.busyAction === s.action}
-          softDisabled={p.disabled || (p.busyAction !== null && p.busyAction !== s.action)}
-          onClick={() => p.onAction(s.action)}
-        >
-          {s.label}
-        </Button>
-      ))}
-      {known && p.group.action !== "keep" ? (
-        <Button
-          variant="ghost"
-          softDisabled={p.disabled || p.busyAction !== null}
-          onClick={() => p.onAlwaysKeep(p.group.sender)}
-        >
-          {`Always keep ${short}`}
-        </Button>
-      ) : null}
-      <Menu
-        label="More actions"
-        align="end"
-        items={items}
-        renderTrigger={(t) => <Button {...t} variant="ghost" icon="more" aria-label="More actions" />}
-      />
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
+        {specs(p.group).map((s) => (
+          <Button
+            key={s.action}
+            variant={s.variant}
+            icon={s.icon}
+            className="flex-auto"
+            aria-keyshortcuts={KEY[s.action]}
+            loading={p.busyAction === s.action}
+            softDisabled={p.disabled || (p.busyAction !== null && p.busyAction !== s.action)}
+            onClick={() => p.onAction(s.action)}
+          >
+            {s.label}
+          </Button>
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5">
+        {known && p.group.action !== "keep" ? (
+          <Button
+            variant="ghost"
+            className="min-w-0 [&>span]:truncate"
+            softDisabled={p.disabled || p.busyAction !== null}
+            onClick={() => p.onAlwaysKeep(p.group.sender)}
+          >
+            {`Always keep ${short}`}
+          </Button>
+        ) : null}
+        <span className="ml-auto inline-flex">
+          <Menu
+            label="More actions"
+            align="end"
+            items={items}
+            renderTrigger={(t) => <Button {...t} variant="ghost" icon="more" aria-label="More actions" />}
+          />
+        </span>
+      </div>
     </div>
   );
 }

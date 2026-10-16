@@ -7113,3 +7113,35 @@ Out of scope here (other plans): `providers/google/**`, `providers/microsoft/**`
 **2. Placeholder scan:** every code step embeds the complete file; no TBD, TODO or "similar to" references. Every command has an expected result.
 
 **3. Type consistency:** names in each task's Interfaces block match the code it embeds and the barrel in Task 18; the barrel test enumerates every runtime export; `pnpm typecheck` covers the type-only exports. All code in this plan was compiled, linted, formatted and run (353 tests passing) against the pinned versions before the plan was written.
+
+## Execution notes
+
+Executed on branch `feat/clearbox-01-foundation-core` with superpowers:subagent-driven-development (one implementer per task, a spec and quality review after each task, a final whole-branch review). Every pinned version installed as written; no dependency, exported name or signature changed.
+
+### Gate 01 result
+
+`pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm lint && pnpm format:check && git diff --quiet HEAD && echo committed` passes with `Test Files  27 passed (27)`, `Tests  366 passed (366)`, `check-text: 94 tracked files clean`, `All matched files use Prettier code style!`, `committed`.
+
+The core total is 366 instead of 353: 13 regression tests were added by the fix-forward deviations below (no test was removed; the 27 test files are unchanged). Later plans that quote a cumulative core total including plan 01's 353 (for example plan 02 Task 14 Step 6, "every core test file passes") should expect 13 more.
+
+### Deviations (fix forward, plan code was wrong)
+
+| # | Task | Plan text | Change | Why | Tests |
+|---|---|---|---|---|---|
+| 1 | 5 | `parseAddress` takes the first `<...>` in the value | Takes the last angle-addr group outside double-quoted strings (backslash escapes honoured); an unterminated quote yields a null address | Sender spoofing: `"PayPal <service@paypal.com>" <attacker@evil.example>` parsed as `service@paypal.com`, and `"Smith <Sales>" <a@example.com>` parsed as null | +1 in `text/address.test.ts` |
+| 2 | 5 | `stripComments` repeatedly removes innermost `( )` | Single linear scan with a depth stack; a backslash inside a comment escapes the next character; output unchanged for well-formed input | O(depth x n) CPU on attacker-controlled `Authentication-Results` (about 11 s for 100 KB of nested parentheses) | +2 in `text/headers.test.ts` |
+| 3 | 11 | Shrink order ends at "subject to empty" | Four further steps, each gated on the current length like the existing ones: `domain` to 64 chars, `from` to 64 chars, `domain` to `""`, `from` to `""` | A long sender address kept the state above `DECISION_STATE_MAX_CHARS` (2,095 chars reproduced); the budget is now unconditional | +4 in `decision/state.test.ts` |
+| 4 | 5 (final review) | `ADDRESS` host part `[^...]+\.[^...]+` | Host labels exclude `.` (`(?:[^...]+\.)+[^...]+`) and candidates longer than 254 chars are rejected before the regex; empty labels and a trailing dot no longer parse | Quadratic backtracking on attacker-controlled From, To, Cc and Return-Path (80k dots took 6 s) | +3 in `text/address.test.ts` |
+| 5 | 14 (final review) | `invalid_response` from a JSON parse failure carries the `SyntaxError` as `cause` | No `cause` on `invalid_response`; the timeout path keeps its cause | The `SyntaxError` message embeds a prefix of the response body (contracts 4.12: errors never contain response bodies) | +2 in `decision/mai-engine.test.ts` |
+| 6 | 14 (final review) | `this.#config.fetch(...)` | `fetch` is destructured from the config and called unbound | Calling the raw global `fetch` with `this` set to the config throws "Illegal invocation" on workerd | +1 in `decision/mai-engine.test.ts` |
+
+### Notes for later plans
+
+- Plan 02: `MailProvider.inboxEstimate` is absent by design (decision #16); adding it also requires updating `stubProvider` in `test/providers/types.test.ts`. `parseAuthResults` does not validate `authservId` and counts verdict text inside quoted strings, so the provider must select the trusted A-R header. A non-finite `receivedAt` makes `ageDays` NaN, which silently skips `guard_too_recent`; provider mapping must guarantee a finite timestamp. `parseAddress` can still be steered by a trailing comment containing `<...>`; skipping `( )` comments in its angle-group scan would close it.
+- Plan 03: `renderReason` throws on an unknown reason code; validate stored codes before rendering.
+- Plans 03 and 04: `fuse` keeps the final action within the guardrail ceiling for any `deleteMargin > -1/3`; `calibrateTauDelete` returns `currentTau` unclamped on `insufficient_data`; pass validated settings.
+- `test/bench/page-cpu.test.ts` measured about 1.1 ms median per page locally against the 6 ms limit; if it flakes on a loaded CI runner, isolate the file rather than raise the limit.
+
+### Deferred minor findings (triaged by the final review as safe to defer)
+
+Test-strength gaps mandated by the plan's verbatim tests (MSW guard, constants spot checks, error option overrides, UTF-8 hash vector, out-of-order completion in `mapWithConcurrency` and `decideAll`, matcher case and lookalike cases, `selectPrior` sender n = 0, testing-entry runtime names); `parseRetryAfter` accepting values such as `"1.5"` as past dates (returns 0); unvalidated numeric inputs in `SubrequestCounter.reserve`, `backoffMs`, `truncateChars` and `decideAll` concurrency; `new.target.name` under minification; RFC 2047 decoded control characters; `DEFAULT_POLICY` and `DECISION_QUESTIONS` shallow immutability; `MaiDecisionEngine` following redirects with the `api-key` header (owner-configured endpoint).

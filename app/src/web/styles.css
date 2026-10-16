@@ -305,3 +305,11 @@
     transform: none;
   }
 }
+@keyframes cb-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}

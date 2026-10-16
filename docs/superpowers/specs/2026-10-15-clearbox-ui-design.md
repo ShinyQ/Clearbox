@@ -3,6 +3,7 @@
 - **Status:** Ready for implementation (derived from the approved mockup v4)
 - **Date:** 2026-10-15
 - **Owner:** ShinyQ
+- **Revision:** rev 2.3 reconciliation (2026-10-16): copy and behavior from implementation layer 5 (model banner, Scan now toasts, Clean up and keeps wording, Undo and keeps, account card status text). See contracts 12.6.
 - **Approved mockup:** [`docs/design/clearbox-ui-v4.html`](../../design/clearbox-ui-v4.html)
 - **Companions:** [`2026-10-15-clearbox-design.md`](2026-10-15-clearbox-design.md) (narrative design, section 11 Review UI, section 7 security) and [`2026-10-15-clearbox-contracts.md`](2026-10-15-clearbox-contracts.md) (REST API in section 7, SPA layout in section 1.1, dependencies in section 2). When this spec and the contracts disagree on an API shape, the contracts win; every place where the UI needs something the contracts do not yet provide is listed in section 9.3 with the interim behavior.
 
@@ -25,7 +26,7 @@ This document is the single source of truth for how the Clearbox single-page app
 
 - **The AI prepares, the human confirms.** The owner never faces an unsorted list. Review opens on a summary that already says what will happen, with one primary action: Clean up.
 - **Trust through evidence.** Every sender group shows a confidence percentage, a band word, and up to three concrete reasons. Uncertainty is shown (Likely, Unsure, Check), never hidden.
-- **Safe by default.** Nothing is irreversible. "Trash" is a recoverable move, every action has Undo for 24 hours, and anything below the threshold stays for the owner.
+- **Safe by default.** Nothing is irreversible. "Trash" is a recoverable move, every Trash and Archive has Undo for 24 hours (a Keep changes nothing in the mailbox, so there is nothing to undo), and anything below the threshold stays for the owner.
 - **Bulk over one-by-one.** The unit of work is the sender group. One keystroke clears a whole group; one Clean up clears every confident group.
 - **Every decision teaches.** Approvals, overrides and undos feed the learning loop, and the UI says so ("Clearbox will remember", "decisions learned from you").
 
@@ -1279,7 +1280,7 @@ interface ProgressBarProps {
 
 ### 4.18 Toast (with Undo)
 
-- **Purpose:** short-lived outcome messages; the place where Undo lives after every action.
+- **Purpose:** short-lived outcome messages; the place where Undo lives after every Trash or Archive action (Keep decisions are not undoable, see 5.2.6).
 - **Anatomy:** `data-inverse`, `inline-flex items-center gap-3 bg-inverse text-on-inverse rounded-lg shadow-toast`, padding 9px 10px 9px 14px, `text-body`, max-width 560px. Leading icon 14px in `on-inverse` (success: check; info: info circle; error: alert triangle). Message. Action: underlined text button `font-semibold` (underline offset 2px), for Undo followed by Kbd "⌘ Z" (tone `on-inverse`). Close icon button (ghost on inverse, 20px) on error toasts and on hover for others.
 - **Props:**
 
@@ -1640,7 +1641,7 @@ Tau used everywhere on this page: `preview.threshold` (falls back to `summary.ta
 | Setup error | any account `config_error`, or issue `google_client_invalid` / `microsoft_client_invalid` | Error banner: "Google sign-in is misconfigured." body "Google rejected the client ID or secret. Update GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, redeploy, then reconnect." action "Open setup guide" (external link to the repository's `docs/setup-google.md`). Outlook variant: "Microsoft sign-in is misconfigured." / "Microsoft rejected the client secret (it may have expired). Create a new secret, update MS_CLIENT_SECRET, redeploy, then reconnect." / `docs/setup-microsoft.md`. |
 | Budget exhausted | issue `budget_exhausted_today` | Warning banner (dismissible): "Today's free-tier limit is reached." body "New mail is sorted again after 07:00. Clean up and other actions keep working until the action limit is reached." |
 | Storage near limit | issue `storage_near_limit` | Warning banner (dismissible): "Storage is almost full." body "Clearbox paused reading older mail at 450 MB of 500 MB. Old data is removed nightly, then sorting resumes." |
-| Model not configured | issue `decision_not_configured`, `decision_auth_failed` or `decision_deployment_not_found` | Error banner: "Clearbox can't use the AI model." body per code: not configured "AZURE_DECISION_ENDPOINT, AZURE_DECISION_KEY or AZURE_DECISION_DEPLOYMENT is missing."; auth failed "Azure rejected the API key. Update AZURE_DECISION_KEY and redeploy."; deployment not found "The deployment name was not found. Check AZURE_DECISION_DEPLOYMENT." Then: " New emails are marked Check until this is fixed." Action "Open setup guide" (`docs/setup-azure.md`). |
+| Model not configured | issue `decision_not_configured`, `decision_auth_failed` or `decision_deployment_not_found` | Error banner: "Clearbox can't use the AI model." body per code: not configured "AZURE_DECISION_ENDPOINT, AZURE_DECISION_KEY or AZURE_DECISION_DEPLOYMENT is missing or invalid. The endpoint must be an https URL and the deployment name cannot be Microsoft-Decision-1." (the server rejects an `http://` endpoint, one with a path, query or credentials, and the reserved deployment name; it clears as soon as the configuration is valid); auth failed "Azure rejected the API key. Update AZURE_DECISION_KEY and redeploy. This clears after the next successful sort."; deployment not found "The deployment name was not found. Check AZURE_DECISION_DEPLOYMENT. This clears after the next successful sort." (these two clear only after a successful decision, so on a quiet account the banner can outlast the fix; the sentence says so). Then: " New emails are marked Check until this is fixed." Action "Open setup guide" (`docs/setup-azure.md`). |
 | Model temporarily unavailable (many Unsure) | `summary.awaitingModel > 0`, or more than 50% of loaded groups are Check with top reason `model_unavailable` | Info banner: "The AI model is not responding right now." body "25 emails are waiting and Clearbox retries automatically. Emails it could not score are marked Check with the reason \"Model unavailable\"." Check rows with `model_unavailable` show confidence "n/a" (4.12). |
 | Offline | browser offline or network errors | See 5.9. Clean up and actions disabled. |
 
@@ -1649,19 +1650,19 @@ Tau used everywhere on this page: `preview.threshold` (falls back to `summary.ta
 | Trigger | Result |
 |---|---|
 | Account Select change | Sets `account` search param; refetches summary, preview, groups; clears selection; Clean up scope follows the filter. |
-| Scan now | For the selected account, or each `active` unpaused account in sequence: `POST /api/accounts/:id/scan`. Button loading "Scanning…". Success toast (info): "Scan finished. 25 new emails sorted." (sum of `decided + unsure`); 0: "Scan finished. No new emails." Then invalidate accounts, summary, preview. `409 account_busy`: info toast "A scan is already running for you@gmail.com. Try again in 2 min." (`retryAt`); `409 account_inactive` paused or reauth: skip silently in "All accounts" mode, toast "you@gmail.com is paused." in single mode; `429 budget_exhausted`: toast "Today's free-tier limit is reached. Scanning resumes after 07:00." |
+| Scan now | For the selected account, or each `active` unpaused account in sequence: `POST /api/accounts/:id/scan`. Button loading "Scanning…". Success toast (info): "Scan finished. 25 new emails sorted." (sum of `decided + unsure`); an `idle` report or 0 sorted: "Scan finished. No new emails." A `200` `TickReport` with `outcome: "error"` (the tick failed and Clearbox backs off): error toast "Scan hit a problem. Clearbox will retry automatically." and that account does not count as finished. Then invalidate accounts, summary, preview. `409 account_busy`: info toast "A scan is already running for you@gmail.com. Try again in 2 min." (`retryAt`); `409 account_inactive` has two shapes: with `retryAt` the account is backing off after an error and the info toast reads "you@gmail.com is retrying after a problem. Next try at 14:05." (local `HH:MM` of `retryAt`, shown in "All accounts" mode too); without `retryAt` the account is paused or needs attention: skip silently in "All accounts" mode, toast "you@gmail.com is paused." in single mode; `429 budget_exhausted`: toast "Today's free-tier limit is reached. Scanning resumes after 07:00." |
 | Click Clean up, or `mod+Enter` | Clean up flow (5.2). |
 | Tab click or 1 to 5 | Switch tab (search param `tab`); clears selection; first row becomes active. |
 | Row click | Activate (detail shows it). Shift+click: range select. `mod`+click: toggle select. |
 | Checkbox click | Toggle select (shift: range). |
 | T / A / E (or detail buttons) | Group action (6.4) on the selection, else on the active group. |
 | Enter | Open detail (slide-over or sheet below 1280px; focus into the inline panel at `xl`). |
-| "Always keep Shopee" | `PATCH /api/policy/senders { entry: sender, list: "allow" }`, then group action Keep (6.4). Toast: "Shopee is on your Always keep list. 248 emails kept." with Undo (Undo reverses the keep decisions only; the sender stays on the Always keep list and is removed in Rules). |
+| "Always keep Shopee" | `PATCH /api/policy/senders { entry: sender, list: "allow" }`, then group action Keep (6.4). Toast: "Shopee is on your Always keep list. 248 emails kept." No Undo promise: a Keep changes nothing in the mailbox, and the sender stays on the Always keep list until removed in Rules (see the Undo and keeps rule in 5.2.6). |
 | More > "Always OK to trash Shopee" | `PATCH ... list: "deny"`. Toast (info): "Shopee is on your Always OK to trash list. Future emails from it skip the confidence check." No Undo (rule changes are edited in Rules). |
 | More > "Always keep everything from @shopee.co.id" | `PATCH ... { entry: "@shopee.co.id", list: "allow" }`, then Keep for the group. Toast as above with the domain. |
 | More > "Copy sender address" | Clipboard write; toast (info) "Copied promo@shopee.co.id." |
 | Email row click | Expand (snippet, meta, per-email actions). |
-| Per-email Trash / Archive / Keep | If equal to the item's suggested action and not `unsure`: `POST /api/approve { ids: [id] }`, else `POST /api/override { ids: [id], action }`. Row exits; group count decrements. Toast: "Moved 1 email to Trash." / "Archived 1 email." / "Kept 1 email." with Undo. |
+| Per-email Trash / Archive / Keep | If equal to the item's suggested action and not `unsure`: `POST /api/approve { ids: [id] }`, else `POST /api/override { ids: [id], action }`. Row exits; group count decrements. Toast: "Moved 1 email to Trash." / "Archived 1 email." with Undo; "Kept 1 email." without Undo (5.2.6). |
 | New suggestions pill | Refetch groups, reset the snapshot (6.6). |
 
 **Toast copy for group actions** (name = display name):
@@ -1670,8 +1671,8 @@ Tau used everywhere on this page: `preview.threshold` (falls back to `summary.ta
 |---|---|
 | Trash | "Moved 248 emails from Shopee to Trash." + Undo |
 | Archive | "Archived 42 emails from Tokopedia Orders." + Undo |
-| Keep | "Kept 3 emails from Mom. Clearbox will remember." + Undo |
-| Bulk (selection) | "Moved 455 emails from 3 sender groups to Trash." / "Archived 120 emails from 4 sender groups." / "Kept 30 emails from 2 sender groups." / Approve suggestions: "Done: 300 to Trash, 120 archived, 35 kept." + Undo |
+| Keep | "Kept 3 emails from Mom. Clearbox will remember." (no Undo, 5.2.6) |
+| Bulk (selection) | "Moved 455 emails from 3 sender groups to Trash." / "Archived 120 emails from 4 sender groups." + Undo; "Kept 30 emails from 2 sender groups." (no Undo, 5.2.6); Approve suggestions: "Done: 300 to Trash, 120 archived, 35 kept." + Undo, which restores the Trash and Archive part only |
 | Partial | "Moved 240 of 248 emails to Trash. 8 could not be moved and stay in Review." + Undo |
 | Account inactive | error: "Reconnect you@company.com to act on its emails." + action "Reconnect" |
 | Rate limited | error: "Gmail asked Clearbox to slow down. Nothing else was changed. Try again in a minute." (Outlook: "Outlook asked ...") |
@@ -1737,7 +1738,7 @@ The machine lives in `CleanupProvider` (mounted in AppShell) so a run continues 
 | done, partial | Undo (toast button or `mod+Z`) | within 24 h, `batchIds` not empty | `POST /api/batches/:id/undo` for each `batchIds`, newest first, sequentially | undoing | Toast becomes "Undoing…" |
 | partial | "Try again" | | back to preparing (fresh preview, new confirm) | preparing | |
 | partial | "Dismiss" | | invalidate the same caches as below | idle | Bar exits. Undo stays available in the toast and the undo stack |
-| undoing | all undo calls settled | | none | undone | Toast "Restored 1,284 emails to your inbox." (partial: "Restored 1,280 emails. 4 could not be restored and are still in Trash or Archive.") |
+| undoing | all undo calls settled | | none | undone | Toast "Restored 1,284 emails to your inbox." (partial: "Restored 1,280 emails. 4 could not be restored and are still in Trash or Archive."; when a whole undo call failed the failed count is unknown: "Restored 1,280 emails. Some could not be restored and are still in Trash or Archive."; nothing restored and nothing failed: info toast "Nothing needed restoring. These emails were already back or untouched.") |
 | done, undone, error | timer 0 ms after the toast is shown | | invalidate `queue`, `cleanup`, `groups`, `group`, `accounts`, `batches`, `activity` | idle | List and summary refresh; empty states apply |
 
 Definitions: `processed = executed + failed + skipped`; "progress made" in a call = `executed + failed + skipped > 0` for that response; `maxCalls = ceil(preview.count / 100) + 5`.
@@ -1773,10 +1774,11 @@ During the run the list is not refetched (no jumping rows); the owner can keep r
 | Confirming, account filter | "Clean up 640 emails from you@gmail.com?" | same detail rules |
 | Confirming, `groupsLeft === 0` | (unchanged) | last sentence omitted |
 | Confirming, A2 missing | (unchanged) | last sentence: "240 emails below 86% or waiting for your choice stay here." |
-| Confirming, an in-scope account needs reconnect | (unchanged) | appended: " Emails from you@company.com are skipped until you reconnect it." |
+| Confirming, an in-scope account is not active (`needs_reauth` or `config_error`) | (unchanged) | appended: " Emails from you@company.com are skipped until you reconnect it." The preview and the run exclude that account's Trash and Archive items; its groups count as "left for you". ("Confirm all keeps" has no such line: it covers every visible account.) |
 | Running | "Cleaning up… 812 of 1,284" | right side: "You can keep reviewing" |
 | Stopping | "Stopping after this step…" | |
-| Done toast | "1,284 emails cleaned up from 371 sender groups" (success icon) | Undo + Kbd "⌘ Z"; when `skipped > 0` append " (4 were already handled)" |
+| Done toast | "1,284 emails cleaned up from 371 sender groups" (success icon) | Undo + Kbd "⌘ Z"; when `skipped > 0` append " (4 were already handled)". The numbers are what the run executed, not the preview. |
+| Done, nothing executed | "Nothing needed cleaning up (4 were already handled)" (the parenthesis only when `skipped > 0`; no period) | no Undo when no batch was created |
 | Partial: stopped | "Clean up stopped. 812 emails were cleaned up." | "The rest stay in Review." Buttons "Try again", "Dismiss"; plus toast with Undo for the 812 |
 | Partial: budget | "Clean up paused at today's free-tier limit. 1,180 emails were cleaned up." | "The other 104 stay in Review. Actions work again after 07:00." |
 | Partial: rate limited | "Gmail asked Clearbox to slow down. 1,180 emails were cleaned up." | "The other 104 stay in Review. Try again in a minute." |
@@ -1787,9 +1789,11 @@ During the run the list is not refetched (no jumping rows); the owner can keep r
 | Partial: unexpected | "Clean up stopped because of an unexpected error. 812 emails were cleaned up." | "The rest stay in Review. Try again; if it keeps happening, check the Worker logs." |
 | Undo running | toast "Undoing…" | |
 | Undo done | toast "Restored 1,284 emails to your inbox." | |
+| Undo partial | toast "Restored 1,280 emails. 4 could not be restored and are still in Trash or Archive." (count unknown: "Restored 1,280 emails. Some could not be restored and are still in Trash or Archive.") | The entry is consumed: there is no in-app retry (the server keeps a partly restored batch with retryable failures undone) |
+| Undo, nothing to restore | info toast "Nothing needed restoring. These emails were already back or untouched." | keep-only batches, or items already back |
 | Undo expired (410) | error toast "Undo is no longer available for this Clean up (24 hours passed)." | |
 
-Numbers: titles use the fresh preview (`count`, `groups`); "groups below 86%" uses A2 `groupsLeft` and `toPercent(threshold)`. Every partial outcome with `executed > 0` also shows a success toast for what was executed ("1,180 emails cleaned up" + Undo, no group count because it is not exact for a partial run), so Undo is always one click away.
+Numbers: titles use the fresh preview (`count`, `groups`); "groups below 86%" uses A2 `groupsLeft` and `toPercent(threshold)`. Every partial outcome with `executed > 0` also shows a success toast for what was executed ("1,180 emails cleaned up" + Undo, no group count because it is not exact for a partial run), so Undo is always one click away (for Clean up; for "Confirm all keeps" the partial toast is "Kept 12 emails. Clearbox will remember." without a promise of Undo).
 
 #### 5.2.5 After Clean up
 
@@ -1799,7 +1803,22 @@ Once caches refresh: if `preview.count === 0` and groups remain, the "Inbox clea
 
 In the Keep tab, the tab bar's right side shows a secondary button size `sm` "Confirm all keeps" when the tab has groups. It runs the same machine with `mode: "confirm_keeps"`: preview `GET /api/cleanup/preview?actions=keep&threshold=0.5[&accountId]`, loop `POST /api/cleanup { actions: ["keep"], threshold: <preview.threshold>, asOf }`.
 
-Copy: title "Mark 47 emails in 12 sender groups as Keep?"; detail "They stay in your inbox, leave Review, and Clearbox learns from your choice."; running "Confirming… 30 of 47"; done toast "Kept 47 emails from 12 sender groups. Clearbox will remember." + Undo.
+Copy: title "Mark 47 emails in 12 sender groups as Keep?"; detail "They stay in your inbox, leave Review, and Clearbox learns from your choice."; running "Confirming… 30 of 47"; done toast "Kept 47 emails from 12 sender groups. Clearbox will remember." (no Undo promise, see below). The scope is every visible account (no skipped-account line).
+
+Keeps wording for the other moments (same machine and layout as 5.2.4, "Confirming keeps" for "Clean up", "kept" for "cleaned up"):
+
+| Moment | Copy |
+|---|---|
+| Preview has nothing (info toast) | "Nothing left to confirm. New suggestions appear after the next sort." |
+| Preview fails (error toast, "Try again") | "Couldn't prepare Confirm all keeps. Nothing was changed." |
+| Done, nothing executed | "Nothing needed confirming (4 were already handled)" (parenthesis only when `skipped > 0`; no period) |
+| Partial title | "Confirming keeps stopped. 12 emails were kept." and the other reasons of 5.2.4 with the same substitution |
+| Partial: item failures | "12 emails were kept. 4 could not be confirmed." / "They were deleted or changed outside Clearbox, so they could not be confirmed. They are marked as failed." |
+| Partial: account inactive detail | "you@company.com needs to reconnect before its emails can be confirmed." |
+| Partial: no progress detail | "Clearbox could not confirm more right now. Try again in a few minutes." |
+| Partial toast (executed > 0) | "Kept 12 emails. Clearbox will remember." |
+
+**Undo and keeps (lead decision).** Undo does not apply to keep decisions: a Keep changes nothing in the mailbox, so the server skips keep items on undo (contracts 7.8, 12.6). The spec'd Keep toasts (group, per-email, bulk, "Always keep", "Confirm all keeps") therefore carry no Undo. Layer 5 still attaches the shared Undo action to those toasts and to keep-only batches in Activity; pressing it restores nothing and shows the info toast "Nothing needed restoring. These emails were already back or untouched." instead of a false success, and the batch then reads "Undone" (an all-skipped batch stays undone). Dropping the action from keep-only toasts is a follow-up. A mixed batch ("Approve suggestions") restores its Trash and Archive items and skips its keeps.
 
 ### 5.3 Insights (`/insights`)
 
@@ -1869,11 +1888,11 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 | `config_error` | **Setup error** · you@company.com | "Sorting paused" | ghost sm "Open Accounts" |
 | `policy_updated` | **Rules updated** | "Always keep 3 · Always OK to trash 1" (from `result.allow`, `result.deny`; "Saved" when absent) | ghost sm "Open Rules" |
 | `calibration` | **Threshold tuned** · checked 312 trash decisions | "Now 86%" (from `result.tauDelete`), else "Unchanged" | none |
-| `purge` | **Nightly cleanup** · 4,210 old records removed | "Done" | none |
+| `purge` | **Nightly cleanup** · 4,210 old records removed (singular: "1 old record removed") | "Done" | none |
 
 **States:** loading (5 skeleton rows), ready, empty ("Nothing yet. Actions you take and nightly maintenance appear here."), error (table error row), load more (button "Load more" with loading "Loading…"), undo in progress (button loading "Undoing…"), undo done (row result updates to "Undone" after refetch; toast "Restored 248 emails to your inbox."), undo expired (410: toast error "Undo is no longer available for this action (24 hours passed)." and the cell switches to "Undo expired").
 
-**Interactions:** Undo: `POST /api/batches/:id/undo`, then invalidate `batches`, `activity`, `queue`, `groups`, `cleanup`. Account Select filters. Row hover only highlights rows with an action.
+**Interactions:** Undo: `POST /api/batches/:id/undo`, then invalidate `batches`, `activity`, `queue`, `groups`, `cleanup`. Focus moves to the row's "Undone" text afterwards. The Undo button comes back only when nothing was restored and something failed (the server keeps that batch undoable); a partly restored batch reads "Undone". A keep-only batch is listed as undoable too, but Undo restores nothing there: the toast is "Nothing needed restoring. These emails were already back or untouched." and the row reads "Undone" (5.2.6). The table waits for activity, accounts and batches before rendering, so rows never flash "Undo expired". Account Select filters. Row hover only highlights rows with an action.
 
 ### 5.5 Accounts (`/accounts`)
 
@@ -1883,7 +1902,7 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 
 **Account card** (`grid-template-columns: 34px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 14px 16px; border-bottom: 1px solid line-subtle`, `id="acc_<id>"`, `tabIndex=-1` for hash focus):
 
-1. `ProviderTile`.
+1. `ProviderTile` (provider color while the account is up to date or catching up, grey otherwise).
 2. Email (`font-emphasis text-ink`) and status line `text-small text-ink-3`, plus for catching up a `ProgressBar tone="archive" width=240` (margin-top 6px).
 3. Actions (gap 6px): per status below. Below 1024px they collapse into a Menu (more icon, label "Account actions for you@gmail.com").
 
@@ -1895,6 +1914,8 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 | paused | "Gmail · paused by you · 32,118 emails sorted" | secondary "Resume", ghost "Disconnect" |
 | needs reconnect | "Gmail · paused, needs reconnect" | secondary "Reconnect", ghost "Disconnect" |
 | setup error | "Gmail · paused, sign-in setup error (invalid_client)" (`statusReason`) | secondary "Reconnect" (enabled; it works once credentials are fixed), ghost "Disconnect" |
+
+**Status cue on this surface:** the account card shows status as text only, with no dot (`AccountCard` has no `StatusDot`; the status line already names the state in words and the tile tone and the actions repeat it). The global "dot plus text" rule (7.1, 7.4) applies to `AccountStatusItem` in the sidebar and the Insights table, which do render the `StatusDot`.
 
 `archiveSupported === false` (Outlook without an archive folder) adds to the status line: " · Archive unavailable, archive suggestions are kept in Review".
 
@@ -1986,7 +2007,7 @@ Below the panel, `text-small text-ink-3`: "Rule changes apply to emails sorted f
 | Step | Done state | Problem state | Action |
 |---|---|---|---|
 | 1 "Sign-in protection" | "Protected by Cloudflare Access. Signed in as you@example.com." (`environment === "development"`: warning "Local development mode. Sign-in is bypassed on localhost only.") | (cannot render: AppShell shows the access error page) | none |
-| 2 "AI model" | "Connected to your Decision-1 deployment." | Error copy per `decision_*` issue (5.1), "New emails will be marked Check until this is fixed." | ghost "Open setup guide" |
+| 2 "AI model" | "Connected to your Decision-1 deployment." | Error copy per `decision_*` issue (the same bodies as 5.1, including the https endpoint and `Microsoft-Decision-1` deployment hint of `decision_not_configured` and "This clears after the next successful sort." for the other two), then "New emails will be marked Check until this is fixed." | ghost "Open setup guide" |
 | 3 "Connect a mailbox" | "you@gmail.com connected." (one line per account) | Pending: "Connect Gmail or Outlook. You'll sign in on their page." | secondary "Connect Gmail", secondary "Connect Outlook" (disabled with helper when the provider is not configured, 5.5) |
 
 After at least one account exists, a fourth block appears under the panel: "Sorting your first emails" with phase text and a ProgressBar:
@@ -2185,7 +2206,8 @@ Global defaults: `retry: 1` for queries (not for 4xx), `retry: 0` for mutations 
 - A toast with the same `dedupeKey` replaces the existing one in place (timer restarts).
 - The Undo action turns the toast into "Undoing…" (spinner, no buttons), then the toast is replaced by the result toast.
 - **Undo stack** (`UndoStackProvider`): every action that returns `batchId`s pushes `{ id, label, batchIds, expiresAt }` where `expiresAt` = earliest `undoExpiresAt` (fallback: now + 24 h). Max 20 entries, in memory (lost on reload; Activity remains the durable place to undo). `mod+Z` pops the newest unexpired entry and undoes all its batches (newest batch first). Empty stack: info toast "Nothing to undo here. Actions from earlier sessions can be undone in Activity for 24 hours." with action "View" (to `/activity`).
-- Undo result toasts: success "Restored 248 emails to your inbox."; partial "Restored 240 emails. 8 could not be restored."; expired error "Undo is no longer available for this action (24 hours passed)."
+- The Undo stack entry is consumed before the server call and is never re-queued: a partly restored batch stays undone on the server, so there is no in-app retry. `mod+Z` ignores key auto-repeat (holding it must not walk the stack).
+- Undo result toasts: success "Restored 248 emails to your inbox."; partial "Restored 240 emails. 8 could not be restored." (a whole undo call failed, count unknown: "Restored 240 emails. Some could not be restored."); nothing restored and nothing failed (keep-only batches, items already back; 5.2.6): info "Nothing needed restoring. These emails were already back or untouched."; expired error "Undo is no longer available for this action (24 hours passed)."
 
 ### 6.9 Shortcut help dialog (`?`)
 
@@ -2201,7 +2223,7 @@ Title "Keyboard shortcuts". Three columns of `dl` lists with Kbd: "Review" (J/K 
 |---|---|
 | 1.1.1 Non-text content | Icons are `aria-hidden` next to words; icon-only buttons have `aria-label`; the chart has a text alternative and a hidden table. |
 | 1.3.1 Info and relationships | Landmarks, one `h1` per page, grid semantics for the group list, native tables, labelled fields. |
-| 1.4.1 Use of color | Verdicts: icon + word. Confidence: percentage + band word. Account status: dot + text. Destructive buttons: trash icon or the word "Disconnect". |
+| 1.4.1 Use of color | Verdicts: icon + word. Confidence: percentage + band word. Account status: dot + text (sidebar and Insights; account cards use text only, 5.5). Destructive buttons: trash icon or the word "Disconnect". |
 | 1.4.3 Contrast (text) | All text pairs at least 4.5:1 (7.2). |
 | 1.4.11 Non-text contrast | Control boundaries, focus ring, status dots, tau tick, chart bars at least 3:1 (7.2). Confidence meter fills are supplementary (percentage and band word are adjacent text) and are documented as exempt. |
 | 1.4.10 Reflow, 1.4.12 Text spacing | Layouts reflow to a single column below 1024px; no fixed heights on text containers. |
@@ -2338,7 +2360,7 @@ A unit test (`app/test/web/tokens.contrast.test.ts`) parses `styles.css`, recomp
 | Confidence band | Fill and word color | Percentage + band word; "left for you" for Likely and Unsure in the detail panel |
 | In Clean up or not | Band | Detail membership line; confirm bar counts |
 | Destructive action | Red fill | Trash icon + the word "Trash"/"Disconnect"; inline confirm for Disconnect; Undo for Trash |
-| Account status | Dot | "Reconnect", "Fix setup", "Paused", "41%" text; accessible names |
+| Account status | Dot (sidebar, Insights) | "Reconnect", "Fix setup", "Paused", "41%" text; accessible names. Account cards: text only |
 | Selected row | Tint | Checked checkbox, `aria-selected`, toolbar count |
 | Active row | Tint | Detail panel shows it; `aria-current="true"` on the row |
 | Focus | Indigo ring | Ring shape (2px outline), never color change alone |
@@ -2381,7 +2403,8 @@ Test-only additions this spec requires (verified with `npm view` on 2026-10-15; 
 ```
 src/web/
   main.tsx                     # createRoot, QueryClientProvider, RouterProvider (no inline script in index.html)
-  styles.css                   # section 2.9 (tokens, base, cb-* helpers)
+  styles.css                   # section 2.9 (tokens, base); imports styles-layers.css
+  styles-layers.css            # `@layer components` cb-* geometry helpers (split out to stay under the size rule)
   styles.dark.css              # section 2.10, NOT imported in v1
   routes.tsx                   # route table (3.5), RootRedirect, OAuthReturn, dev-only gallery
   api/
@@ -2393,18 +2416,26 @@ src/web/
                                # useDisconnect, usePatchSender, usePutPolicy
     cleanup.ts                 # runCleanup loop (5.2.3), pure and unit tested
   lib/
-    view-types.ts  confidence.ts  format.ts  avatar.ts  account-status.ts  copy.ts  platform.ts  oauth-return.ts
+    view-types.ts  confidence.ts  format.ts  avatar.ts  account-status.ts  copy.ts  copy-actions.ts  platform.ts
+    oauth-return.ts  oauth-errors.ts  banners.ts  activity.ts  links.ts  report.ts  rules-draft.ts
   state/
     CleanupProvider.tsx        # state machine (5.2.2)
     UndoStackProvider.tsx      # 6.8
     ToastProvider.tsx          # 4.18, 6.8
     HotkeysProvider.tsx        # 6.1, 6.2
     LiveAnnouncer.tsx          # 4.33
-    useSelection.ts            # 6.3
-    useNow.ts                  # shared 30 s clock
+    use-selection.ts           # 6.3
+    use-now.ts                 # shared 30 s clock
+    use-pageshow-reset.ts      # resets loading buttons after a back-forward cache restore (Connect buttons)
+    # also: toast-queue, cleanup-machine, hotkeys-core, offline, use-document-title, use-focus-trap, use-media-query,
+    # use-platform, use-route-focus (the file list is in contracts 1.1)
   pages/
     ReviewPage.tsx  ActivityPage.tsx  InsightsPage.tsx  RulesPage.tsx  AccountsPage.tsx  SetupPage.tsx
-    NotFoundPage.tsx  ComponentGallery.tsx  FullPageError.tsx
+    NotFoundPage.tsx  ComponentGallery.tsx  FullPageError.tsx  OAuthReturn.tsx  RootLayout.tsx  RootRedirect.tsx
+    review/                    # ReviewWorkArea.tsx and the Review controller split: use-review-controller, use-review-focus,
+                               # use-review-effects, use-review-hotkeys, use-review-params, use-group-actions, use-item-actions,
+                               # use-new-suggestions, use-scan-now, review-state, group-cache, select-all (bounded to 20 page fetches)
+    gallery/                   # dev-only gallery sections and sample data
   components/
     ui/                        # Button, LinkButton, Kbd, Select, Menu, Tabs, Chip, ChipInput, TextInput, Toggle,
                                # Checkbox, Table, Dialog, Banner, EmptyState, Skeleton, ProgressBar, Toast,
@@ -2419,7 +2450,7 @@ src/web/
     rules/                     # RuleField, RulesForm
 ```
 
-`lib/`, `state/` and the component subfolders are additions inside `src/web/` (contracts 1.1 lets the UI plan own the file lists of `pages/` and `components/`; `lib/` and `state/` are new sibling folders and should be added to the contracts layout). Files follow contracts section 11: PascalCase components, kebab-case modules, named exports, `.ts`/`.tsx` extensions in relative imports, under 300 lines each.
+`lib/`, `state/` and the component subfolders are additions inside `src/web/` (contracts 1.1 lets the UI plan own the file lists of `pages/` and `components/`; `lib/` and `state/` are new sibling folders, listed in the contracts layout since rev 2.2; rev 2.3 added the Review controller modules and `styles-layers.css`). Files follow contracts section 11: PascalCase components, kebab-case modules, named exports, `.ts`/`.tsx` extensions in relative imports, under 300 lines each.
 
 ### 8.3 Data fetching conventions
 

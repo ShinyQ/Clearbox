@@ -1,6 +1,6 @@
 # Clearbox: Shared Contracts
 
-- **Status:** Approved, rev 2.2 (pairs with design spec rev 2; rev 2.1 and rev 2.2 changes are summarized in section 12)
+- **Status:** Approved, rev 2.3 (pairs with design spec rev 2; rev 2.1, 2.2 and 2.3 changes are summarized in section 12)
 - **Date:** 2026-10-15
 - **Scope:** the single source of truth for every name, type, file path, table, route, env var, constant and dependency version that implementation plans reference. The design spec (`2026-10-15-clearbox-design.md`) is the narrative; when the two disagree, **this document wins** and the spec must be fixed.
 - **Rule for plan authors:** do not invent shared names. If something shared is missing here, add it to this document in the same change that needs it, and keep the spec consistent.
@@ -61,6 +61,8 @@ Every planned file is listed. Files not listed here must not be created without 
     setup-microsoft.md              # Entra app (any org + personal), web platform, redirect URI, secret expiry
     runbook.md                      # key rotation, re-auth, config_error, purge, restore, budget exhaustion, Decision-1 retirement, tick CPU check (plan 04 creates the CPU section, plan 06 the full file)
     security-review-checklist.md    # pre-deploy security gate (design spec 7), evidence per item
+    readme/                         # README assets (rev 2.3): clearbox-mark.svg, hero.png, screen-*.png
+    design/clearbox-ui-v4.html      # approved static UI mockup (UI spec 9.1); ignored by Prettier
     superpowers/specs/              # design spec + this contracts doc
     superpowers/research/           # verified research (generic, no environment details)
   packages/
@@ -148,7 +150,11 @@ Every planned file is listed. Files not listed here must not be created without 
     src/worker/db/budget.ts         # budget upsert and reads
     src/worker/db/audit.ts          # audit_log append and feed
     src/worker/db/batches.ts        # action_batches insert, read, mark undone
-    src/worker/scan/tick.ts         # runTick(env, opts), runTickInternal: the single tick code path (section 8); plan 03 ships a stub, plan 04 replaces it
+    src/worker/scan/tick.ts         # runTick(env, opts), runTickInternal: the single tick code path (section 8); plan 03 ships a stub, plan 04 replaces it. Rev 2.3: orchestration only, the stages live in fetch.ts, tick-process.ts, tick-finish.ts and tick-stats.ts
+    src/worker/scan/fetch.ts        # rev 2.3: fetchPage (provider call per tick kind, cursor resync), Fetched, shouldRefreshEstimate, fetchInboxEstimate
+    src/worker/scan/tick-stats.ts   # rev 2.3: Stopwatch and TickTimings (pure vs awaited I/O time), tally, decision statistics, percentile, logDecisionErrors
+    src/worker/scan/tick-process.ts # rev 2.3: processAccount: context read, incremental retention drop (8.2), identify, decide, success write plan
+    src/worker/scan/tick-finish.ts  # rev 2.3: finishTick, failTick, successResult, idleReport: final write batches, budget write, TickReport, tick.done and tick.failed logging
     src/worker/scan/token-source.ts # plan 03: createD1TokenSource, refreshFnFor, tokenUpdateStmt, staticTokenSource (uses core TokenUpdate)
     src/worker/scan/providers.ts    # plan 03: ProviderTarget, ProviderFactory, makeProvider(target, deps), ProviderOAuth, PROVIDER_OAUTH, oauthClientConfig, callbackPath, routeSegment
     src/worker/scan/tick-tokens.ts  # plan 04: openTickTokens (claimed row -> plan 03 token source), providerTargetOf, TokenColumns, encryptTokenUpdate
@@ -156,7 +162,10 @@ Every planned file is listed. Files not listed here must not be created without 
     src/worker/scan/claim.ts        # CLAIM_SQL, claim batch, claim parsing, tick settings, scan-now error mapping
     src/worker/scan/context.ts      # context read statements (fresh page and redecide) and parsing
     src/worker/scan/ingest.ts       # pure: page -> signals -> guardrails -> decisions -> fusion (FinalItem)
-    src/worker/scan/write-plan.ts   # statement toolkit ({ sql, params }) and the D1 write batch for a tick
+    src/worker/scan/write-plan.ts   # rev 2.3: barrel re-exporting stmt.ts, plan-builders.ts and success-write.ts (every symbol is still importable from write-plan.ts)
+    src/worker/scan/stmt.ts         # rev 2.3: Stmt ({ sql, params }), BatchResult, IN_LIST_MAX, stmt, numbered, rowsOf, sumMeta, batchRunner, lastSizeAfter
+    src/worker/scan/plan-builders.ts # rev 2.3: settingStmt, tick-local auditStmt (writes the C27 result shape, 12.6), leaseReleaseStmt, budgetUpsertStmt, applyIssues, issuesStmt
+    src/worker/scan/success-write.ts # rev 2.3: computeAdvance and buildSuccessWrite (messages, suggestions, senders, dismissals, fenced account update)
     src/worker/scan/failure.ts      # failure classification, failure write batch, DecisionOutageError, DecisionNotConfiguredError
     src/worker/actions/execute.ts   # executeSuggestions: approve, override, cleanup share this
     src/worker/actions/undo.ts      # undoBatch
@@ -174,6 +183,7 @@ Every planned file is listed. Files not listed here must not be created without 
     src/worker/routes/oauth.ts      # /oauth/{google,microsoft}/{start,callback}
     src/web/main.tsx                # React root, QueryClientProvider, RouterProvider (plan 03 placeholder, plan 05 replaces)
     src/web/styles.css              # @import "tailwindcss"; design tokens (owned by the UI plan)
+    src/web/styles-layers.css       # rev 2.3: `@layer components` geometry helpers (cb-* classes) split out of styles.css, imported by it
     src/web/styles.dark.css         # v1.1 dark token set, not imported
     src/web/api/client.ts           # apiGet/apiSend: same-origin, zod-validated, adds X-Clearbox-CSRF on mutations, parses ApiErrorBody
     src/web/api/schemas.ts          # zod response schemas, each `satisfies z.ZodType<ContractType>`
@@ -185,9 +195,10 @@ Every planned file is listed. Files not listed here must not be created without 
     src/web/api/cleanup.ts          # pure Clean up loop
     src/web/api/group-actions.ts    # pure group approve/override loop
     src/web/lib/                    # pure view helpers: view-types, confidence, format, avatar, account-status, platform, report, copy, copy-actions, links, oauth-return, oauth-errors, banners, activity, rules-draft
-    src/web/state/                  # providers and hooks: LiveAnnouncer, ToastProvider, toast-queue, UndoStackProvider, HotkeysProvider, hotkeys-core, CleanupProvider, cleanup-machine, offline, use-*.ts
+    src/web/state/                  # providers and hooks: LiveAnnouncer, ToastProvider, toast-queue, UndoStackProvider, HotkeysProvider, hotkeys-core, CleanupProvider, cleanup-machine, offline, use-*.ts (use-document-title, use-focus-trap, use-media-query, use-now, use-pageshow-reset, use-platform, use-route-focus, use-selection)
     src/web/routes.tsx              # route table (UI spec 3.5; /settings/accounts is the OAuth return of 7.14)
     src/web/pages/                  # one file per page plus pages/review/ (Review hooks) and pages/gallery/ (dev-only); UI plan owns the list
+    src/web/pages/review/           # rev 2.3: ReviewWorkArea.tsx, review-state.ts, group-cache.ts, select-all.ts (bounded select-all paging), use-review-controller.ts, use-review-focus.ts, use-review-effects.ts, use-review-hotkeys.ts, use-review-params.ts, use-group-actions.ts, use-item-actions.ts, use-new-suggestions.ts, use-scan-now.ts
     src/web/components/             # ui/, shell/, review/, insights/, accounts/, rules/ (UI plan owns the list)
     test/                           # see section 10
   eval/                             # @clearbox/eval: offline evaluation against a live Decision-1 deployment
@@ -208,7 +219,8 @@ Every planned file is listed. Files not listed here must not be created without 
 
 Notes:
 
-- Rev 2.2: there is no `src/worker/db/leases.ts` or `db/senders.ts`; the lease, sender, correspondent and sent-thread SQL of the tick lives in `scan/claim.ts` and `scan/write-plan.ts`, and nightly SQL in `nightly/*.ts` (section 11).
+- Rev 2.2: there is no `src/worker/db/leases.ts` or `db/senders.ts`; the lease, sender, correspondent and sent-thread SQL of the tick lives in `scan/claim.ts` and `scan/write-plan.ts` (rev 2.3: its builders in `scan/plan-builders.ts` and `scan/success-write.ts`), and nightly SQL in `nightly/*.ts` (section 11).
+- Rev 2.3: section 11 requires splitting files over 500 lines (SPA files aim for 300), so `scan/tick.ts` and `scan/write-plan.ts` were split as listed above, and the SPA's `controller`, `styles.css` and test fixtures into the extra modules named here. `src/web/lib/` and `src/web/state/` are listed at directory level; their files follow the names given on their lines.
 - `app/` replaces rev 1's `apps/worker` + `apps/web`: `cf` has no `assets.directory`; assets are the Vite client build of the same project (research cloudflare.md C8).
 - No `clearbox.policy.yaml`. Policy defaults are TypeScript (`DEFAULT_POLICY`), owner edits live in D1 `settings` (no YAML dependency).
 - `packages/core` uses only Web-standard globals available in both Node 24 and Workers: `fetch`, `Request`, `Response`, `Headers`, `URL`, `TextEncoder`, `TextDecoder`, `AbortSignal.timeout`, `crypto.subtle`, `crypto.getRandomValues`.
@@ -296,11 +308,13 @@ Script names avoid pnpm built-ins (`pnpm setup` and `pnpm deploy` are pnpm comma
     "test": "vitest run -c vitest.worker.config.ts && vitest run -c vitest.web.config.ts",
     "test:worker": "vitest run -c vitest.worker.config.ts",
     "test:web": "vitest run -c vitest.web.config.ts",
-    "db:migrate:local": "cf d1 migrations apply 00000000-0000-4000-8000-000000000000 --local --persist-to .cloudflare/state",
+    "db:migrate:local": "cf d1 migrations apply 00000000-0000-4000-8000-000000000000 --local --persist-to .cloudflare/state --mode development",
     "deploy:cf": "cf workers types && tsc -b && cf deploy --no-provision"
   }
 }
 ```
+
+Rev 2.3: `db:migrate:local` passes `--mode development` because `cf d1 migrations apply --local` also evaluates `cloudflare.config.ts` in production mode, which throws without a D1 id (3.2); development mode uses the public local id and needs no `CLEARBOX_D1_ID`. Ad hoc D1 SQL (seeding the dev database, `eval` label export) uses `cf d1 raw <id> --sql=...` (the equals sign is required when the SQL starts with `--`); `cf d1 execute` does not exist in `cf` 1.0.0-beta.17, and `cf d1 raw` has no `--remote` flag (remote is the default; `--local --persist-to .cloudflare/state` selects the local database, plus `--mode development` when `CLEARBOX_D1_ID` is not set). `eval`'s `export-labels` uses `cf d1 raw` for both the local and the remote database.
 
 `eval/package.json` scripts: `"eval": "node src/run.ts"`, `"export-labels": "node src/export-labels.ts"`, `"typecheck": "tsc -p tsconfig.json"`, `"test": "vitest run"` (so `pnpm -r typecheck` and `pnpm -r test` cover eval; rev 2.2). `pnpm eval` reads `AZURE_DECISION_ENDPOINT`, `AZURE_DECISION_KEY`, `AZURE_DECISION_DEPLOYMENT` from the process environment; never from files in the repo).
 
@@ -685,6 +699,8 @@ ACCESS_AUD=<access-aud-tag>
 ```
 
 Never put Worker secrets in `.env` (the `cf` CLI reads project `.env` for its own credentials). Production secrets are set by `scripts/setup-cf.ts` through `cf deploy --no-provision --secrets-file <gitignored temp file>` and the temp file is deleted afterwards; single-secret fallback is `npx wrangler secret put <NAME> --name clearbox`.
+
+Rev 2.3, `setup:cf` safety: it never generates `TOKEN_ENC_KEY` or `STATE_SIGNING_KEY` on an unknown state. When `cf workers secrets list` fails for any reason other than the Worker not existing yet, it aborts with nothing changed (an empty list would otherwise look like "no secrets" and regenerate keys). It deletes the secrets file in `finally` and also on SIGINT and SIGTERM.
 
 ### 3.8 Lint and format
 
@@ -2153,6 +2169,7 @@ Storage: each tick records `meta.size_after` into `budget.db_size_bytes`; backfi
 
 - `suggestions.expires_at` = `created_at + PENDING_TTL_MS` (90 days) at insert; set to `decided_at + DECIDED_TTL_MS` (30 days) on any owner decision, and to `now + DECIDED_TTL_MS` on `dismissed`.
 - Nightly purge deletes `suggestions` and their `messages` where `suggestions.expires_at < now`, in chunks (8.6).
+- Rev 2.3: because a purged message can no longer be recognized as known, the incremental tick drops inbox `added` messages whose `receivedAt` is older than `DECIDED_TTL_MS` (the earliest a message row can be purged) before reading context or calling Decision-1 (8.2 "Incremental retention skip"). Otherwise a Graph delta update or a Gmail history re-report of old mail would return as a new pending suggestion after the purge.
 - `labels`, `sender_priors`, `senders`, `correspondents`, `sent_threads`, `audit_log` are kept while the account exists. `action_batches` older than `BATCH_RETENTION_MS` (7 days) are deleted.
 - Disconnected accounts: all account-owned rows are deleted in chunks by the nightly purge, then the `accounts` row; audit rows remain.
 
@@ -2538,6 +2555,10 @@ export interface UndoResponse {
 
 `GET /api/batches` lists batches newest first (last 7 days). Undo restores every `executed` suggestion of the batch: delete -> `restore(from: "trash")`, archive -> `restore(from: "archive")`, keep -> nothing. Restored items become `undone`; their label is updated to `owner_action = 'keep'`, `source = 'undo'`, and priors receive `priorDelta(original, -1)` plus `priorDelta("keep", +1)`. Sets `undone_at`; audit `undo`. After `undo_expires_at`: `410 undo_expired`.
 
+Rev 2.3 (plan 03 deviation 15): `undone_at` is reset (the batch becomes undoable again) only when nothing was restored and at least one item failed. A batch whose items were all skipped, for example a keep-only batch from "Confirm all keeps", stays undone: it has nothing to retry, and resetting it would let every click write a zero-count `undo` audit row. A partly restored batch whose other items failed with a retryable error also stays undone (`undoable: false`); there is no in-app retry for those items.
+
+**Undo and keeps (rev 2.3, lead decision):** Undo does not apply to keep decisions. The server skips keep items (`outcome: "skipped"`), so an undo of a keep-only batch returns `restored: 0, failed: 0` and the SPA answers with an info toast instead of a success (UI spec 5.2.6, 6.8). A mixed batch (for example "Approve suggestions") restores its trash and archive items and skips its keeps.
+
 ### 7.9 Activity
 
 ```ts
@@ -2650,6 +2671,7 @@ Only these are fixed by the server; every other SPA route belongs to the UI plan
 - Key: `importKey("raw", base64decode(TOKEN_ENC_KEY) /* 32 bytes */, "AES-GCM", false, ["encrypt", "decrypt"])`.
 - Per value: fresh 12-byte IV (`crypto.getRandomValues`), AAD = UTF-8 of `clearbox|<accountId>|<"refresh" | "access">|v<keyVersion>`. Ciphertext (including the 16-byte tag) stored as BLOB, IV as BLOB.
 - The worker's `TokenSource` (`createD1TokenSource` in `src/worker/scan/token-source.ts`, plan 03) caches the decrypted access token in memory for the request or tick, refreshes when `access_expires_at - now < ACCESS_TOKEN_MIN_TTL_MS`, and exposes `update: TokenUpdate | null` (core's `TokenUpdate`, 4.4: `{ accessToken, accessExpiresAt, refreshToken | null }`) that the final batch re-encrypts and persists (`tokenUpdateStmt` for requests, `encryptTokenUpdate` in the tick's guarded account update). A missing or undecryptable refresh token throws `ProviderAuthError` (`no_refresh_token`, `token_decrypt_failed`); an unconfigured client throws `ProviderConfigError("client_not_configured")`. Microsoft refresh tokens are rotated and persisted on every refresh, including in the failure path. Encrypted access tokens in D1 are a rev 2 change (saves one subrequest per tick); they are protected exactly like refresh tokens.
+- Rotation (rev 2.3, from plan 06 C12): v1 has one `TOKEN_ENC_KEY` and `accounts.key_version` stays 1 (reserved for a future dual-key scheme), so rotating the key makes every stored token undecryptable until the account is re-linked. The runbook pauses every account first (a decrypt failure is a safe tick failure), then each paused account is re-linked with **Connect Gmail** or **Connect Outlook** on the same mailbox, which reconnects it in place. **Reconnect** is only shown for `needs_reauth` and `config_error` accounts, not for paused ones.
 
 ---
 
@@ -2746,6 +2768,9 @@ runTick(env, opts):
     redecide:       no provider call
     inbox_backfill on CursorExpiredError(backfill): restart with cursor null (known ids are skipped)
 
+    # Incremental retention skip (rev 2.3, `dropBeyondRetention` in scan/ingest.ts), before identify and every context read:
+    incremental: drop each inbox `added` message with receivedAt < now - DECIDED_TTL_MS; `skippedOld` = dropped count   # see below
+
     # D1 call 2: context (skipped for sent_backfill), one db.batch, all with account_id = ?
     known ids        : SELECT provider_msg_id FROM messages WHERE account_id = ? AND provider_msg_id IN (...)
     priors           : SELECT key, deletes, keeps FROM sender_priors WHERE account_id = ? AND key IN (senders, @domains)
@@ -2820,6 +2845,13 @@ runTick(env, opts):
   log tick.done; return TickReport
 ```
 
+**Incremental retention skip (rev 2.3, lead decision, implemented in layer 4).** During an `incremental` tick, `processAccount` drops every inbox `added` message with `receivedAt < now - DECIDED_TTL_MS` (30 days, from `@clearbox/core`, the earliest a message row can be purged) before `identify` and the context reads, so dropped items cost no D1 reads and no Decision-1 calls. Younger mail is either still stored (skipped as known) or genuinely new. Why: Graph delta reports updates (read, flagged, categories) of old mail in `added` and Gmail history can re-report it (for example an INBOX label re-added); once the nightly purge has deleted the row, the known-id check no longer catches it and it would return as a new pending suggestion.
+
+- Exception: `receivedAt <= 0` means the date is unknown (provider mapper fallback) and is kept; `guard_too_recent` caps it at keep.
+- Scope: inbox `added` of incremental ticks, both providers. Unaffected: `inbox_backfill`, `sent_backfill`, incremental `sent` items, `removedIds`, `redecide`. `fetched` still counts what the provider returned.
+- Logging: `tick.done` carries `skippedOld` (a count, no ids). `TickReport` is unchanged.
+- Implementation: pure `dropBeyondRetention(messages, now): { kept, skippedOld }` in `app/src/worker/scan/ingest.ts`.
+
 `CLAIM_SQL` (exact; `?1` holder, `?2` now, `?3` expires_at, `?4` accountId or NULL, `?5` force 0/1, `?6` today, `?7` ingest stop rows):
 
 ```sql
@@ -2859,6 +2891,8 @@ A worker test must exercise this statement against the real D1 SQLite (overlap, 
 | `incremental`, `caughtUp = false` | stays | `now` |
 | `incremental`, `caughtUp = true`, phase `incremental` | stays | `now + POLL_INTERVAL_MS` |
 | `redecide` | unchanged | `now` |
+
+Rev 2.3: the incremental retention skip (8.2) does not change phases or scheduling; a page whose `added` items are all dropped still advances the cursor like any processed page.
 
 `watermark_received_at` = max `receivedAt` ingested so far (any kind). Round robin: the claim orders by `last_tick_at` (nulls first), so accounts with work alternate minute by minute; with one account and a backlog, the account is ticked every minute.
 
@@ -2949,7 +2983,7 @@ export declare function logEvent(name: LogEventName, fields: Readonly<Record<str
 |---|---|
 | `tick.idle` | `tickId`, `trigger` |
 | `tick.claimed` | `tickId`, `trigger`, `accountId`, `kind`, `phase`, `pageSize` |
-| `tick.done` | `tickId`, `accountId`, `kind`, `fetched`, `skippedKnown`, `decided`, `deferred`, `unsure`, `removed`, `subrequests`, `rowsWritten`, `rowsRead`, `inputTokens`, `decisionP50Ms`, `decisionP95Ms`, `durationMs` |
+| `tick.done` | `tickId`, `accountId`, `kind`, `fetched`, `skippedKnown`, `skippedOld` (rev 2.3: incremental retention skip, 8.2), `decided`, `deferred`, `unsure`, `removed`, `subrequests`, `rowsWritten`, `rowsRead`, `inputTokens`, `decisionP50Ms`, `decisionP95Ms`, `durationMs` |
 | `tick.failed` | `tickId`, `accountId`, `kind`, `errorCode`, `attempts`, `retryAfterMs` |
 | `decision.error` | `tickId`, `accountId`, `messageId` (internal integer or null), `kind`, `status`, `requestId` (apim-request-id) |
 | `provider.error` | `tickId` or `requestId`, `accountId`, `provider`, `errorCode`, `status` |
@@ -2962,7 +2996,7 @@ export declare function logEvent(name: LogEventName, fields: Readonly<Record<str
 | `config.invalid` | `missing` (comma-separated secret names) |
 | `budget.gate` | `date`, `rowsWritten`, `gate` (`ingest`, `purge`, `owner`) |
 | `issue.raised` / `issue.cleared` | `code`, `accountId` |
-| `request.error` | `requestId`, `route` (Hono route pattern), `errorName` (the error class name only, never its message). Rev 2.2: logged by `onApiError` (`src/worker/middleware/errors.ts`) for every unexpected error before it answers `500 internal`. |
+| `request.error` | `requestId`, `route` (Hono route pattern), `errorName` (the error class name only, never its message). Rev 2.2: logged by `onApiError` (`src/worker/middleware/errors.ts`) for every unexpected error before it answers `500 internal`. Rev 2.3: also logged without a 500 in these cases: (a) the OAuth callback and `completeConnect` hit an unexpected failure (the redirect code is unchanged, route `/oauth/:segment/callback`); (b) disconnect cannot decrypt the stored refresh token (the response still says `revocation: "failed"`); (c) a provider call during approve, override, Clean up or undo throws a non-provider error (`route` comes from `ActionContext.route`); (d) a `200` queue or group response omitted stored reasons that have an unknown code or invalid params: `errorName: "InvalidStoredReason"` plus a `skippedReasons` count (a count only, never the stored text; `skippedReasons` is the one extra field `request.error` may carry). |
 
 Allowed values: opaque ids (`acc_...`, internal integers, uuids, `apim-request-id`), counts, durations, enum codes, HTTP statuses. **Never** logged: any email address (including the owner's), display names, subjects, snippets, provider message or thread ids, tokens, cookies, full URLs or query strings, request or response bodies. `requestId` for HTTP requests is `crypto.randomUUID()` per request, returned in the `X-Request-Id` response header.
 
@@ -3044,7 +3078,7 @@ These amendments are binding and override earlier sections where they differ. So
 | A2 | `CleanupPreview.groupsLeft: number` on the Clean up preview response | 03 | Pending sender groups in scope that keep at least one pending item after applying this Clean up (items below threshold, `unsure`, `keep`, or `awaiting_model`). |
 | A3 | `Insights.weekly: { weekStart: string; cleaned: number; undone: number }[]` on `GET /api/insights` | 03 | Last 6 ISO weeks, Monday start, UTC, oldest first, zero-filled. `cleaned` = executed trash and archive items; `undone` = items restored by undo. Computed from `audit_log` / batch tables, no new table. |
 | A4 | `AccountSync.inboxEstimate: number \| null` on account views | 03 (read; write at connect), 04 (refresh) | New column `accounts.inbox_estimate INTEGER NULL` added to migration 0001. Written at connect/bootstrap from the provider (Gmail `users.labels.get INBOX messagesTotal` is NOT allowed if it needs another scope; with `gmail.modify` it is allowed; Graph `mailFolders/inbox` `totalItemCount`) and refreshed by the tick at most once per day during backfill. Null when unknown. |
-| A5 | `ActivityEntry.result` keys are fixed: approve, override and cleanup `{ executed, failed, skipped, retryLater, delete, archive, keep, groups }`; undo `{ restored, failed }`; policy_updated `{ allow, deny }`; calibration `{ tauDelete }` | 03, 04 (calibration) | Written into `audit_log.result` JSON with exactly these keys; missing numbers are 0. |
+| A5 | `ActivityEntry.result` keys are fixed: approve, override and cleanup `{ executed, failed, skipped, retryLater, delete, archive, keep, groups }`; undo `{ restored, failed }`; policy_updated `{ allow, deny }`; calibration `{ tauDelete }` | 03, 04 (calibration) | Written into `audit_log.result` JSON with exactly these keys; missing numbers are 0. Rev 2.3 (C27): the keys of `reauth_required` and `config_error` are not fixed. The tick writes `{ "reason": <code> }` (`scan/plan-builders.ts` `auditStmt`), while the owner-path `db/audit.ts` `auditStmt` normalizes rows of those kinds to `{}`; consumers (the UI included) must not rely on either shape. |
 | A6 | `SenderGroup.latestSubject: string \| null` | 03 | Subject (plain text, already decoded) of the newest pending item in the group; null when snippets/subjects are not stored. |
 
 A7 (`AccountView.label`) is deferred to v1.1.
@@ -3082,3 +3116,17 @@ Rev 2.2 makes this document match the reconciled plans `docs/superpowers/plans/2
 - **Build output:** `cf build` writes to `app/.cloudflare/output/v0/`.
 - **Local typecheck and build (3.2):** `cf workers types` and `cf build` evaluate `cloudflare.config.ts` in production mode, so local and CI typecheck/build commands set `CLEARBOX_D1_ID=00000000-0000-4000-8000-000000000000` (the public local id); it is never written to `app/clearbox.local.json`.
 - **Other plan decisions adopted as written:** plan 01 "Contract issues and decisions" #1 to #26, plan 02 #1 to #29, plan 03 #1 to #33, plan 04 C1 to C27, plan 05 W1 to W25, plan 06 C1 to C17. Where one of those tables and this section disagree, this section wins.
+
+### 12.6 Rev 2.3 (2026-10-16, docs reconciliation after implementation layers 1 to 6)
+
+Rev 2.3 records decisions and deviations made while building layers 1 to 6 (evidence: the Execution notes of plans 03, 04, 05 and 06, and the repository). It is binding and overrides earlier sections where they differ. No behavior changes beyond the two lead decisions below. Summary:
+
+- **Layout (1.1):** added `scan/fetch.ts`, `scan/tick-stats.ts`, `scan/tick-process.ts`, `scan/tick-finish.ts`; `scan/write-plan.ts` is now a barrel over `scan/stmt.ts`, `scan/plan-builders.ts` and `scan/success-write.ts`; `src/web/styles-layers.css`; `src/web/pages/review/` modules (`select-all.ts`, `use-review-focus.ts`, `use-review-effects.ts` and the rest of the controller split); `state/use-pageshow-reset.ts` and the other `use-*.ts` hooks named on the `state/` line; `docs/readme/` and `docs/design/`. Plan 06's `scripts/lib/*`, `scripts/test/*`, `eval/src/*`, `eval/test/*`, `infra/azure/*`, workflows, setup guides, runbook, `SECURITY.md` and `LICENSE` were already listed.
+- **Scripts (1.3):** `db:migrate:local` is `cf d1 migrations apply ... --local --persist-to .cloudflare/state --mode development`, because `cf d1 migrations apply --local` also evaluates the config in production mode (plan 03 live-verification item 14). Ad hoc D1 SQL uses `cf d1 raw <id> --sql=...` (`cf d1 execute` does not exist in `cf` 1.0.0-beta.17); `export-labels` uses `cf d1 raw` for both modes.
+- **Secrets (3.7):** `setup:cf` aborts when `cf workers secrets list` fails for any reason other than "Worker not found" (it never generates keys on an unknown state) and deletes its secrets file on SIGINT and SIGTERM.
+- **Token encryption (7.15):** `TOKEN_ENC_KEY` rotation re-links each paused account with Connect Gmail or Connect Outlook on the same mailbox; Reconnect is only shown for `needs_reauth` and `config_error`.
+- **Retention (6.5) and tick (8.2, 8.3):** incremental retention skip: inbox `added` messages older than `DECIDED_TTL_MS` are dropped before identify and the context reads (`dropBeyondRetention`, `receivedAt <= 0` kept); no change to phases or scheduling.
+- **Undo (7.8):** lead decision: Undo does not apply to keep decisions (the server skips them); a keep-only batch shows an info toast. An all-skipped batch stays undone (plan 03 deviation 15); a partly restored batch with retryable failures stays undone.
+- **Logging (9):** `tick.done` adds `skippedOld`; `request.error` is also logged on 200 responses with `errorName: "InvalidStoredReason"` and a `skippedReasons` count, on unexpected OAuth callback and connect failures, on disconnect decrypt failures, and on non-provider errors in provider calls during owner actions.
+- **Audit (12.1 A5):** tick-written `reauth_required` and `config_error` rows store `{ "reason": <code> }` while `db/audit.ts` normalizes owner-path rows of those kinds to `{}` (C27); consumers must not rely on either shape.
+- **UI spec copy:** the model banner sentence "This clears after the next successful sort.", the `decision_not_configured` copy reused by Setup step 2, the Scan now toasts, the zero-executed Clean up toast, the keeps wording, "1 old record removed", the skipped-account line in the Clean up confirm copy and the undo partial toast are now in the UI spec (5.1, 5.2, 5.4, 5.8, 6.8); account cards show status as text without a dot (5.5). These are UI spec edits, not contract changes.

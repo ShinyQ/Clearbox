@@ -49,7 +49,7 @@ Each deployment serves a single owner. You run your own copy on Cloudflare Worke
 - Gmail and Outlook (Microsoft Graph) only; no IMAP.
 - Single owner; not a multi-tenant service.
 - No permanent deletion and no unsubscribe automation, by design.
-- The first backfill of a large inbox takes days on the Free plan (D1 write budget).
+- The first backfill sorts the last 90 days of your inbox by default (**Scan history** on Rules: 30 days, 90 days, a year or all mail). New mail is always scanned. Widening the window later continues where the backfill stopped; all mail in a large inbox takes days on the Free plan (D1 write budget).
 - Microsoft-Decision-1 is a Preview model; version 1 retires on 2027-02-04 ([runbook](docs/runbook.md#11-decision-1-outage-or-errors)).
 - A personal Google OAuth app shows the "unverified app" warning (you approve your own app once).
 - Work or school Microsoft accounts may need admin consent.
@@ -69,6 +69,7 @@ Each deployment serves a single owner. You run your own copy on Cloudflare Worke
 - **Undo for 24 hours**: trash and archive moves can be restored from Activity for 24 hours (the providers keep Trash for about 30 days).
 - **Keyboard-first**: `J`/`K` to move, `X` to select, `T`/`A`/`E` for trash, archive and keep, `Cmd`/`Ctrl`+`Enter` to Clean up, `G` then a letter to switch pages, `?` for the full list.
 - **Runs on Cloudflare Free**: a once-a-minute tick processes one page per mailbox within the Workers and D1 Free limits; Workers Paid only makes it faster.
+- **Recent mail first, bounded backfill**: the first sort covers a scan history window (default the last 90 days) and then switches to new mail only; widen it on Rules to keep going back.
 - **EU data residency**: D1 is created in the EU jurisdiction and Decision-1 runs on DataZoneStandard in Sweden Central.
 - **Security model**: Cloudflare Access plus JWT verification in the Worker, least-privilege OAuth, encrypted tokens, plain-text email rendering and a strict CSP. See [Security](#security).
 
@@ -80,8 +81,8 @@ Each deployment serves a single owner. You run your own copy on Cloudflare Worke
 | <img src="docs/readme/screen-cleanup.png" width="300" alt="Clean up confirm bar on Review">  | **Clean up**  | `/review`    | The confirm bar opened with **Clean up** or `Cmd`/`Ctrl`+`Enter`: counts per action, the threshold, skipped accounts. `Enter` confirms, `Esc` cancels.                |
 | <img src="docs/readme/screen-insights.png" width="300" alt="Insights screen">                | **Insights**  | `/insights`  | Agreement with your trash decisions against the 98% target, the current threshold and when it was tuned, emails cleaned per week, and the daily Free-tier budget. |
 | <img src="docs/readme/screen-activity.png" width="300" alt="Activity screen">                | **Activity**  | `/activity`  | Every Clean up, undo, rule change, threshold tuning and nightly cleanup, with **Undo** on trash and archive batches for 24 hours.                                     |
-| <img src="docs/readme/screen-accounts.png" width="300" alt="Accounts screen">                | **Accounts**  | `/accounts`  | **Connect Gmail**, **Connect Outlook**, backfill progress, and **Scan now**, **Pause**, **Reconnect** and **Disconnect** per mailbox.                                  |
-| <img src="docs/readme/screen-rules.png" width="300" alt="Rules screen">                      | **Rules**     | `/rules`     | Always-keep and always-OK-to-trash senders, the recent-mail window, the locked guardrails, record words, and switches for storing snippets and subjects.               |
+| <img src="docs/readme/screen-accounts.png" width="300" alt="Accounts screen">                | **Accounts**  | `/accounts`  | **Connect Gmail**, **Connect Outlook**, backfill progress within the scan history window, and **Scan now**, **Pause**, **Reconnect** and **Disconnect** per mailbox.           |
+| <img src="docs/readme/screen-rules.png" width="300" alt="Rules screen">                      | **Rules**     | `/rules`     | Always-keep and always-OK-to-trash senders, **Scan history** (how far back the backfill goes), the recent-mail window, the locked guardrails, record words, and switches for storing snippets and subjects. |
 
 All screenshots use the synthetic dev seed. A first visit with no connected mailbox opens `/setup` instead.
 
@@ -121,7 +122,7 @@ flowchart TB
 
 - **A pipeline per email**: **signals** from headers and history (unsubscribe headers, bulk mail, authentication results, open rate, whether you wrote to the sender or replied in the thread), then **guardrails** that set the highest allowed action, then **Microsoft-Decision-1** for trash, archive, keep and unsure probabilities, then your **per-sender priors**, then a deterministic **fusion** that suggests trash only above the calibrated threshold (at least 0.80) with a clear margin.
 - **One tick per minute**: each tick leases one mailbox, reads one page of up to 25 messages (metadata and the provider snippet only) and writes everything in one D1 batch. **Scan now** runs the same tick on demand. The nightly job recalibrates the threshold, recovers stale runs and purges old data.
-- **Free-tier budgets**: ticks stop at 65,000 D1 rows written per day, the purge at 80,000 and owner actions at 90,000 of the 100,000 limit. That is about 13,000 emails per day during the first backfill and about 6,800 per day sustained. On Workers Paid, `FREE_TIER=false` lifts the gates without code changes.
+- **Free-tier budgets**: ticks stop at 65,000 D1 rows written per day, the purge at 80,000 and owner actions at 90,000 of the 100,000 limit. That is about 13,000 emails per day during the first backfill and about 6,800 per day sustained; the backfill stops at the scan history window (default 90 days), so older mail in a large inbox is not scanned unless you widen it. On Workers Paid, `FREE_TIER=false` lifts the gates without code changes.
 - **Trash-only**: the mail provider interface has no hard-delete method, and Gmail's `gmail.modify` scope cannot permanently delete anyway.
 - **Plain-text email**: subject, sender, date and snippet are rendered as text; HTML bodies never are. The model returns bounded probabilities and no text, so a hostile email cannot make it say or do anything.
 - **Encrypted tokens**: refresh and access tokens are encrypted with AES-256-GCM (per-value IV, AAD bound to the account, token kind and key version) with a key held only in Worker secrets.

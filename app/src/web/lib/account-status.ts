@@ -1,3 +1,4 @@
+import type { ScanHistoryDays } from "@clearbox/core";
 import type { AccountView, Insights } from "../../shared/api.ts";
 import type { AccountUiStatus, ProviderKind } from "./view-types.ts";
 
@@ -10,18 +11,28 @@ export function deriveAccountUiStatus(account: AccountView, now: number): Accoun
   return "up_to_date";
 }
 
-/** Share of the inbox sorted so far (A4, decision W20). Null when unknown or finished. */
+/**
+ * Share of the inbox sorted so far (A4, decision W20). Null when unknown or finished, and (rev 2.4) whenever a
+ * scan history window applies: inboxEstimate counts the whole inbox, not the mail inside the window.
+ */
 export function catchUpFraction(account: Pick<AccountView, "sync">): number | null {
-  const { inboxEstimate, messagesIngested, backfillDone } = account.sync;
-  if (backfillDone || !inboxEstimate || inboxEstimate <= 0) return null;
+  const { inboxEstimate, messagesIngested, backfillDone, scanHistoryDays } = account.sync;
+  if (backfillDone || scanHistoryDays !== null || !inboxEstimate || inboxEstimate <= 0) return null;
   return Math.min(0.99, messagesIngested / inboxEstimate);
 }
 
+/** Emails left to sort; null when unknown, including whenever a scan history window applies (rev 2.4). */
 export function backlogRemaining(account: Pick<AccountView, "sync">): number | null {
-  const { inboxEstimate, messagesIngested, backfillDone } = account.sync;
+  const { inboxEstimate, messagesIngested, backfillDone, scanHistoryDays } = account.sync;
   if (backfillDone) return 0;
-  if (!inboxEstimate) return null;
+  if (scanHistoryDays !== null || !inboxEstimate) return null;
   return Math.max(0, inboxEstimate - messagesIngested);
+}
+
+/** "the last 90 days", "the last year"; null for all mail. */
+export function scanWindowText(days: ScanHistoryDays): string | null {
+  if (days === null) return null;
+  return days === 365 ? "the last year" : `the last ${days} days`;
 }
 
 /** Mean messagesIngested of the last 3 complete days (the last history entry is today). */

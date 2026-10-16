@@ -111,13 +111,18 @@ export { extractSignals } from "./signals/signals.ts";
 export type { SenderHistory, SignalContext, Signals } from "./signals/signals.ts";
 export {
   DEFAULT_POLICY,
+  DEFAULT_SCAN_HISTORY_DAYS,
   PolicySchema,
+  SCAN_HISTORY_DAYS_OPTIONS,
+  ScanHistoryDaysSchema,
   SenderEntrySchema,
   matchRecordPattern,
   matchesSenderList,
   parsePolicy,
+  scanHistoryCutoff,
+  scanHistoryWidened,
 } from "./policy/policy.ts";
-export type { Policy } from "./policy/policy.ts";
+export type { Policy, ScanHistoryDays } from "./policy/policy.ts";
 export { evaluateGuardrails } from "./guardrails/guardrails.ts";
 export type { GuardrailInput, GuardrailResult } from "./guardrails/guardrails.ts";
 export {

@@ -126,6 +126,28 @@ export function dropBeyondRetention(
   return { kept, skippedOld: messages.length - kept.length };
 }
 
+/**
+ * Rev 2.4 scan history window for the inbox backfill. Messages received before `cutoff` are dropped before any
+ * read or decision (receivedAt <= 0 is "date unknown" and kept). `edgeReached` is true when the page reaches past
+ * the window: its last message (the oldest, pages are newest first) is older than the cutoff. The tick then ends
+ * the backfill and keeps the cursor at this page's start, so a wider window later re-reads this page.
+ * A null cutoff (all mail) keeps everything.
+ */
+export function applyScanWindow(
+  messages: readonly MailMessage[],
+  cutoff: number | null,
+): { kept: MailMessage[]; skippedOld: number; edgeReached: boolean } {
+  if (cutoff === null) return { kept: [...messages], skippedOld: 0, edgeReached: false };
+  const outside = (m: MailMessage) => m.receivedAt > 0 && m.receivedAt < cutoff;
+  const kept = messages.filter((m) => !outside(m));
+  const last = messages[messages.length - 1];
+  return {
+    kept,
+    skippedOld: messages.length - kept.length,
+    edgeReached: last !== undefined && outside(last),
+  };
+}
+
 export interface FreshKeys {
   providerIds: string[];
   senders: string[];

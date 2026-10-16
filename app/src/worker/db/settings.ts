@@ -109,15 +109,22 @@ export function setIssuesStmt(db: D1Database, issues: readonly AppIssue[], now: 
  * All three test the same predicate (stored version = expectedVersion), and the bump runs last, so they apply
  * together or not at all without relying on `changes()`. Returns the new version, or null when expectedVersion
  * is stale.
+ *
+ * Rev 2.4: `resumeBackfill` (the scan history window widened) also moves every account whose backfill stopped at
+ * the old window edge (phase incremental, backfill_done 0) back to inbox_backfill under the same predicate; the
+ * next tick resumes from its stored backfill_cursor. Accounts that scanned their whole inbox are untouched.
  */
 export async function writePolicy(
   db: D1Database,
   policy: Policy,
   expectedVersion: number,
   now: number,
+  opts: { resumeBackfill?: boolean } = {},
 ): Promise<number | null> {
   const result = { allow: policy.allowlist.length, deny: policy.denylist.length };
+  const resume = opts.resumeBackfill === true ? [resumeWindowBackfillStmt(db, expectedVersion, now)] : [];
   const results = await db.batch([
+    ...resume,
     db
       .prepare(
         `INSERT INTO settings (key, value, updated_at)
@@ -139,5 +146,15 @@ export async function writePolicy(
       )
       .bind(expectedVersion, String(expectedVersion + 1), now),
   ]);
-  return (results[2]?.meta.changes ?? 0) === 1 ? expectedVersion + 1 : null;
+  return (results[resume.length + 2]?.meta.changes ?? 0) === 1 ? expectedVersion + 1 : null;
+}
+
+function resumeWindowBackfillStmt(db: D1Database, expectedVersion: number, now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE accounts SET phase = 'inbox_backfill', next_tick_at = MIN(next_tick_at, ?1), updated_at = ?1
+       WHERE phase = 'incremental' AND backfill_done = 0 AND status <> 'disconnected'
+         AND (SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'policy_version') = ?2`,
+    )
+    .bind(now, expectedVersion);
 }

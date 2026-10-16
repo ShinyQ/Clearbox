@@ -9,6 +9,7 @@ import { Icon } from "../components/ui/icons.tsx";
 import { ProgressBar } from "../components/ui/ProgressBar.tsx";
 import { SkeletonLine } from "../components/ui/Skeleton.tsx";
 import { VisuallyHidden } from "../components/ui/VisuallyHidden.tsx";
+import { scanWindowText } from "../lib/account-status.ts";
 import { MODEL_BODY, type AppBannerSpec } from "../lib/banners.ts";
 import { formatCount, plural } from "../lib/format.ts";
 import { docsUrl } from "../lib/links.ts";
@@ -66,7 +67,9 @@ export function SetupStep({
 function phaseText(a: AccountView): string {
   if (a.sync.phase === "sent_backfill") return "Learning who you write to (step 1 of 3)";
   if (a.sync.phase === "inbox_backfill") {
-    return `Sorting your inbox, newest first (step 2 of 3). ${formatCount(a.sync.messagesIngested)} emails sorted.`;
+    const scope = scanWindowText(a.sync.scanHistoryDays);
+    const what = scope === null ? "your inbox" : `${scope} of your inbox`;
+    return `Sorting ${what}, newest first (step 2 of 3). ${formatCount(a.sync.messagesIngested)} emails sorted.`;
   }
   return "Caught up (step 3 of 3).";
 }

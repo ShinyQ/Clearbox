@@ -8,6 +8,14 @@ export const SenderEntrySchema = z
   .max(254)
   .regex(/^(@|[^@\s]+@)[a-z0-9-]+(\.[a-z0-9-]+)+$/, "expected user@domain or @domain");
 
+/** Inbox backfill window in days (rev 2.4); null scans all mail. New mail is always scanned. */
+export const SCAN_HISTORY_DAYS_OPTIONS = [30, 90, 365] as const;
+export const DEFAULT_SCAN_HISTORY_DAYS = 90;
+
+export const ScanHistoryDaysSchema = z.union([z.literal(30), z.literal(90), z.literal(365)]).nullable();
+
+export type ScanHistoryDays = z.infer<typeof ScanHistoryDaysSchema>;
+
 export const PolicySchema = z
   .object({
     allowlist: z.array(SenderEntrySchema).max(1000),
@@ -16,6 +24,7 @@ export const PolicySchema = z
     storeSnippets: z.boolean(),
     labelSubjects: z.boolean(),
     recordPatterns: z.array(z.string().trim().toLowerCase().min(2).max(40)).max(100),
+    scanHistoryDays: ScanHistoryDaysSchema,
   })
   .strict();
 
@@ -28,6 +37,7 @@ export const DEFAULT_POLICY: Policy = {
   storeSnippets: true,
   labelSubjects: true,
   recordPatterns: ["receipt", "invoice", "tax", "statement", "contract", "medical", "legal"],
+  scanHistoryDays: DEFAULT_SCAN_HISTORY_DAYS,
 };
 
 const PolicyJsonSchema = z
@@ -40,9 +50,33 @@ const PolicyJsonSchema = z
       return z.NEVER;
     }
   })
+  .transform(withStoredDefaults)
   .pipe(PolicySchema);
 
-/** Parses stored JSON; returns a copy of DEFAULT_POLICY when input is null; throws ZodError when invalid. */
+/** Policies stored before rev 2.4 have no scanHistoryDays; they read as the default (90 days). */
+function withStoredDefaults(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+  return "scanHistoryDays" in value ? value : { ...value, scanHistoryDays: DEFAULT_SCAN_HISTORY_DAYS };
+}
+
+/**
+ * Inbox backfill cutoff (epoch ms): mail received before it is outside the scan history window.
+ * null when the window is "all mail".
+ */
+export function scanHistoryCutoff(days: ScanHistoryDays, now: number): number | null {
+  return days === null ? null : now - days * 86_400_000;
+}
+
+/** True when `next` scans further back than `prev` (null = all mail is the widest). */
+export function scanHistoryWidened(prev: ScanHistoryDays, next: ScanHistoryDays): boolean {
+  if (prev === null) return false;
+  return next === null || next > prev;
+}
+
+/**
+ * Parses stored JSON; returns a copy of DEFAULT_POLICY when input is null; throws ZodError when invalid.
+ * A stored policy without scanHistoryDays (written before rev 2.4) gets DEFAULT_SCAN_HISTORY_DAYS.
+ */
 export function parsePolicy(json: string | null): Policy {
   if (json === null) return structuredClone(DEFAULT_POLICY);
   return PolicyJsonSchema.parse(json);

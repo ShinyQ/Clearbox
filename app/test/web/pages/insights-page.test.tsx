@@ -1,11 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { qk } from "../../../src/web/api/keys.ts";
+import { backlogText } from "../../../src/web/components/insights/BudgetPanel.tsx";
 import { InsightsPage } from "../../../src/web/pages/InsightsPage.tsx";
 import { expectNoA11yViolations } from "../helpers/axe.ts";
 import { renderPage } from "../helpers/render.tsx";
 import { type FakeApiState } from "../msw/fake-api.ts";
-import { iso, T0 } from "../msw/fixtures.ts";
+import { iso, makeSync, T0 } from "../msw/fixtures.ts";
 import { installFakeApi } from "../msw/handlers.ts";
 
 beforeEach(() => vi.useFakeTimers({ now: T0, toFake: ["Date"] }));
@@ -106,5 +107,25 @@ describe("Insights page", () => {
     await waitFor(() => expect(client.getQueryState(qk.insights)?.status).toBe("error"));
     expect(screen.getByText("Storage: 182 MB of 500 MB")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Couldn't load insights." })).toBeNull();
+  });
+});
+
+describe("backlogText with a scan history window (rev 2.4)", () => {
+  it("names the window and never a whole-inbox backlog", () => {
+    const row = {
+      id: "acc_1",
+      provider: "gmail" as const,
+      email: "you@example.com",
+      status: "active" as const,
+      paused: false,
+      sync: makeSync({
+        phase: "inbox_backfill",
+        backfillDone: false,
+        messagesIngested: 8_200,
+        inboxEstimate: 79_000,
+        scanHistoryDays: 90,
+      }),
+    };
+    expect(backlogText(row, 6_800, T0)).toBe("Scanning the last 90 days, 8,200 so far");
   });
 });

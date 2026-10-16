@@ -7,6 +7,7 @@ import {
   etaText,
   minutesUntil,
   providerName,
+  scanWindowText,
 } from "../../lib/account-status.ts";
 import { formatCount, formatDayMonth } from "../../lib/format.ts";
 import { useScanNow } from "../../pages/review/use-scan-now.ts";
@@ -26,10 +27,13 @@ export function accountStatusLine(a: AccountView, now: number, dailyRate: number
   if (status === "up_to_date") line = `${p} · up to date · ${sorted} emails sorted · ${connected}`;
   else if (status === "catching_up") {
     const left = backlogRemaining(a);
+    const scope = scanWindowText(a.sync.scanHistoryDays);
     line =
-      left === null
-        ? `${p} · catching up, ${sorted} sorted so far · ${connected}`
-        : `${p} · catching up, ${formatCount(left)} left (${etaText(left, dailyRate)}) · ${connected}`;
+      scope !== null
+        ? `${p} · scanning ${scope}, ${sorted} sorted so far · ${connected}`
+        : left === null
+          ? `${p} · catching up, ${sorted} sorted so far · ${connected}`
+          : `${p} · catching up, ${formatCount(left)} left (${etaText(left, dailyRate)}) · ${connected}`;
   } else if (status === "waiting") {
     line = `${p} · waiting, ${p} asked Clearbox to slow down · retrying in ${a.sync.backoffUntil ? minutesUntil(a.sync.backoffUntil, now) : 1} min`;
   } else if (status === "paused") line = `${p} · paused by you · ${sorted} emails sorted`;

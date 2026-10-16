@@ -1,4 +1,4 @@
-import { DELETE_MARGIN, MIN_CONFIDENCE } from "@clearbox/core";
+import { DELETE_MARGIN, MIN_CONFIDENCE, scanHistoryCutoff } from "@clearbox/core";
 import type { DecisionEngine, FetchLike, MailMessage, SentItem, SubrequestCounter } from "@clearbox/core";
 import type { AppIssueCode, TickKind } from "../../shared/api.ts";
 import type { TickAccountRow, TickSettings } from "./claim.ts";
@@ -7,6 +7,7 @@ import { makeDecisionEngine } from "./engine.ts";
 import { DecisionNotConfiguredError, DecisionOutageError } from "./failure.ts";
 import { fetchInboxEstimate, fetchPage, shouldRefreshEstimate } from "./fetch.ts";
 import {
+  applyScanWindow,
   decideStage,
   dropBeyondRetention,
   emptyStage,
@@ -78,7 +79,10 @@ export interface Processed {
   stats: DecisionStats;
   fetched: number;
   skippedKnown: number;
-  /** Incremental inbox items older than the retention window, dropped before any read or decision. */
+  /**
+   * Inbox items dropped before any read or decision: incremental items older than the retention window, and
+   * (rev 2.4) backfill items older than the scan history window.
+   */
   skippedOld: number;
   freshCount: number;
   rowsRead: number;
@@ -117,6 +121,7 @@ export async function processAccount(p: ProcessParams): Promise<Processed> {
   let skippedKnown = 0;
   let skippedOld = 0;
   let rowsRead = 0;
+  let windowEdge = false;
   if (fetched.kind === "sent_backfill") {
     sent = fetched.page.items;
     fetchedCount = sent.length;
@@ -134,8 +139,13 @@ export async function processAccount(p: ProcessParams): Promise<Processed> {
   } else {
     let messages: readonly MailMessage[];
     if (fetched.kind === "inbox_backfill") {
-      messages = fetched.page.messages;
-      fetchedCount = messages.length;
+      fetchedCount = fetched.page.messages.length;
+      const cutoff = scanHistoryCutoff(p.settings.policy.scanHistoryDays, now);
+      ({
+        kept: messages,
+        skippedOld,
+        edgeReached: windowEdge,
+      } = applyScanWindow(fetched.page.messages, cutoff));
     } else {
       sent = fetched.page.sent;
       removedIds = fetched.page.removedIds;
@@ -177,7 +187,12 @@ export async function processAccount(p: ProcessParams): Promise<Processed> {
     fetched.kind === "sent_backfill"
       ? { kind: "sent_backfill", itemCount: fetched.page.items.length, nextCursor: fetched.page.nextCursor }
       : fetched.kind === "inbox_backfill"
-        ? { kind: "inbox_backfill", nextCursor: fetched.page.nextCursor, partial: stage.partial }
+        ? {
+            kind: "inbox_backfill",
+            nextCursor: fetched.page.nextCursor,
+            partial: stage.partial,
+            windowEdge,
+          }
         : fetched.kind === "incremental"
           ? {
               kind: "incremental",

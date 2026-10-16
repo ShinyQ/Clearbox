@@ -9,6 +9,7 @@ import type {
   ProviderKind,
   Policy,
   ReasonCode,
+  ScanHistoryDays,
   SuggestedAction,
   CalibrationPoint,
 } from "@clearbox/core";
@@ -94,6 +95,10 @@ export interface MeResponse {
 }
 export interface AccountSync {
   phase: AccountPhase;
+  /**
+   * True once the inbox backfill finished for the current scan history window (phase incremental). Rev 2.4: also
+   * true when the backfill stopped at the window edge with older mail left unscanned.
+   */
   backfillDone: boolean;
   messagesIngested: number;
   pendingCount: number;
@@ -105,6 +110,11 @@ export interface AccountSync {
   pageSize: number;
   /** rev 2.1 A4: provider inbox total (accounts.inbox_estimate); null when unknown. */
   inboxEstimate: number | null;
+  /**
+   * Rev 2.4: the owner's scan history window in days (policy.scanHistoryDays), null for all mail. When not null,
+   * inboxEstimate is the whole inbox and is not the backlog.
+   */
+  scanHistoryDays: ScanHistoryDays;
 }
 
 export interface AccountView {

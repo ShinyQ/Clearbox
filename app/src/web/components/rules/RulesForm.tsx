@@ -4,6 +4,9 @@ import {
   MIN_AGE_OPTIONS,
   MOVED_NOTE,
   removeEntry,
+  SCAN_HISTORY_OPTIONS,
+  scanHistoryDaysOf,
+  scanHistoryValue,
   validateRecordWord,
   validateSenderEntry,
   type ListKey,
@@ -64,6 +67,20 @@ export function RulesForm({ draft, disabled, errors, notes, onChange, onMoved }:
           />
         </RuleField>
       ))}
+      <RuleField
+        id="rule-history"
+        title="Scan history"
+        description="How far back Clearbox sorts mail already in your inbox. New mail is always scanned. A longer window picks up where the last scan stopped; a shorter one keeps existing suggestions."
+        row
+      >
+        <Select
+          label="Scan history"
+          value={scanHistoryValue(draft.scanHistoryDays)}
+          options={SCAN_HISTORY_OPTIONS}
+          disabled={disabled}
+          onChange={(v) => onChange({ ...draft, scanHistoryDays: scanHistoryDaysOf(v) })}
+        />
+      </RuleField>
       <RuleField
         id="rule-age"
         title="Leave recent emails alone"

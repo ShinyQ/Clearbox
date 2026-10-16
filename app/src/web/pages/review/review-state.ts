@@ -7,7 +7,7 @@ import type {
 } from "../../../shared/api.ts";
 import { displayName } from "../../components/review/SenderGroupRow.tsx";
 import type { RowMove } from "../../components/review/SenderGroupList.tsx";
-import { catchUpFraction, newestTickAt, providerName } from "../../lib/account-status.ts";
+import { catchUpFraction, newestTickAt, providerName, scanWindowText } from "../../lib/account-status.ts";
 import { isModelUnavailable } from "../../lib/confidence.ts";
 import type { CopyContext } from "../../lib/copy.ts";
 import { localResetTime, relativeAgo } from "../../lib/format.ts";
@@ -97,13 +97,22 @@ export function nextAfterRemoval(keys: readonly string[], removed: readonly stri
 export function firstSortProgress(accounts: readonly AccountView[]): {
   value: number | null;
   sorted: number;
+  /** Rev 2.4: "the last 90 days" when a scan history window applies, else null. */
+  scope: string | null;
 } {
   const sorted = accounts.reduce((sum, a) => sum + a.sync.messagesIngested, 0);
   const backfilling = active(accounts).filter((a) => !a.sync.backfillDone);
+  const scope = scanWindowText(backfilling[0]?.sync.scanHistoryDays ?? null);
   const fractions = backfilling.map(catchUpFraction);
-  if (fractions.length === 0 || fractions.some((f) => f === null)) return { value: null, sorted };
+  if (fractions.length === 0 || fractions.some((f) => f === null)) return { value: null, sorted, scope };
   const known = fractions as number[];
-  return { value: known.reduce((s, f) => s + f, 0) / known.length, sorted };
+  return { value: known.reduce((s, f) => s + f, 0) / known.length, sorted, scope };
+}
+
+/** First-sort meta line: "32,118 emails sorted so far", prefixed by the scan window when one applies. */
+export function firstSortMeta(p: { sorted: string; scope: string | null }): string {
+  const count = `${p.sorted} emails sorted so far`;
+  return p.scope === null ? count : `Scanning ${p.scope} · ${count}`;
 }
 
 export function buildCopyContext(i: {

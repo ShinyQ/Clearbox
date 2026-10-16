@@ -1,3 +1,4 @@
+import { ScanHistoryDaysSchema } from "@clearbox/core";
 import type { ReasonCode } from "@clearbox/core";
 import { z } from "zod";
 import {
@@ -70,6 +71,7 @@ export const AccountSyncSchema = z.object({
   lastErrorCode: nstr,
   pageSize: num,
   inboxEstimate: num.nullable(),
+  scanHistoryDays: ScanHistoryDaysSchema,
 }) satisfies z.ZodType<AccountSync>;
 
 const accountStatus = z.enum(["active", "needs_reauth", "config_error"]);

@@ -10,7 +10,7 @@ import { ProgressBar } from "../components/ui/ProgressBar.tsx";
 import { Select } from "../components/ui/Select.tsx";
 import { formatCount, plural } from "../lib/format.ts";
 import { startOAuth } from "../lib/oauth-return.ts";
-import { firstSortProgress, isCatchingUp } from "./review/review-state.ts";
+import { firstSortMeta, firstSortProgress, isCatchingUp } from "./review/review-state.ts";
 import { ReviewWorkArea } from "./review/ReviewWorkArea.tsx";
 import { useReviewController, type ReviewController } from "./review/use-review-controller.ts";
 
@@ -99,7 +99,9 @@ function PageStates({ c }: { c: ReviewController }) {
       <div className="mx-auto mb-2 max-w-[340px]">
         <ProgressBar value={progress.value} tone="archive" height={6} label="Sorting progress" />
       </div>
-      <p className="text-small text-ink-3">{`${formatCount(progress.sorted)} emails sorted so far`}</p>
+      <p className="text-small text-ink-3">
+        {firstSortMeta({ sorted: formatCount(progress.sorted), scope: progress.scope })}
+      </p>
     </EmptyState>
   );
 }

@@ -37,6 +37,11 @@ describe("describeActivity (UI spec 5.4)", () => {
     expect(row(8)).toMatchObject({ verb: "Undo", detail: "248 emails restored", result: "Done", last: null });
   });
 
+  it("uses the singular for one purged record", () => {
+    const purge = s.activity.find((e) => e.id === 3)!;
+    expect(describeActivity({ ...purge, count: 1 }, ctx).detail).toBe("1 old record removed");
+  });
+
   it("describes maintenance, rules and account events", () => {
     expect(row(5)).toMatchObject({
       verb: "Rules updated",

@@ -1,6 +1,8 @@
 import { screen, within } from "@testing-library/react";
+import { QueryClient } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as report from "../../../src/web/lib/report.ts";
 import { browser } from "../../../src/web/lib/links.ts";
 import { ActivityPage } from "../../../src/web/pages/ActivityPage.tsx";
 import { expectNoA11yViolations } from "../helpers/axe.ts";
@@ -54,6 +56,20 @@ describe("Activity page", () => {
     expect(await screen.findByText("Restored 1,280 emails to your inbox.")).toBeTruthy();
     expect(state.requests.some((r) => r.url.pathname === "/api/batches/3/undo")).toBe(true);
     expect(await screen.findAllByText("Undone")).toHaveLength(2);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.textContent).toBe("Undone");
+  });
+
+  it("recovers when refreshing after Undo fails", async () => {
+    const reportSpy = vi.spyOn(report, "reportBug").mockImplementation(() => undefined);
+    const { user } = setup();
+    const button = await screen.findByRole("button", { name: "Undo" });
+    vi.spyOn(QueryClient.prototype, "invalidateQueries").mockRejectedValue(new Error("refresh failed"));
+    await user.click(button);
+    await screen.findByText("Restored 1,280 emails to your inbox.");
+    await vi.waitFor(() => expect(button.getAttribute("aria-busy")).toBeNull());
+    expect(reportSpy).toHaveBeenCalledWith("Refreshing after undo failed", expect.any(Error));
+    vi.restoreAllMocks();
   });
 
   it("marks an expired undo", async () => {
@@ -154,7 +170,7 @@ describe("Activity page", () => {
         result: {},
       }));
     });
-    await screen.findByRole("cell", { name: "Nightly cleanup · 1 old records removed" });
+    await screen.findByRole("cell", { name: "Nightly cleanup · 1 old record removed" });
     await user.click(screen.getByRole("button", { name: "Load more" }));
     expect(
       await screen.findByRole("cell", { name: "Nightly cleanup · 60 old records removed" }),

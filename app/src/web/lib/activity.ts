@@ -141,7 +141,7 @@ export function describeActivity(e: ActivityEntry, ctx: ActivityContext): Activi
       return {
         ...base,
         verb: "Nightly cleanup",
-        detail: `${formatCount(e.count)} old records removed`,
+        detail: `${plural(e.count, "old record", "old records")} removed`,
         result: "Done",
       };
     default:

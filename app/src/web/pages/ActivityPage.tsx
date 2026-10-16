@@ -69,6 +69,7 @@ export function ActivityPage() {
   const toast = useToast();
   const qc = useQueryClient();
   const [undoing, setUndoing] = useState<number | null>(null);
+  const focusAfterUndo = useRef<number | null>(null);
   const [expired, setExpired] = useState<ReadonlySet<number>>(new Set());
 
   const accountList = accounts.data?.accounts;
@@ -83,6 +84,7 @@ export function ActivityPage() {
 
   const undo = async (batchId: number) => {
     setUndoing(batchId);
+    focusAfterUndo.current = batchId;
     try {
       toast.show(undoToast(await api.undoBatch(batchId)));
     } catch (e) {
@@ -90,10 +92,32 @@ export function ActivityPage() {
       else if (!isApiError(e)) reportBug("Undo from Activity failed", e);
       toast.show({ kind: "error", message: undoFailure(e) });
     } finally {
-      await invalidateAfterActions(qc);
-      setUndoing(null);
+      try {
+        await invalidateAfterActions(qc);
+      } catch (e) {
+        reportBug("Refreshing after undo failed", e);
+      } finally {
+        setUndoing(null);
+      }
     }
   };
+
+  // The pressed Undo button is replaced by terminal text; move focus there so it doesn't fall to the body.
+  // The marker is consumed when the text mounts, which can happen after the undo handler has finished.
+  const terminalText = (batchId: number | null, text: string) => (
+    <span
+      tabIndex={-1}
+      className="text-small text-ink-3 outline-none"
+      ref={(el) => {
+        if (el && batchId !== null && focusAfterUndo.current === batchId) {
+          focusAfterUndo.current = null;
+          el.focus();
+        }
+      }}
+    >
+      {text}
+    </span>
+  );
 
   const loadMore = async () => {
     const res = await activity.fetchNextPage();
@@ -105,7 +129,7 @@ export function ActivityPage() {
     if (!last) return null;
     switch (last.kind) {
       case "undo":
-        if (expired.has(last.batchId)) return <span className="text-small text-ink-3">Undo expired</span>;
+        if (expired.has(last.batchId)) return terminalText(last.batchId, "Undo expired");
         return (
           <Button
             size="sm"
@@ -118,9 +142,9 @@ export function ActivityPage() {
           </Button>
         );
       case "undone":
-        return <span className="text-ink-3">Undone</span>;
+        return terminalText(row.batchId, "Undone");
       case "expired":
-        return <span className="text-small text-ink-3">Undo expired</span>;
+        return terminalText(row.batchId, "Undo expired");
       case "reconnect":
         return (
           <Button

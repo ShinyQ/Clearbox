@@ -100,7 +100,7 @@ flowchart TB
 
   subgraph mailbox["Mail providers"]
     gmail["Gmail API<br/>gmail.modify"]
-    graph["Microsoft Graph<br/>Mail.ReadWrite"]
+    msgraph["Microsoft Graph<br/>Mail.ReadWrite"]
   end
 
   foundry["Microsoft-Decision-1<br/>Foundry, Sweden Central<br/>DataZoneStandard"]
@@ -115,7 +115,7 @@ flowchart TB
   cron --> worker
   worker --> d1
   worker -->|"OAuth, metadata + snippet"| gmail
-  worker -->|"OAuth, metadata + snippet"| graph
+  worker -->|"OAuth, metadata + snippet"| msgraph
   worker -->|"api-key, probabilities only"| foundry
 ```
 

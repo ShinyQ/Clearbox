@@ -5525,7 +5525,7 @@ flowchart LR
     worker --> d1[(D1 clearbox, EU jurisdiction)]
   end
   worker -->|OAuth, gmail.modify| gmail[Gmail API]
-  worker -->|OAuth, Mail.ReadWrite| graph[Microsoft Graph]
+  worker -->|OAuth, Mail.ReadWrite| msgraph[Microsoft Graph]
   worker -->|api-key| foundry[Microsoft-Decision-1, Foundry Sweden Central, DataZoneStandard]
 ```
 

@@ -92,7 +92,11 @@ export function SetupPage() {
   const modelCode = (
     ["decision_not_configured", "decision_auth_failed", "decision_deployment_not_found"] as const
   ).find((c) => issues.has(c));
-  const connect = (p: ProviderKind) => startOAuth(p, { returnTo: "/setup" });
+  const [opening, setOpening] = useState<ProviderKind | null>(null);
+  const connect = (p: ProviderKind) => {
+    setOpening(p);
+    startOAuth(p, { returnTo: "/setup" });
+  };
   const provider: ProviderKind | null =
     oauth.provider === "outlook" ? "outlook" : oauth.provider === "gmail" ? "gmail" : null;
   const banner = oauth.error
@@ -104,6 +108,8 @@ export function SetupPage() {
   const progress = firstSortProgress(list);
   const loading = me.isPending || accounts.isPending;
   const development = me.data?.environment === "development";
+  const meFailed = me.isError && !me.data;
+  const accountsFailed = accounts.isError && !accounts.data;
 
   return (
     <main id="main" tabIndex={-1} className="mx-auto max-w-[560px] px-4 pt-12 pb-8 focus:outline-none">
@@ -124,13 +130,18 @@ export function SetupPage() {
         </div>
       ) : (
         <ol className="rounded-xl border border-line bg-surface">
-          <SetupStep status={development ? "warning" : "done"} title="Sign-in protection">
-            {development
-              ? "Local development mode. Sign-in is bypassed on localhost only."
-              : `Protected by Cloudflare Access. Signed in as ${me.data?.email ?? ""}.`}
+          <SetupStep
+            status={meFailed ? "pending" : development ? "warning" : "done"}
+            title="Sign-in protection"
+          >
+            {meFailed
+              ? "Couldn't load your sign-in status."
+              : development
+                ? "Local development mode. Sign-in is bypassed on localhost only."
+                : `Protected by Cloudflare Access. Signed in as ${me.data?.email ?? ""}.`}
           </SetupStep>
           <SetupStep
-            status={modelCode ? "error" : "done"}
+            status={meFailed ? "pending" : modelCode ? "error" : "done"}
             title="AI model"
             action={
               modelCode ? (
@@ -140,9 +151,11 @@ export function SetupPage() {
               ) : undefined
             }
           >
-            {modelCode
-              ? `${MODEL_BODY[modelCode] ?? ""} New emails will be marked Check until this is fixed.`
-              : "Connected to your Decision-1 deployment."}
+            {meFailed
+              ? "Couldn't check the AI model."
+              : modelCode
+                ? `${MODEL_BODY[modelCode] ?? ""} New emails will be marked Check until this is fixed.`
+                : "Connected to your Decision-1 deployment."}
           </SetupStep>
           <SetupStep
             status={list.length > 0 ? "done" : "pending"}
@@ -154,6 +167,8 @@ export function SetupPage() {
                     key={p}
                     size="sm"
                     softDisabled={me.data?.providers[p] === false}
+                    loading={opening === p}
+                    loadingLabel={p === "gmail" ? "Opening Google…" : "Opening Microsoft…"}
                     onClick={() => connect(p)}
                   >
                     {p === "gmail" ? "Connect Gmail" : "Connect Outlook"}
@@ -162,9 +177,11 @@ export function SetupPage() {
               </>
             }
           >
-            {list.length > 0
-              ? list.map((a) => <span key={a.id} className="block">{`${a.email} connected.`}</span>)
-              : "Connect Gmail or Outlook. You'll sign in on their page."}
+            {accountsFailed
+              ? "Couldn't load your mailboxes."
+              : list.length > 0
+                ? list.map((a) => <span key={a.id} className="block">{`${a.email} connected.`}</span>)
+                : "Connect Gmail or Outlook. You'll sign in on their page."}
             {me.data && !me.data.providers.gmail ? (
               <span className="block">{NOT_CONFIGURED.gmail}</span>
             ) : null}
@@ -174,6 +191,19 @@ export function SetupPage() {
           </SetupStep>
         </ol>
       )}
+      {meFailed || accountsFailed ? (
+        <div className="mt-3">
+          <Button
+            size="sm"
+            onClick={() => {
+              if (meFailed) void me.refetch();
+              if (accountsFailed) void accounts.refetch();
+            }}
+          >
+            Try again
+          </Button>
+        </div>
+      ) : null}
       <p className="mt-2.5 text-small text-ink-3">
         Clearbox can only move mail to Trash or Archive. It never permanently deletes or sends email. It
         stores sender, subject, date and a short preview, never full email bodies.

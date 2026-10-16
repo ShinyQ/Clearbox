@@ -1,12 +1,15 @@
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { http } from "msw";
+import { describe, expect, it, vi } from "vitest";
+import { browser } from "../../../src/web/lib/links.ts";
 import { MODEL_BODY } from "../../../src/web/lib/banners.ts";
 import { SetupPage } from "../../../src/web/pages/SetupPage.tsx";
 import { expectNoA11yViolations } from "../helpers/axe.ts";
 import { renderPage } from "../helpers/render.tsx";
 import type { FakeApiState } from "../msw/fake-api.ts";
 import { iso, T0 } from "../msw/fixtures.ts";
-import { installFakeApi } from "../msw/handlers.ts";
+import { errorResponse, installFakeApi } from "../msw/handlers.ts";
+import { server } from "../msw/server.ts";
 
 function setup(mutate?: (s: FakeApiState) => void, path = "/setup") {
   const state = installFakeApi(mutate);
@@ -36,7 +39,7 @@ describe("Setup page", () => {
   });
 
   it("shows model problems and local development mode in the steps", async () => {
-    setup((s) => {
+    const { container } = setup((s) => {
       s.accounts = [];
       s.me = {
         ...s.me,
@@ -47,16 +50,31 @@ describe("Setup page", () => {
     expect(
       await screen.findByText("Local development mode. Sign-in is bypassed on localhost only."),
     ).toBeTruthy();
-    expect(
-      screen.getByText(
-        `${MODEL_BODY.decision_not_configured} New emails will be marked Check until this is fixed.`,
-      ),
-    ).toBeTruthy();
+    const body = `${MODEL_BODY.decision_not_configured} New emails will be marked Check until this is fixed.`;
+    expect(screen.getByText(body)).toBeTruthy();
+    expect(body).toMatch(/https/);
+    expect(body).toMatch(/Microsoft-Decision-1/);
     expect(screen.getByRole("link", { name: "Open setup guide" })).toBeTruthy();
+    await expectNoA11yViolations(container);
   });
 
+  it.each(["decision_auth_failed", "decision_deployment_not_found"] as const)(
+    "explains that %s clears after the next successful sort",
+    async (code) => {
+      setup((s) => {
+        s.accounts = [];
+        s.me = { ...s.me, issues: [{ code, since: iso(T0), accountId: null }] };
+      });
+      const text = await screen.findByText(/New emails will be marked Check until this is fixed\./);
+      expect(text.textContent).toBe(
+        `${MODEL_BODY[code]} New emails will be marked Check until this is fixed.`,
+      );
+      expect(text.textContent).toMatch(/clears after the next successful sort/);
+    },
+  );
+
   it("shows sorting progress and enables Go to Review once groups exist", async () => {
-    const { router, user } = setup();
+    const { container, router, user } = setup();
     expect(await screen.findByText("you@example.com connected.")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Sorting your first emails" })).toBeTruthy();
     expect(
@@ -64,6 +82,7 @@ describe("Setup page", () => {
     ).toBeTruthy();
     expect(screen.getByText("Caught up (step 3 of 3).")).toBeTruthy();
     expect(await screen.findByText("7 sender groups are ready.")).toBeTruthy();
+    await expectNoA11yViolations(container);
     await user.click(screen.getByRole("button", { name: "Go to Review" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/review"));
   });
@@ -77,5 +96,37 @@ describe("Setup page", () => {
   it("shows the OAuth result above the panel", async () => {
     setup((s) => void (s.accounts = []), "/setup?error=scope_missing&provider=gmail");
     expect(await screen.findByText("Some permissions were not granted.")).toBeTruthy();
+  });
+
+  it("shows the connecting state and ignores a second click", async () => {
+    const assign = vi.spyOn(browser, "assign").mockImplementation(() => undefined);
+    const { user } = setup((s) => void (s.accounts = []));
+    const button = await screen.findByRole("button", { name: "Connect Gmail" });
+    await user.click(button);
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenLastCalledWith("/oauth/google/start");
+    const busy = screen.getByRole("button", { name: "Opening Google…" });
+    expect(busy.getAttribute("aria-busy")).toBe("true");
+    await user.click(busy);
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Connect Outlook" })).toBeTruthy();
+    assign.mockRestore();
+  });
+
+  it("never claims success when the checks fail to load", async () => {
+    installFakeApi();
+    server.use(
+      http.get("*/api/me", () => errorResponse(500, "internal")),
+      http.get("*/api/accounts", () => errorResponse(500, "internal")),
+    );
+    renderPage(<SetupPage />, { path: "/setup", route: "/setup", shell: false });
+    expect(await screen.findByText("Couldn't load your sign-in status.")).toBeTruthy();
+    expect(screen.getByText("Couldn't check the AI model.")).toBeTruthy();
+    expect(screen.getByText("Couldn't load your mailboxes.")).toBeTruthy();
+    expect(screen.queryByText(/Signed in as/)).toBeNull();
+    expect(screen.queryByText("Connected to your Decision-1 deployment.")).toBeNull();
+    expect(screen.queryByText(/connected\.$/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Sorting your first emails" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 });

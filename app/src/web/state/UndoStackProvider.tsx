@@ -4,11 +4,17 @@ import { useNavigate } from "react-router";
 import { isApiError } from "../api/client.ts";
 import { api } from "../api/endpoints.ts";
 import { invalidateAfterActions } from "../api/mutations.ts";
-import { formatCount, plural } from "../lib/format.ts";
+import {
+  GENERIC_ERROR,
+  NETWORK_ERROR,
+  undoExpiredMessage,
+  undoResultToast,
+  type UndoKind,
+} from "../lib/copy-actions.ts";
 import { reportBug } from "../lib/report.ts";
 import { useToast } from "./ToastProvider.tsx";
 
-export type UndoKind = "cleanup" | "action";
+export type { UndoKind };
 
 interface UndoEntry {
   id: string;
@@ -37,24 +43,11 @@ const MAX_ENTRIES = 20;
 const DAY = 86_400_000;
 const Ctx = createContext<UndoStackApi | null>(null);
 
-/** `failed` is null when a whole batch call threw, so the number of unrestored emails is unknown. */
-export function undoResultMessage(kind: UndoKind, restored: number, failed: number | null): string {
-  if (failed === 0) return `Restored ${plural(restored, "email", "emails")} to your inbox.`;
-  const rest = kind === "cleanup" ? " and are still in Trash or Archive." : ".";
-  const who = failed === null ? "Some" : formatCount(failed);
-  return `Restored ${plural(restored, "email", "emails")}. ${who} could not be restored${rest}`;
-}
-
-const NETWORK_MESSAGE = "Couldn't reach Clearbox. Check your connection and try again.";
-
 function failureMessage(kind: UndoKind, e: unknown): string {
-  if (isApiError(e) && e.code === "undo_expired") return expiredMessage(kind);
-  if (isApiError(e) && e.code === "network") return NETWORK_MESSAGE;
-  return "Something went wrong. Nothing was changed.";
+  if (isApiError(e) && e.code === "undo_expired") return undoExpiredMessage(kind);
+  if (isApiError(e) && e.code === "network") return NETWORK_ERROR;
+  return GENERIC_ERROR;
 }
-
-const expiredMessage = (kind: UndoKind) =>
-  `Undo is no longer available for this ${kind === "cleanup" ? "Clean up" : "action"} (24 hours passed).`;
 
 export function UndoStackProvider({ children }: { children: ReactNode }) {
   const toast = useToast();
@@ -92,9 +85,8 @@ export function UndoStackProvider({ children }: { children: ReactNode }) {
       }
       if (restored > 0 || !threw) {
         toast.update(target, {
-          kind: threw ? "error" : "success",
+          ...undoResultToast(entry.kind, restored, threw ? null : failed),
           busy: false,
-          message: undoResultMessage(entry.kind, restored, threw ? null : failed),
         });
       } else {
         toast.update(target, { kind: "error", busy: false, message: failureMessage(entry.kind, firstError) });

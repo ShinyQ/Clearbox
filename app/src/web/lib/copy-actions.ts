@@ -54,3 +54,27 @@ export function actionErrorMessage(code: string | null | undefined, ctx: ActionE
   if (code === "network") return NETWORK_ERROR;
   return GENERIC_ERROR;
 }
+
+export type UndoKind = "cleanup" | "action";
+export const NOTHING_TO_RESTORE = "Nothing needed restoring. These emails were already back or untouched.";
+
+export const undoExpiredMessage = (kind: UndoKind) =>
+  `Undo is no longer available for this ${kind === "cleanup" ? "Clean up" : "action"} (24 hours passed).`;
+
+/** `failed` is null when a whole batch call threw, so the number of unrestored emails is unknown. */
+export function undoResultMessage(kind: UndoKind, restored: number, failed: number | null): string {
+  if (failed === 0) return `Restored ${emails(restored)} to your inbox.`;
+  const rest = kind === "cleanup" ? " and are still in Trash or Archive." : ".";
+  const who = failed === null ? "Some" : formatCount(failed);
+  return `Restored ${emails(restored)}. ${who} could not be restored${rest}`;
+}
+
+/** Undo toast for a finished undo. Keep items are skipped by the server, so nothing restored is not a success. */
+export function undoResultToast(
+  kind: UndoKind,
+  restored: number,
+  failed: number | null,
+): { kind: "success" | "info" | "error"; message: string } {
+  if (restored === 0 && failed === 0) return { kind: "info", message: NOTHING_TO_RESTORE };
+  return { kind: failed === 0 ? "success" : "error", message: undoResultMessage(kind, restored, failed) };
+}

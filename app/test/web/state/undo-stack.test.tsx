@@ -63,6 +63,21 @@ describe("UndoStackProvider", () => {
     ]);
   });
 
+  it("says nothing needed restoring when undoing a keep batch", async () => {
+    const state = installFakeApi((s) => {
+      batch11(s);
+      const keep = s.batches.find((b) => b.id === 11);
+      if (keep) keep.byAction = { delete: 0, archive: 0, keep: 5 };
+    });
+    let stack: Stack | null = null;
+    const { user } = renderWithCore(<Grab onReady={(s) => (stack = s)} />);
+    act(() => stack?.notifyWithUndo({ kind: "action", message: "Kept 5 emails.", batchIds: [11] }));
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await screen.findByText("Nothing needed restoring. These emails were already back or untouched.");
+    expect(screen.queryByText(/^Restored/)).toBeNull();
+    expect(state.requests.filter((r) => r.route === "undo")).toHaveLength(1);
+  });
+
   it("reports an expired undo", async () => {
     installFakeApi();
     let stack: Stack | null = null;

@@ -12,20 +12,17 @@ import { Button, LinkButton } from "../components/ui/Button.tsx";
 import { Select } from "../components/ui/Select.tsx";
 import { Table } from "../components/ui/Table.tsx";
 import { describeActivity, type ActivityRow } from "../lib/activity.ts";
-import { GENERIC_ERROR, NETWORK_ERROR } from "../lib/copy-actions.ts";
+import { GENERIC_ERROR, NETWORK_ERROR, undoExpiredMessage, undoResultToast } from "../lib/copy-actions.ts";
 import { activityWhen } from "../lib/format.ts";
 import { startOAuth } from "../lib/oauth-return.ts";
 import { reportBug } from "../lib/report.ts";
 import { useToast, type ToastApi } from "../state/ToastProvider.tsx";
-import { undoResultMessage } from "../state/UndoStackProvider.tsx";
 import { useDocumentTitle } from "../state/use-document-title.ts";
 import { useNow } from "../state/use-now.ts";
 import { useRouteFocus } from "../state/use-route-focus.ts";
 
 type Row = ActivityEntry & { view: ActivityRow };
 type ToastInput = Parameters<ToastApi["show"]>[0];
-
-const EXPIRED_MESSAGE = "Undo is no longer available for this action (24 hours passed).";
 
 /**
  * The server resets its claim only when nothing was restored and something failed, so only that
@@ -38,20 +35,11 @@ function undoToast(res: UndoResponse): ToastInput {
       message: "Nothing could be restored and nothing was changed. You can try Undo again.",
     };
   }
-  if (res.restored === 0) {
-    return {
-      kind: "info",
-      message: "Nothing needed restoring. These emails were already back or untouched.",
-    };
-  }
-  return {
-    kind: res.failed === 0 ? "success" : "error",
-    message: undoResultMessage("action", res.restored, res.failed),
-  };
+  return undoResultToast("action", res.restored, res.failed);
 }
 
 function undoFailure(e: unknown): string {
-  if (isApiError(e) && e.code === "undo_expired") return EXPIRED_MESSAGE;
+  if (isApiError(e) && e.code === "undo_expired") return undoExpiredMessage("action");
   if (isApiError(e) && e.code === "network") return NETWORK_ERROR;
   return GENERIC_ERROR;
 }

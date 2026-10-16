@@ -212,17 +212,25 @@ export function fakeApiHandlers(s: FakeApiState) {
       const batch = s.batches.find((b) => String(b.id) === params.id);
       if (!batch) return errorResponse(404, "not_found");
       if (!batch.undoable) return errorResponse(410, "undo_expired");
+      // Like the server, keep items have nothing to restore and are skipped.
       const items = s.items.filter((i) => batch.itemIds.includes(i.id));
-      for (const item of items) item.status = "undone";
+      const kept = items.filter((i) => i.finalAction === "keep");
+      const moved = items.filter((i) => i.finalAction !== "keep");
+      for (const item of moved) item.status = "undone";
       batch.undoable = false;
       batch.undoneAt = iso(s.now);
-      const restored = Math.max(items.length, batch.executedCount);
+      const skipped = Math.max(kept.length, batch.byAction.keep);
+      const restored = Math.max(moved.length, batch.executedCount - skipped);
       return HttpResponse.json({
         batchId: batch.id,
-        results: items.map((i) => ({ id: i.id, outcome: "restored", error: null })),
+        results: items.map((i) => ({
+          id: i.id,
+          outcome: i.finalAction === "keep" ? "skipped" : "restored",
+          error: null,
+        })),
         restored,
         failed: 0,
-        skipped: 0,
+        skipped,
       });
     }),
     route("activity", "get", "/api/activity", ({ url }) => {

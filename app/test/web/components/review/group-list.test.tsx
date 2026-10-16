@@ -113,6 +113,9 @@ describe("SenderGroupList", () => {
     render(<SenderGroupList {...p} selected={new Set(keys)} />);
     const toolbar = screen.getByRole("toolbar", { name: "Selected groups" });
     expect(within(toolbar).getByText("2 groups selected · 11 emails")).toBeTruthy();
+    // One line in the header row from 640px up; the row trims its padding to keep the header height.
+    expect(toolbar.classList.contains("sm:flex-nowrap")).toBe(true);
+    expect(toolbar.closest("[role='row']")?.classList.contains("py-0.5")).toBe(true);
     expect(
       within(toolbar).getByRole("button", { name: "Approve suggestions" }).getAttribute("aria-disabled"),
     ).toBe("true");

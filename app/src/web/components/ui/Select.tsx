@@ -34,27 +34,31 @@ export function Select<V extends string>({
       ? "bg-transparent pl-1.5 pr-6 text-small text-ink-3 hover:text-ink-2"
       : "rounded-md border border-line bg-surface pl-2.5 pr-7 py-[5px] text-body text-ink-2 hover:border-neutral-fill";
   return (
-    <span className={`relative inline-flex items-center ${className ?? ""}`}>
+    // Without a width from the caller the control hugs its content, so a stretching flex parent
+    // never separates the chevron from the select box.
+    <span className={`relative inline-flex max-w-full items-center ${className ?? "w-fit"}`}>
       <label htmlFor={id} className={showLabel ? "mr-2 text-meta text-ink-3" : "sr-only"}>
         {label}
       </label>
-      <select
-        id={id}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => {
-          const next = options.find((o) => o.value === e.target.value);
-          if (next) onChange(next.value);
-        }}
-        className={`h-[30px] max-w-full cursor-pointer appearance-none truncate disabled:cursor-not-allowed disabled:opacity-45 ${box}`}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <Icon name="chevron-down" size={12} className="pointer-events-none absolute right-2 text-ink-3" />
+      <span className="relative inline-flex min-w-0 flex-1 items-center">
+        <select
+          id={id}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = options.find((o) => o.value === e.target.value);
+            if (next) onChange(next.value);
+          }}
+          className={`h-[30px] w-full min-w-0 cursor-pointer appearance-none truncate disabled:cursor-not-allowed disabled:opacity-45 ${box}`}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <Icon name="chevron-down" size={12} className="pointer-events-none absolute right-2 text-ink-3" />
+      </span>
     </span>
   );
 }

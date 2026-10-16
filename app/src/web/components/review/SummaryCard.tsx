@@ -106,44 +106,63 @@ export function SummaryCard({ buttonRef, ...p }: SummaryCardProps) {
             awaitingModel: p.awaitingModel,
           });
 
+  // Below lg the card stacks: text above, a full-width button below (UI spec 2.8).
+  const buttonWidth = "w-full lg:w-auto";
   return (
     <section
       aria-labelledby={headingId}
       aria-busy={loading || undefined}
-      className="mb-4 flex items-center gap-4 rounded-xl border border-line bg-surface px-[18px] py-4 shadow-card"
+      className="mb-4 flex flex-col gap-3 rounded-xl border border-line bg-surface px-[18px] py-4 shadow-card lg:flex-row lg:items-center lg:gap-4"
     >
-      <Spark size={22} />
-      <div className="min-w-0 flex-1">
-        {loading ? (
-          <div className="flex flex-col gap-2" aria-hidden="true">
-            <span id={headingId} className="sr-only">
-              Loading the Clean up summary
-            </span>
-            <SkeletonLine width={260} height={14} />
-            <SkeletonLine width={360} />
-            <span className={`mt-1 block h-1.5 w-[340px] max-w-full rounded-xs ${SHIMMER}`} />
-          </div>
-        ) : (
-          <>
-            <h2 id={headingId} className="mb-[3px] text-title-lg font-heading text-ink">
-              {headline}
-            </h2>
-            <p className="text-body text-ink-2">{sub}</p>
-            {p.state === "ready" ? <SplitBar segments={segments} /> : null}
-            {p.state === "nothing_sure" ? <SplitBar segments={segments.slice(2)} /> : null}
-            {p.offline && p.state === "ready" ? (
-              <p className="mt-1.5 text-small text-ink-3">You're offline.</p>
-            ) : null}
-          </>
-        )}
+      <div className="flex min-w-0 flex-1 items-center gap-4">
+        <Spark size={22} />
+        <div className="min-w-0 flex-1">
+          {loading ? (
+            // Each line sits in a box as tall as the ready text, so nothing shifts when data arrives.
+            <div aria-hidden="true">
+              <span id={headingId} className="sr-only">
+                Loading the Clean up summary
+              </span>
+              <span className="mb-[3px] flex h-[22px] items-center">
+                <SkeletonLine width={260} height={14} />
+              </span>
+              <span className="flex h-[18px] items-center">
+                <SkeletonLine width={360} />
+              </span>
+              <span className={`mt-2.5 block h-1.5 w-[340px] max-w-full rounded-xs ${SHIMMER}`} />
+              <span className="mt-[7px] flex h-4 items-center">
+                <SkeletonLine width={240} />
+              </span>
+            </div>
+          ) : (
+            <>
+              <h2 id={headingId} className="mb-[3px] text-title-lg font-heading text-ink">
+                {headline}
+              </h2>
+              <p className="text-body text-ink-2">{sub}</p>
+              {p.state === "ready" ? <SplitBar segments={segments} /> : null}
+              {p.state === "nothing_sure" ? <SplitBar segments={segments.slice(2)} /> : null}
+              {p.offline && p.state === "ready" ? (
+                <p className="mt-1.5 text-small text-ink-3">You're offline.</p>
+              ) : null}
+            </>
+          )}
+        </div>
       </div>
-      {loading ? <span aria-hidden="true" className={`h-9 w-[120px] rounded-lg ${SHIMMER}`} /> : null}
-      {p.state === "error" ? <Button onClick={p.onRetry}>Try again</Button> : null}
+      {loading ? (
+        <span aria-hidden="true" className={`h-9 w-full rounded-lg lg:w-[120px] ${SHIMMER}`} />
+      ) : null}
+      {p.state === "error" ? (
+        <Button className={buttonWidth} onClick={p.onRetry}>
+          Try again
+        </Button>
+      ) : null}
       {p.state === "ready" ? (
         <Button
           ref={buttonRef}
           variant="primary"
           size="lg"
+          className={buttonWidth}
           kbd={[modKey(p.platform), enterKey(p.platform)]}
           aria-keyshortcuts={`${ariaMod(p.platform)}+Enter`}
           loading={p.cleanupPhase === "preparing"}

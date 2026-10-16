@@ -141,10 +141,12 @@ export function SenderGroupList(p: SenderGroupListProps) {
       <div
         role="row"
         aria-rowindex={1}
-        className="sticky top-0 z-(--z-sticky) border-b border-line bg-surface-raised px-3.5 py-2 text-meta text-ink-3"
+        className={`sticky top-0 z-(--z-sticky) border-b border-line bg-surface-raised px-3.5 text-meta text-ink-3 ${
+          someSelected ? "py-0.5" : "py-2"
+        }`}
       >
         {someSelected ? (
-          <div role="gridcell" aria-colspan={5}>
+          <div role="gridcell" aria-colspan={5} className="@container">
             <SelectionToolbar
               selectedCount={selectedGroups.length}
               emailCount={selectedGroups.reduce((sum, g) => sum + g.count, 0)}
@@ -158,12 +160,12 @@ export function SenderGroupList(p: SenderGroupListProps) {
               onClear={p.onClearSelection}
             />
             {approveBlocked ? (
-              <p id={hintId} className="mt-1 text-small text-ink-3">
+              <p id={hintId} className="mb-1.5 text-small text-ink-3">
                 Check groups need your choice. Use Trash, Archive or Keep.
               </p>
             ) : null}
             {allSelected && p.hasNextPage ? (
-              <p className="mt-1 text-small text-ink-2">
+              <p className="mb-1.5 text-small text-ink-2">
                 {`All ${formatCount(loaded.length)} loaded groups are selected.`}{" "}
                 <Button variant="link" size="sm" onClick={p.onSelectAllInTab}>
                   {capped ? "Select first 1,000" : `Select all ${formatCount(total)} in ${label}`}

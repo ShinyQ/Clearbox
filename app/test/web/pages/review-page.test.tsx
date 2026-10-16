@@ -33,6 +33,16 @@ describe("Review page", () => {
     await expectNoA11yViolations(container);
   });
 
+  it("reserves the inline detail column with a skeleton while the list loads", async () => {
+    const { container } = setup();
+    const grid = screen.getByRole("grid");
+    const workArea = grid.parentElement?.parentElement;
+    expect(workArea?.className).toContain("xl:grid-cols-[minmax(0,1fr)_300px]");
+    expect(workArea?.lastElementChild?.getAttribute("aria-hidden")).toBe("true");
+    expect(await screen.findByRole("complementary", { name: "Northwind Deals" })).toBeTruthy();
+    expect(container.querySelector("[aria-hidden='true'].bg-surface-raised")).toBeNull();
+  });
+
   it("supports the keyboard triage flow with Undo", async () => {
     const { state, user } = setup();
     const northKey = keyOfName(state, "Northwind Deals");
@@ -73,6 +83,9 @@ describe("Review page", () => {
     await screen.findByRole("button", { name: "Clean up 14" });
     await user.keyboard("{Control>}{Enter}{/Control}");
     expect(await screen.findByText("Clean up 14 emails in 4 sender groups?")).toBeTruthy();
+    // Confirming is not a run yet: the summary button keeps its label (UI spec 4.5).
+    expect(screen.getByRole("button", { name: "Clean up 14" }).getAttribute("aria-disabled")).toBeNull();
+    expect(screen.queryByText("Cleaning up…")).toBeNull();
     expect(
       screen.getByText(
         "11 go to Trash and 3 to Archive. Nothing is permanently deleted. 4 groups below 86% stay here for you.",
@@ -172,5 +185,7 @@ describe("Review page", () => {
     const { user } = setup(undefined, "/review?tab=keep");
     await user.click(await screen.findByRole("button", { name: "Confirm all keeps" }));
     expect(await screen.findByText("Mark 2 emails in 1 sender group as Keep?")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Confirm all keeps" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Clean up" })).toBeNull();
   });
 });

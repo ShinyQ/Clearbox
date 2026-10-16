@@ -63,6 +63,13 @@ describe("ConfidenceLabel", () => {
     expect(meterVars(container)).toEqual(["0.85", String(tau)]);
   });
 
+  it("shows the meter only from lg up; below 1024px the cell is percentage and band word", () => {
+    const { container } = render(<ConfidenceLabel value={0.97} verdict="delete" tau={tau} variant="cell" />);
+    const wrap = container.querySelector(".cb-meter")?.parentElement;
+    expect(wrap?.classList.contains("hidden")).toBe(true);
+    expect(wrap?.classList.contains("lg:block")).toBe(true);
+  });
+
   it("moves the boundary when tau moves", () => {
     const { container, rerender } = render(
       <ConfidenceLabel value={0.85} verdict="delete" tau={0.8} variant="cell" />,

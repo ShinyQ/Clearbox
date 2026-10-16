@@ -106,6 +106,7 @@ describe("HotkeysProvider", () => {
     await user.keyboard("?");
     expect(screen.getByRole("heading", { name: "Keyboard shortcuts" })).toBeTruthy();
     expect(screen.getByText("Shortcuts are off while you type in a field.")).toBeTruthy();
+    expect(screen.getByText("tabs").parentElement?.textContent).toBe("1to5tabs");
     await user.click(screen.getByRole("switch", { name: "Use single-key shortcuts" }));
     expect(window.localStorage.getItem("clearbox.singleKeys")).toBe("off");
     await user.click(screen.getByRole("button", { name: "Close" }));

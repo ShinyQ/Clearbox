@@ -8,7 +8,7 @@ import { useFocusTrap } from "../../state/use-focus-trap.ts";
 import { Button } from "../ui/Button.tsx";
 import { Icon } from "../ui/icons.tsx";
 import { Kbd } from "../ui/Kbd.tsx";
-import { SkeletonLine } from "../ui/Skeleton.tsx";
+import { SHIMMER, SkeletonLine } from "../ui/Skeleton.tsx";
 import { ConfidenceLabel } from "./ConfidenceLabel.tsx";
 import { DetailActions } from "./DetailActions.tsx";
 import { EmailPreviewList } from "./EmailPreviewList.tsx";
@@ -103,7 +103,7 @@ export function DetailPanel({ headingRef, ...p }: DetailPanelProps) {
         ) : null}
       </div>
       <div className="rounded-lg border border-line bg-surface p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           <VerdictTag kind={g.action} label={tagLabel(g)} />
           <ConfidenceLabel
             value={g.confidence.avg}
@@ -207,6 +207,31 @@ export function DetailPanel({ headingRef, ...p }: DetailPanelProps) {
       }`}
     >
       {body}
+    </div>
+  );
+}
+
+/** Inline panel placeholder while the list loads (UI spec 5.1): avatar, 2 lines, card, 3 lines. */
+export function DetailPanelSkeleton() {
+  return (
+    <div aria-hidden="true" className="flex flex-col gap-3 bg-surface-raised p-4">
+      <div className="flex items-center gap-2.5">
+        <span className={`size-[30px] shrink-0 rounded-md ${SHIMMER}`} />
+        <span className="flex min-w-0 flex-1 flex-col gap-2">
+          <SkeletonLine width={120} height={14} />
+          <SkeletonLine width={180} />
+        </span>
+      </div>
+      <div className="flex flex-col gap-2.5 rounded-lg border border-line bg-surface p-3">
+        <span className={`h-[22px] w-28 rounded-sm ${SHIMMER}`} />
+        <SkeletonLine width="85%" />
+        <SkeletonLine width="70%" />
+      </div>
+      <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-2.5">
+        <SkeletonLine width="90%" />
+        <SkeletonLine width="75%" />
+        <SkeletonLine width="80%" />
+      </div>
     </div>
   );
 }

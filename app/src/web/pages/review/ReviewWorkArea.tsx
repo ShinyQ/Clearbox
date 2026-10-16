@@ -1,4 +1,4 @@
-import { DetailPanel } from "../../components/review/DetailPanel.tsx";
+import { DetailPanel, DetailPanelSkeleton } from "../../components/review/DetailPanel.tsx";
 import { SenderGroupList } from "../../components/review/SenderGroupList.tsx";
 import { startOAuth } from "../../lib/oauth-return.ts";
 import type { ReviewController } from "./use-review-controller.ts";
@@ -8,21 +8,19 @@ export function ReviewWorkArea({ c }: { c: ReviewController }) {
   const g = c.activeGroup;
   const detailPages = c.detailQ.data?.pages ?? [];
   const tau = c.tau;
+  const listLoading = c.groupsQ.isPending || tau === null;
   const inline = c.detailMode === "inline" && g !== null && tau !== null;
+  // Reserve the inline panel column while the list loads so the list does not narrow afterwards.
+  const placeholder = c.detailMode === "inline" && listLoading;
+  const twoColumns = inline || placeholder;
   return (
     <div
-      className={`overflow-clip rounded-b-xl border border-t-0 border-line bg-surface ${inline ? "xl:grid xl:grid-cols-[minmax(0,1fr)_300px]" : ""}`}
+      className={`overflow-clip rounded-b-xl border border-t-0 border-line bg-surface ${twoColumns ? "xl:grid xl:grid-cols-[minmax(0,1fr)_300px]" : ""}`}
     >
-      <div className={`min-w-0 ${inline ? "xl:border-r xl:border-line" : ""}`}>
+      <div className={`min-w-0 ${twoColumns ? "xl:border-r xl:border-line" : ""}`}>
         <SenderGroupList
           state={
-            c.groupsQ.isPending || tau === null
-              ? "loading"
-              : c.groupsQ.isError
-                ? "error"
-                : c.groups.length === 0
-                  ? "empty"
-                  : "ready"
+            listLoading ? "loading" : c.groupsQ.isError ? "error" : c.groups.length === 0 ? "empty" : "ready"
           }
           tab={c.tab}
           groups={c.groups}
@@ -49,6 +47,7 @@ export function ReviewWorkArea({ c }: { c: ReviewController }) {
           onMove={c.move}
         />
       </div>
+      {placeholder ? <DetailPanelSkeleton /> : null}
       {tau === null ? null : (
         <DetailPanel
           mode={c.detailMode}

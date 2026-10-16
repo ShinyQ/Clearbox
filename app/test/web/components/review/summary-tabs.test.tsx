@@ -93,6 +93,19 @@ describe("SummaryCard", () => {
     expect(screen.getByText("You're offline.")).toBeTruthy();
   });
 
+  it("stacks below lg with a full-width button and sizes the skeleton like the ready card", () => {
+    const { container, rerender } = render(<SummaryCard {...props()} />);
+    const section = container.querySelector("section");
+    expect(section?.className).toMatch(/\bflex-col\b.*\blg:flex-row\b/);
+    const button = screen.getByRole("button", { name: "Clean up 14" });
+    expect(button.className).toContain("w-full lg:w-auto");
+    rerender(<SummaryCard {...props({ state: "loading", preview: null })} />);
+    const boxes = [...(section?.querySelectorAll("span.flex.items-center") ?? [])].map((b) =>
+      [...b.classList].find((c) => c.startsWith("h-")),
+    );
+    expect(boxes).toEqual(["h-[22px]", "h-[18px]", "h-4"]);
+  });
+
   it("renders loading and error states", async () => {
     const p = props({ state: "error" });
     const { rerender, container } = render(<SummaryCard {...p} />);

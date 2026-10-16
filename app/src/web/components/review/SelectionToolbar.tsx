@@ -17,20 +17,23 @@ export interface SelectionToolbarProps {
   onClear: () => void;
 }
 
+/**
+ * Fits the header row (UI spec 4.7): one line from 640px up. In a narrow list column the Kbd hints
+ * are dropped first; the shortcuts stay in aria-keyshortcuts, the detail hints and the help dialog.
+ */
+const TOOLBAR =
+  "flex min-h-[18px] flex-wrap items-center gap-1.5 sm:flex-nowrap @max-[47rem]:[&_span:has(>kbd)]:hidden";
+
 export function SelectionToolbar(p: SelectionToolbarProps) {
   const working = p.bulkProgress !== null;
   return (
-    <div
-      role="toolbar"
-      aria-label="Selected groups"
-      className="flex min-h-[18px] flex-wrap items-center gap-1.5"
-    >
+    <div role="toolbar" aria-label="Selected groups" className={TOOLBAR}>
       <Checkbox
         checked={p.allChecked ? true : "mixed"}
         label={`Select all groups in ${p.tabLabel}`}
         onChange={(next) => p.onToggleAll(next)}
       />
-      <span className="mr-1 ml-2 text-body font-emphasis text-ink">
+      <span className="mr-1 ml-2 min-w-0 truncate text-body font-emphasis text-ink">
         {working
           ? `Working on ${p.bulkProgress?.done ?? 0} of ${p.bulkProgress?.total ?? 0} groups…`
           : `${plural(p.selectedCount, "group", "groups")} selected · ${plural(p.emailCount, "email", "emails")}`}

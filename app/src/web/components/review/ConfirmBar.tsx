@@ -65,7 +65,7 @@ export function ConfirmBar(p: ConfirmBarProps) {
       ref={rootRef}
       data-inverse
       role="region"
-      aria-label="Clean up"
+      aria-label={p.mode === "confirm_keeps" ? "Confirm all keeps" : "Clean up"}
       className="cb-bar sticky bottom-4 z-(--z-confirm) mt-3.5 flex items-center gap-3.5 rounded-xl bg-inverse py-3 pr-3.5 pl-[18px] text-on-inverse shadow-bar motion-safe:animate-[cb-toast-in_250ms_var(--ease-out)]"
     >
       <Spark size={14} />

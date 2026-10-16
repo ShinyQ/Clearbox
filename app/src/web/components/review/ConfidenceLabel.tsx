@@ -51,7 +51,7 @@ export function ConfidenceLabel({
         <VisuallyHidden>
           {modelUnavailable ? "Confidence not available, Unsure" : `${toPercent(value)} percent, ${word}`}
         </VisuallyHidden>
-        <span className="col-span-2">
+        <span className="col-span-2 hidden lg:block">
           <ConfidenceMeter value={value} band={band} tau={tau} empty={modelUnavailable} />
         </span>
       </span>
@@ -63,10 +63,10 @@ export function ConfidenceLabel({
       ? "· left for you"
       : null;
   return (
-    <span className="inline-flex items-baseline gap-1.5 text-small">
+    <span className="inline-flex flex-wrap items-baseline gap-x-1.5 text-small">
       <span className="font-semibold text-ink">{pct}</span>
       <span className={`font-emphasis ${BAND_INK[band]}`}>{word}</span>
-      {hint ? <span className="text-ink-3">{hint}</span> : null}
+      {hint ? <span className="whitespace-nowrap text-ink-3">{hint}</span> : null}
     </span>
   );
 }

@@ -6,17 +6,26 @@ import { Dialog } from "../ui/Dialog.tsx";
 import { Kbd } from "../ui/Kbd.tsx";
 import { Toggle } from "../ui/Toggle.tsx";
 
-type Row = [string[], string];
+/** Keys, label, and an optional word that joins two keys as a range ("1 to 5"). */
+type Row = [string[], string, string?];
 
 function Column({ title, rows }: { title: string; rows: Row[] }) {
   return (
     <section>
       <h3 className="mb-2 text-meta font-emphasis text-ink-3">{title}</h3>
       <dl className="flex flex-col gap-1.5 text-body text-ink-2">
-        {rows.map(([keys, label]) => (
+        {rows.map(([keys, label, joiner]) => (
           <div key={label} className="flex items-center justify-between gap-3">
             <dt className="order-2">
-              <Kbd keys={keys} />
+              {joiner ? (
+                <span className="hidden items-center gap-1 text-meta text-ink-3 sm:inline-flex">
+                  <Kbd keys={[keys[0] ?? ""]} />
+                  {joiner}
+                  <Kbd keys={[keys[1] ?? ""]} />
+                </span>
+              ) : (
+                <Kbd keys={keys} />
+              )}
             </dt>
             <dd>{label}</dd>
           </div>
@@ -49,7 +58,7 @@ export function ShortcutHelpDialog() {
             [["A"], "archive"],
             [["E"], "keep"],
             [[enterKey(p)], "open"],
-            [["1", "5"], "tabs"],
+            [["1", "5"], "tabs", "to"],
           ]}
         />
         <Column

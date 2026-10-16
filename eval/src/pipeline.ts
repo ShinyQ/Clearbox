@@ -36,6 +36,8 @@ import { argmaxAction } from "./metrics.ts";
 /** Synthetic account id used only to derive option-order seeds. */
 export const EVAL_ACCOUNT_ID = "acc_00000000000000e1";
 export const MAX_ATTEMPTS = 3;
+/** Ceiling for a single retry back-off, so a huge Retry-After cannot stall the run. */
+export const MAX_RETRY_SLEEP_MS = 60_000;
 
 export interface Clock {
   now(): number;
@@ -94,23 +96,38 @@ export function prepareFixture(fixture: EvalFixture, now: number): PreparedFixtu
   return { fixture, signals, guard, prior, state, seed, shuffleSeed: alternateSeed(fixture.id, seed) };
 }
 
+/** Pacing function; `delayUntil` pushes every later call start to at least that epoch ms. */
+export type Pacer = (() => Promise<void>) & { delayUntil(at: number): void };
+
 /** Spaces call starts at least 60000 / rpm ms apart, across concurrent workers. */
-export function createPacer(rpm: number, clock: Clock): () => Promise<void> {
+export function createPacer(rpm: number, clock: Clock): Pacer {
+  if (!Number.isFinite(rpm) || rpm <= 0)
+    throw new Error(`createPacer: rpm must be a positive finite number, got ${rpm}`);
   const interval = 60_000 / rpm;
   let next = 0;
-  return async () => {
+  const pace = async (): Promise<void> => {
     const now = clock.now();
     const slot = Math.max(now, next);
     next = slot + interval;
     if (slot > now) await clock.sleep(slot - now);
   };
+  return Object.assign(pace, {
+    delayUntil(at: number): void {
+      if (Number.isFinite(at)) next = Math.max(next, at);
+    },
+  });
+}
+
+function retryDelayMs(retryAfterMs: number | null, attempt: number): number {
+  const valid = retryAfterMs !== null && !Number.isNaN(retryAfterMs) && retryAfterMs >= 0;
+  return Math.min(valid ? retryAfterMs : 2_000 * attempt, MAX_RETRY_SLEEP_MS);
 }
 
 /** Eval-only retries for transient errors; configuration errors abort the whole run. */
 export async function decideWithRetry(
   engine: DecisionEngine,
   input: DecisionInput,
-  pace: () => Promise<void>,
+  pace: (() => Promise<void>) & { delayUntil?: (at: number) => void },
   clock: Clock,
 ): Promise<DecisionResult> {
   for (let attempt = 1; ; attempt++) {
@@ -124,7 +141,9 @@ export async function decideWithRetry(
         );
       }
       if (!(error instanceof DecisionError) || !error.retryable || attempt >= MAX_ATTEMPTS) throw error;
-      await clock.sleep(error.retryAfterMs ?? 2_000 * attempt);
+      const wait = retryDelayMs(error.retryAfterMs, attempt);
+      pace.delayUntil?.(clock.now() + wait);
+      await clock.sleep(wait);
     }
   }
 }
@@ -147,6 +166,8 @@ export interface EvalRow {
   shuffledModelAction: SuggestedAction | null;
   shuffledModelDelete: number | null;
   shuffledSuggestion: SuggestedAction | null;
+  /** DecisionError kind or "unknown" when the shuffle call failed; null otherwise. */
+  shuffleError?: string | null;
   latencyMs: number[];
   inputTokens: number[];
   responseModel: string | null;
@@ -203,6 +224,7 @@ export async function evaluateFixture(
   const suggestion = fuse({ model, prior, guard, signals, thresholds });
 
   let shuffled: DecisionResult | null = null;
+  let shuffleError: string | null = null;
   if (deps.shuffle && model !== null) {
     try {
       shuffled = await decideWithRetry(
@@ -213,7 +235,7 @@ export async function evaluateFixture(
       );
       record(shuffled);
     } catch (e) {
-      errorKind(e);
+      shuffleError = errorKind(e);
     }
   }
 
@@ -234,6 +256,7 @@ export async function evaluateFixture(
     shuffledModelDelete: shuffled?.action.delete ?? null,
     shuffledSuggestion:
       shuffled === null ? null : fuse({ model: shuffled, prior, guard, signals, thresholds }).action,
+    shuffleError,
     latencyMs,
     inputTokens,
     responseModel: model?.responseModel ?? null,

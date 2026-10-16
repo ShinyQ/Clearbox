@@ -1,0 +1,57 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 7
+    ignore:
+      # typescript-eslint 8.71.2 peers typescript < 6.1.0 (contracts section 2).
+      - dependency-name: typescript
+        versions: [">=6.1.0"]
+    groups:
+      cloudflare:
+        patterns: ["cf", "@cloudflare/*", "@msw/cloudflare"]
+      react:
+        patterns:
+          [
+            "react",
+            "react-dom",
+            "@types/react",
+            "@types/react-dom",
+            "react-router",
+            "@tanstack/*",
+            "@vitejs/*",
+          ]
+      build:
+        patterns: ["vite", "tailwindcss", "@tailwindcss/*"]
+      runtime:
+        patterns: ["hono", "zod", "jose"]
+      test:
+        patterns: ["vitest", "msw", "happy-dom", "jsdom", "@testing-library/*", "axe-core"]
+      lint-and-types:
+        patterns:
+          [
+            "eslint",
+            "@eslint/*",
+            "typescript-eslint",
+            "eslint-plugin-*",
+            "globals",
+            "prettier",
+            "typescript",
+            "@types/node",
+          ]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

@@ -121,10 +121,10 @@ fi
 echo "== Checking target"
 if [[ "$EXISTING" == true ]]; then
   INFO="$(capture az cognitiveservices account show --resource-group "$RESOURCE_GROUP" --name "$ACCOUNT" \
-    --query "[location, kind, properties.customSubDomainName, to_string(properties.disableLocalAuth)]" --output tsv)" \
+    --query "join('|', [location || '', kind || '', properties.customSubDomainName || '', to_string(properties.disableLocalAuth)])" --output tsv)" \
     || die "account $ACCOUNT not found in resource group $RESOURCE_GROUP"
   if [[ "$DRY_RUN" != true ]]; then
-    read -r ACCOUNT_LOCATION ACCOUNT_KIND ACCOUNT_SUBDOMAIN LOCAL_AUTH_DISABLED <<<"$(echo "$INFO" | tr '\n' ' ')"
+    IFS='|' read -r ACCOUNT_LOCATION ACCOUNT_KIND ACCOUNT_SUBDOMAIN LOCAL_AUTH_DISABLED <<<"$INFO"
     [[ "$ACCOUNT_LOCATION" == "$LOCATION" ]] || die "account is in $ACCOUNT_LOCATION; Clearbox needs $LOCATION (EU data zone)"
     [[ "$ACCOUNT_KIND" == "AIServices" ]] || die "account kind is $ACCOUNT_KIND; expected AIServices"
     [[ -n "$ACCOUNT_SUBDOMAIN" && "$ACCOUNT_SUBDOMAIN" != "None" ]] || die "account has no custom subdomain"
@@ -154,10 +154,12 @@ fi
 
 echo "== Quota (AIServices.DataZoneStandard.Microsoft-Decision-1 in $LOCATION)"
 QUOTA="$(capture az cognitiveservices usage list --location "$LOCATION" \
-  --query "[?name.value=='AIServices.DataZoneStandard.Microsoft-Decision-1'] | [0].[limit, currentValue]" --output tsv || true)"
+  --query "[?name.value=='AIServices.DataZoneStandard.Microsoft-Decision-1'].join('|', [to_string(limit), to_string(currentValue)]) | [0]" --output tsv || true)"
 if [[ "$DRY_RUN" != true ]]; then
-  read -r QUOTA_LIMIT QUOTA_USED <<<"$(echo "$QUOTA" | tr '\n' ' ')"
-  if [[ -z "${QUOTA_LIMIT:-}" ]]; then
+  IFS='|' read -r QUOTA_LIMIT QUOTA_USED <<<"$QUOTA"
+  number='^[0-9]+(\.[0-9]*)?$'
+  [[ "${QUOTA_USED:-}" =~ $number ]] || QUOTA_USED=0
+  if ! [[ "${QUOTA_LIMIT:-}" =~ $number ]]; then
     echo "warning: no quota entry found; the model may not be offered to this subscription in $LOCATION" >&2
   else
     echo "limit ${QUOTA_LIMIT%.*} RPM, in use ${QUOTA_USED%.*} RPM, requested $CAPACITY RPM"

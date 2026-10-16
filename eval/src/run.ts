@@ -90,7 +90,7 @@ async function main(): Promise<number> {
     deployment: decision.deployment,
     apiKey: decision.apiKey,
     fetch: (input, init) => fetch(input, init),
-    now: () => performance.now(),
+    now: Date.now,
   });
   console.log(`Evaluating ${fixtures.length} fixtures against deployment ${decision.deployment}...`);
   const rows = await runEval(fixtures, {

@@ -140,7 +140,10 @@ describe("runSetup, first run", () => {
           stdout: JSON.stringify(SECRET_NAMES.filter((n) => n !== "ACCESS_AUD").map((name) => ({ name }))),
         };
       }
-      if (isCf(call, "workers", "get")) return { stdout: JSON.stringify({ id: "worker-123" }) };
+      if (isCf(call, "workers", "get")) {
+        if (secretsListed <= 1) return { code: 1, stderr: "Worker not found (10007)" };
+        return { stdout: JSON.stringify({ id: "worker-123" }) };
+      }
       if (call.command === "pnpm" && call.args[1] === "deploy:cf") {
         const file = call.args[3];
         assert.equal(file, SECRETS);
@@ -335,6 +338,34 @@ describe("runSetup, re-run safety", () => {
     assert.equal(fs.files.has(SECRETS), false);
   });
 
+  it("aborts when the secrets list says not found but workers get shows the Worker exists", async () => {
+    const fs = rerunFs();
+    const { runner, calls } = fakeRunner(
+      rerunResponder({ code: 1, stderr: "404 not found" }, { stdout: JSON.stringify({ id: "worker-123" }) }),
+    );
+    let generated = 0;
+    await assert.rejects(
+      runSetup(
+        deps({
+          runner,
+          prompter: fakePrompter([]),
+          fs,
+          generateKey: () => {
+            generated++;
+            return "unused";
+          },
+        }),
+      ),
+      /Could not list secrets/,
+    );
+    assert.equal(generated, 0);
+    assert.equal(
+      calls.some((c) => c.command === "pnpm" && c.args[1] === "deploy:cf"),
+      false,
+    );
+    assert.equal(fs.files.has(SECRETS), false);
+  });
+
   it("proceeds to the secret prompts when workers get confirms the Worker is absent", async () => {
     const fs = rerunFs();
     const { runner } = fakeRunner(
@@ -364,6 +395,7 @@ describe("runSetup, deploy cleanup", () => {
     if (isCf(call, "d1", "get"))
       return { stdout: JSON.stringify({ uuid: DB_ID, name: "clearbox", jurisdiction: "eu" }) };
     if (isCf(call, "workers", "secrets", "list")) return { code: 1, stderr: "not found" };
+    if (isCf(call, "workers", "get")) return { code: 1, stderr: "Worker not found (10007)" };
     return undefined;
   };
 
@@ -475,6 +507,7 @@ describe("runSetup, failures", () => {
       if (isCf(call, "d1", "get"))
         return { stdout: JSON.stringify({ uuid: DB_ID, name: "clearbox", jurisdiction: "eu" }) };
       if (isCf(call, "workers", "secrets", "list")) return { code: 1, stderr: "not found" };
+      if (isCf(call, "workers", "get")) return { code: 1, stderr: "Worker not found (10007)" };
       if (call.command === "git") return { code: 1 };
       return base(call);
     });

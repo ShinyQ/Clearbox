@@ -159,7 +159,6 @@ const NOT_FOUND = /not found|does not exist|\b10007\b|\b404\b/i;
 async function listSecretNames(cf: Cf): Promise<Set<string>> {
   const res = await cf(["workers", "secrets", "list", "--worker", WORKER_NAME]);
   if (res.code === 0) return extractSecretNames(parseJsonOutput(res.stdout));
-  if (NOT_FOUND.test(res.stderr)) return new Set();
   const probe = await cf(["workers", "get", WORKER_NAME]);
   if (probe.code !== 0 && NOT_FOUND.test(probe.stderr)) return new Set();
   throw new SetupError(

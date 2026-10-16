@@ -68,6 +68,34 @@ describe("ToastProvider and region", () => {
     expect(screen.getByText("Something went wrong. Nothing was changed.")).toBeTruthy();
   });
 
+  it("shows an updated toast again when it is no longer in the queue", () => {
+    let api: ToastApi | null = null;
+    renderWithCore(<Grab onReady={(a) => (api = a)} />);
+    act(() => api?.update("gone", { kind: "success", message: "Restored 3 emails to your inbox." }));
+    expect(screen.getByText("Restored 3 emails to your inbox.")).toBeTruthy();
+  });
+
+  it("resumes the countdown after the focused Undo button disappears", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let api: ToastApi | null = null;
+    renderWithCore(<Grab onReady={(a) => (api = a)} />);
+    let id = "";
+    act(() => {
+      id =
+        api?.show({
+          kind: "success",
+          message: "Moved.",
+          action: { label: "Undo", shortcut: "mod+z", onAction: () => undefined },
+        }) ?? "";
+    });
+    const button = screen.getByRole("button", { name: "Undo" });
+    act(() => button.focus());
+    act(() => api?.update(id, { kind: "info", message: "Undoing…", busy: true, action: undefined }));
+    act(() => api?.update(id, { kind: "success", message: "Restored.", busy: false }));
+    act(() => vi.advanceTimersByTime(8_000 + 250));
+    expect(screen.queryByText("Restored.")).toBeNull();
+  });
+
   it("announces through the live announcer and clears after 1 s", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let announce: (t: string) => void = () => undefined;

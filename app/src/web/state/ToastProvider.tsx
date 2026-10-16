@@ -22,7 +22,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         return id;
       },
       update(id, patch) {
-        setToasts((list) => list.map((t) => (t.id === id ? { ...t, ...patch, createdAt: Date.now() } : t)));
+        setToasts((list) => {
+          const now = Date.now();
+          if (list.some((t) => t.id === id)) {
+            return list.map((t) => (t.id === id ? { ...t, ...patch, leaving: false, createdAt: now } : t));
+          }
+          // The toast was evicted or expired: show it again so a result is never lost.
+          if (patch.kind === undefined || patch.message === undefined) return list;
+          return addToast(list, { ...patch, kind: patch.kind, message: patch.message, id, createdAt: now });
+        });
       },
       dismiss(id) {
         setToasts((list) => list.map((t) => (t.id === id ? { ...t, leaving: true } : t)));

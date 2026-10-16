@@ -5,6 +5,7 @@ import { isApiError } from "../api/client.ts";
 import { api } from "../api/endpoints.ts";
 import { invalidateAfterActions } from "../api/mutations.ts";
 import { formatCount, plural } from "../lib/format.ts";
+import { reportBug } from "../lib/report.ts";
 import { useToast } from "./ToastProvider.tsx";
 
 export type UndoKind = "cleanup" | "action";
@@ -14,6 +15,7 @@ interface UndoEntry {
   kind: UndoKind;
   batchIds: number[];
   expiresAt: number;
+  toastId?: string;
 }
 
 export interface UndoNotice {
@@ -35,10 +37,20 @@ const MAX_ENTRIES = 20;
 const DAY = 86_400_000;
 const Ctx = createContext<UndoStackApi | null>(null);
 
-export function undoResultMessage(kind: UndoKind, restored: number, failed: number): string {
+/** `failed` is null when a whole batch call threw, so the number of unrestored emails is unknown. */
+export function undoResultMessage(kind: UndoKind, restored: number, failed: number | null): string {
   if (failed === 0) return `Restored ${plural(restored, "email", "emails")} to your inbox.`;
   const rest = kind === "cleanup" ? " and are still in Trash or Archive." : ".";
-  return `Restored ${plural(restored, "email", "emails")}. ${formatCount(failed)} could not be restored${rest}`;
+  const who = failed === null ? "Some" : formatCount(failed);
+  return `Restored ${plural(restored, "email", "emails")}. ${who} could not be restored${rest}`;
+}
+
+const NETWORK_MESSAGE = "Couldn't reach Clearbox. Check your connection and try again.";
+
+function failureMessage(kind: UndoKind, e: unknown): string {
+  if (isApiError(e) && e.code === "undo_expired") return expiredMessage(kind);
+  if (isApiError(e) && e.code === "network") return NETWORK_MESSAGE;
+  return "Something went wrong. Nothing was changed.";
 }
 
 const expiredMessage = (kind: UndoKind) =>
@@ -61,29 +73,37 @@ export function UndoStackProvider({ children }: { children: ReactNode }) {
       entries.current = entries.current.filter((e) => e.id !== entryId);
       setSize(entries.current.length);
       const busy = { kind: "info" as const, message: "Undoing…", busy: true, action: undefined };
-      const id = toastId ?? toast.show(busy);
-      if (toastId) toast.update(toastId, busy);
+      const id = toastId ?? entry.toastId;
+      const target = id ?? toast.show(busy);
+      if (id) toast.update(id, busy);
       let restored = 0;
       let failed = 0;
-      try {
-        for (const batchId of [...entry.batchIds].reverse()) {
+      let firstError: unknown;
+      let threw = false;
+      for (const batchId of [...entry.batchIds].reverse()) {
+        try {
           const res = await api.undoBatch(batchId);
           restored += res.restored;
           failed += res.failed;
+        } catch (e) {
+          if (!threw) firstError = e;
+          threw = true;
         }
-        toast.update(id, {
-          kind: "success",
-          busy: false,
-          message: undoResultMessage(entry.kind, restored, failed),
-        });
-      } catch (e) {
-        const message =
-          isApiError(e) && e.code === "undo_expired"
-            ? expiredMessage(entry.kind)
-            : "Something went wrong. Nothing was changed.";
-        toast.update(id, { kind: "error", busy: false, message });
       }
-      await invalidateAfterActions(qc);
+      if (restored > 0 || !threw) {
+        toast.update(target, {
+          kind: threw ? "error" : "success",
+          busy: false,
+          message: undoResultMessage(entry.kind, restored, threw ? null : failed),
+        });
+      } else {
+        toast.update(target, { kind: "error", busy: false, message: failureMessage(entry.kind, firstError) });
+      }
+      try {
+        await invalidateAfterActions(qc);
+      } catch (e) {
+        reportBug("Refreshing after undo failed", e);
+      }
     },
     [qc, toast],
   );
@@ -102,12 +122,11 @@ export function UndoStackProvider({ children }: { children: ReactNode }) {
       };
       entries.current = [...entries.current, entry].slice(-MAX_ENTRIES);
       setSize(entries.current.length);
-      let toastId = "";
-      toastId = toast.show({
+      entry.toastId = toast.show({
         kind: "success",
         message: n.message,
         dedupeKey: n.dedupeKey,
-        action: { label: "Undo", shortcut: "mod+z", onAction: () => void undo(entry.id, toastId) },
+        action: { label: "Undo", shortcut: "mod+z", onAction: () => void undo(entry.id) },
       });
     },
     [toast, undo],

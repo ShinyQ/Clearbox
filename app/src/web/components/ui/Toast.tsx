@@ -54,6 +54,12 @@ export function ToastView({
 }) {
   const [hover, setHover] = useState(false);
   const [focusWithin, setFocusWithin] = useState(false);
+  const [seen, setSeen] = useState({ busy: toast.busy, action: toast.action });
+  if (seen.busy !== toast.busy || seen.action !== toast.action) {
+    // A focused button that unmounts never fires blur, so reset when the controls change.
+    setSeen({ busy: toast.busy, action: toast.action });
+    setFocusWithin(false);
+  }
   const hidden = useDocumentHidden();
   useToastTimer(
     toast.busy ? null : defaultDuration(toast),

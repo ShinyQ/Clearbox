@@ -95,6 +95,9 @@ export function localResetTime(now: number): string {
   return time((Math.floor(now / DAY) + 1) * DAY);
 }
 
+/** Local clock time ("07:00") of an ISO instant. */
+export const formatClock = (iso: string): string => time(Date.parse(iso));
+
 export function formatUsd(value: number): string {
   return value < 0.005 ? "less than $0.01" : `about $${value.toFixed(2)}`;
 }

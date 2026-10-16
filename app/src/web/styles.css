@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Component geometry, reduced motion, forced colors and keyframes. */
+@import "./styles-layers.css";
 
 /* Clearbox design tokens v1 (light). Source: docs/superpowers/specs/2026-10-15-clearbox-ui-design.md section 2. */
 @theme static {
@@ -230,86 +232,5 @@
   }
   ::selection {
     background: var(--color-accent-soft);
-  }
-}
-
-/* Meter, progress, split bar and chart geometry come from CSS custom properties set through
-   React's style prop (CSSOM, allowed by CSP style-src 'self'; see section 8.4). */
-@layer components {
-  .cb-fill {
-    width: calc(var(--cb-value, 0) * 100%);
-  }
-  .cb-tick {
-    left: calc(var(--cb-tau, 0) * 100%);
-  }
-  .cb-grow {
-    flex-grow: var(--cb-grow, 0);
-  }
-  .cb-bar-height {
-    height: calc(var(--cb-value, 0) * 100%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-  .cb-fade {
-    transition: opacity 150ms linear !important;
-  }
-}
-
-@media (forced-colors: active) {
-  .cb-tag,
-  .cb-chip,
-  .cb-meter,
-  .cb-toast,
-  .cb-bar {
-    border: 1px solid CanvasText;
-  }
-  .cb-row[aria-selected="true"] {
-    outline: 2px solid Highlight;
-    outline-offset: -2px;
-  }
-}
-
-/* Plan 05 additions: indeterminate progress (UI spec 4.17) and chip fade-in (UI spec 4.27). */
-@keyframes cb-indeterminate {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(340%);
-  }
-}
-@keyframes cb-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-@keyframes cb-toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes cb-slide-in {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: none;
   }
 }

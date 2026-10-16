@@ -61,7 +61,12 @@ done
 
 [[ -n "$RESOURCE_GROUP" ]] || die "--resource-group is required"
 [[ -n "$ACCOUNT" ]] || die "--account is required"
-[[ "$ACCOUNT" =~ ^[a-z0-9][a-z0-9-]{1,63}$ ]] || die "--account must be 2-64 lowercase letters, digits or '-'"
+if [[ "$EXISTING" == true ]]; then
+  # Existing account names may contain uppercase and '_'; az cognitiveservices account show is the authority.
+  [[ "$ACCOUNT" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{1,63}$ ]] || die "--account must be 2-64 letters, digits, '-' or '_'"
+else
+  [[ "$ACCOUNT" =~ ^[a-z0-9][a-z0-9-]{1,63}$ ]] || die "--account must be 2-64 lowercase letters, digits or '-'"
+fi
 [[ "$DEPLOYMENT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$ ]] || die "--deployment has invalid characters"
 shopt -s nocasematch
 [[ "$DEPLOYMENT_NAME" != "microsoft-decision-1" ]] || die "--deployment must not be Microsoft-Decision-1 (reserved word); use decision-1"
@@ -110,7 +115,7 @@ if [[ "$DRY_RUN" != true ]]; then
   az account show --output none 2>/dev/null || die "not logged in; run: az login"
 fi
 if [[ -n "$SUBSCRIPTION" ]]; then
-  run az account set --subscription "$SUBSCRIPTION"
+  run az account set --subscription "$SUBSCRIPTION" || die "could not select subscription $SUBSCRIPTION (check the id/name and your access)"
 fi
 
 echo "== Checking target"
@@ -126,9 +131,24 @@ if [[ "$EXISTING" == true ]]; then
     [[ "$LOCAL_AUTH_DISABLED" != "true" ]] || die "account has local (key) auth disabled; Clearbox authenticates with api-key"
   fi
 else
-  if ! capture az group show --name "$RESOURCE_GROUP" --output none >/dev/null 2>&1; then
-    [[ "$CREATE_GROUP" == true ]] || die "resource group $RESOURCE_GROUP not found (pass --create-group to create it)"
-    run az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
+  if [[ "$DRY_RUN" == true ]]; then
+    run az group exists --name "$RESOURCE_GROUP" --output tsv
+    if [[ "$CREATE_GROUP" == true ]]; then
+      echo "# only when the group does not exist:"
+      run az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
+    fi
+  else
+    GROUP_EXISTS="$(az group exists --name "$RESOURCE_GROUP" --output tsv)" \
+      || die "could not check resource group $RESOURCE_GROUP (authentication, network or permission error)"
+    case "$GROUP_EXISTS" in
+      true) ;;
+      false)
+        [[ "$CREATE_GROUP" == true ]] || die "resource group $RESOURCE_GROUP not found (pass --create-group to create it)"
+        run az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none \
+          || die "could not create resource group $RESOURCE_GROUP"
+        ;;
+      *) die "unexpected answer from az group exists for $RESOURCE_GROUP: ${GROUP_EXISTS:-empty}" ;;
+    esac
   fi
 fi
 
@@ -174,13 +194,15 @@ if [[ "$SMOKE_TEST" == true ]]; then
     echo "+ curl POST $ENDPOINT/providers/microsoft/v1/systemone (key read into a variable, never printed)"
   else
     DECISION_KEY="$(az cognitiveservices account keys list --resource-group "$RESOURCE_GROUP" --name "$ACCOUNT" \
-      --query key1 --output tsv)"
+      --query key1 --output tsv)" || die "could not read the account key for the smoke test"
     BODY="{\"model\":\"$DEPLOYMENT_NAME\",\"state\":{\"email\":{\"from\":\"codes@login.example.com\",\"subject\":\"Your one-time code is 482913\",\"age_days\":12}},\"questions\":{\"action\":{\"type\":\"choice\",\"instructions\":\"What should the mailbox owner do with this email?\",\"criteria\":{\"delete\":\"No future value\",\"keep\":\"Needs attention\"}},\"is_expired\":{\"type\":\"noul\",\"instructions\":\"Has this time-bound content expired?\"}}}"
+    CURL_OK=true
     RESPONSE="$(curl --silent --show-error --max-time 30 --write-out '\n%{http_code}' \
       --header @<(printf 'api-key: %s\n' "$DECISION_KEY") \
       --header 'content-type: application/json' \
-      --data "$BODY" "$ENDPOINT/providers/microsoft/v1/systemone")"
+      --data "$BODY" "$ENDPOINT/providers/microsoft/v1/systemone")" || CURL_OK=false
     unset DECISION_KEY
+    [[ "$CURL_OK" == true ]] || die "smoke test request failed (network error or timeout; see the curl message above)"
     STATUS="${RESPONSE##*$'\n'}"
     echo "HTTP $STATUS"
     if [[ "$STATUS" == "200" ]]; then

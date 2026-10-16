@@ -220,7 +220,7 @@ Every planned file is listed. Files not listed here must not be created without 
 Notes:
 
 - Rev 2.2: there is no `src/worker/db/leases.ts` or `db/senders.ts`; the lease, sender, correspondent and sent-thread SQL of the tick lives in `scan/claim.ts` and `scan/write-plan.ts` (rev 2.3: its builders in `scan/plan-builders.ts` and `scan/success-write.ts`), and nightly SQL in `nightly/*.ts` (section 11).
-- Rev 2.3: section 11 requires splitting files over 500 lines (SPA files aim for 300), so `scan/tick.ts` and `scan/write-plan.ts` were split as listed above, and the SPA's `controller`, `styles.css` and test fixtures into the extra modules named here. `src/web/lib/` and `src/web/state/` are listed at directory level; their files follow the names given on their lines.
+- Rev 2.3: section 11 requires splitting files over 500 lines (SPA files aim for 300), so `scan/tick.ts` and `scan/write-plan.ts` were split as listed above, and the SPA's `controller` and `styles.css` into the extra modules named here. `src/web/lib/` and `src/web/state/` are listed at directory level; their files follow the names given on their lines.
 - `app/` replaces rev 1's `apps/worker` + `apps/web`: `cf` has no `assets.directory`; assets are the Vite client build of the same project (research cloudflare.md C8).
 - No `clearbox.policy.yaml`. Policy defaults are TypeScript (`DEFAULT_POLICY`), owner edits live in D1 `settings` (no YAML dependency).
 - `packages/core` uses only Web-standard globals available in both Node 24 and Workers: `fetch`, `Request`, `Response`, `Headers`, `URL`, `TextEncoder`, `TextDecoder`, `AbortSignal.timeout`, `crypto.subtle`, `crypto.getRandomValues`.
@@ -2538,7 +2538,7 @@ export interface ActionBatchView {
   executedCount: number;
   failedCount: number;
   byAction: Record<ActionKind, number>;    // executed items per final_action
-  undoable: boolean;                       // now < undoExpiresAt and undoneAt is null and executedCount > 0
+  undoable: boolean;                       // now < undoExpiresAt and undoneAt is null and executedCount > 0 (a keep-only batch is still true; the SPA hides Undo from the delete and archive counts)
   undoExpiresAt: string;
   undoneAt: string | null;
 }
@@ -2557,7 +2557,7 @@ export interface UndoResponse {
 
 Rev 2.3 (plan 03 deviation 15): `undone_at` is reset (the batch becomes undoable again) only when nothing was restored and at least one item failed. A batch whose items were all skipped, for example a keep-only batch from "Confirm all keeps", stays undone: it has nothing to retry, and resetting it would let every click write a zero-count `undo` audit row. A partly restored batch whose other items failed with a retryable error also stays undone (`undoable: false`); there is no in-app retry for those items.
 
-**Undo and keeps (rev 2.3, lead decision):** Undo does not apply to keep decisions. The server skips keep items (`outcome: "skipped"`), so an undo of a keep-only batch returns `restored: 0, failed: 0` and the SPA answers with an info toast instead of a success (UI spec 5.2.6, 6.8). A mixed batch (for example "Approve suggestions") restores its trash and archive items and skips its keeps.
+**Undo and keeps (rev 2.3, lead decision):** Undo does not apply to keep decisions. The server skips keep items (`outcome: "skipped"`), so an undo of a keep-only batch would return `restored: 0, failed: 0`. The SPA therefore hides Undo for keep-only batches, in toasts and in Activity rows (UI spec 5.2.6, 5.4, 6.8). A keep-only batch still reports `undoable: true` server-side (`UndoBatch.undoable` does not look at the action mix); the SPA derives whether to show Undo from the batch's delete and archive counts (`result.delete + result.archive > 0`, A5 keys). A mixed batch (for example "Approve suggestions") restores its trash and archive items and skips its keeps.
 
 ### 7.9 Activity
 
@@ -3126,7 +3126,7 @@ Rev 2.3 records decisions and deviations made while building layers 1 to 6 (evid
 - **Secrets (3.7):** `setup:cf` aborts when `cf workers secrets list` fails for any reason other than "Worker not found" (it never generates keys on an unknown state) and deletes its secrets file on SIGINT and SIGTERM.
 - **Token encryption (7.15):** `TOKEN_ENC_KEY` rotation re-links each paused account with Connect Gmail or Connect Outlook on the same mailbox; Reconnect is only shown for `needs_reauth` and `config_error`.
 - **Retention (6.5) and tick (8.2, 8.3):** incremental retention skip: inbox `added` messages older than `DECIDED_TTL_MS` are dropped before identify and the context reads (`dropBeyondRetention`, `receivedAt <= 0` kept); no change to phases or scheduling.
-- **Undo (7.8):** lead decision: Undo does not apply to keep decisions (the server skips them); a keep-only batch shows an info toast. An all-skipped batch stays undone (plan 03 deviation 15); a partly restored batch with retryable failures stays undone.
+- **Undo (7.8):** lead decision: Undo does not apply to keep decisions (the server skips them); the UI hides Undo for keep-only batches (toasts and Activity rows) and keeps it for mixed batches, while the server still reports a keep-only batch as `undoable: true` and the SPA derives the button from the batch's delete and archive counts. An all-skipped batch stays undone (plan 03 deviation 15); a partly restored batch with retryable failures stays undone.
 - **Logging (9):** `tick.done` adds `skippedOld`; `request.error` is also logged on 200 responses with `errorName: "InvalidStoredReason"` and a `skippedReasons` count, on unexpected OAuth callback and connect failures, on disconnect decrypt failures, and on non-provider errors in provider calls during owner actions.
 - **Audit (12.1 A5):** tick-written `reauth_required` and `config_error` rows store `{ "reason": <code> }` while `db/audit.ts` normalizes owner-path rows of those kinds to `{}` (C27); consumers must not rely on either shape.
 - **UI spec copy:** the model banner sentence "This clears after the next successful sort.", the `decision_not_configured` copy reused by Setup step 2, the Scan now toasts, the zero-executed Clean up toast, the keeps wording, "1 old record removed", the skipped-account line in the Clean up confirm copy and the undo partial toast are now in the UI spec (5.1, 5.2, 5.4, 5.8, 6.8); account cards show status as text without a dot (5.5). These are UI spec edits, not contract changes.

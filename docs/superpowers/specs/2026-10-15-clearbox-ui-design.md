@@ -1790,7 +1790,7 @@ During the run the list is not refetched (no jumping rows); the owner can keep r
 | Undo running | toast "Undoing…" | |
 | Undo done | toast "Restored 1,284 emails to your inbox." | |
 | Undo partial | toast "Restored 1,280 emails. 4 could not be restored and are still in Trash or Archive." (count unknown: "Restored 1,280 emails. Some could not be restored and are still in Trash or Archive.") | The entry is consumed: there is no in-app retry (the server keeps a partly restored batch with retryable failures undone) |
-| Undo, nothing to restore | info toast "Nothing needed restoring. These emails were already back or untouched." | keep-only batches, or items already back |
+| Undo, nothing to restore | info toast "Nothing needed restoring. These emails were already back or untouched." | mixed, Trash or Archive batches whose items were already back (keep-only batches show no Undo) |
 | Undo expired (410) | error toast "Undo is no longer available for this Clean up (24 hours passed)." | |
 
 Numbers: titles use the fresh preview (`count`, `groups`); "groups below 86%" uses A2 `groupsLeft` and `toPercent(threshold)`. Every partial outcome with `executed > 0` also shows a success toast for what was executed ("1,180 emails cleaned up" + Undo, no group count because it is not exact for a partial run), so Undo is always one click away (for Clean up; for "Confirm all keeps" the partial toast is "Kept 12 emails. Clearbox will remember." without a promise of Undo).
@@ -1818,7 +1818,7 @@ Keeps wording for the other moments (same machine and layout as 5.2.4, "Confirmi
 | Partial: no progress detail | "Clearbox could not confirm more right now. Try again in a few minutes." |
 | Partial toast (executed > 0) | "Kept 12 emails. Clearbox will remember." |
 
-**Undo and keeps (lead decision).** Undo does not apply to keep decisions: a Keep changes nothing in the mailbox, so the server skips keep items on undo (contracts 7.8, 12.6). The spec'd Keep toasts (group, per-email, bulk, "Always keep", "Confirm all keeps") therefore carry no Undo. Layer 5 still attaches the shared Undo action to those toasts and to keep-only batches in Activity; pressing it restores nothing and shows the info toast "Nothing needed restoring. These emails were already back or untouched." instead of a false success, and the batch then reads "Undone" (an all-skipped batch stays undone). Dropping the action from keep-only toasts is a follow-up. A mixed batch ("Approve suggestions") restores its Trash and Archive items and skips its keeps.
+**Undo and keeps (lead decision).** Undo does not apply to keep decisions: a Keep changes nothing in the mailbox, so the server skips keep items on undo (contracts 7.8, 12.6). The spec'd Keep toasts (group, per-email, bulk, "Always keep", "Confirm all keeps") therefore carry no Undo. The same holds in Activity: the SPA shows Undo only when the batch has a Trash or Archive part (`result.delete + result.archive > 0`, A5 keys), so a keep-only batch has no Undo in its toast or its row (5.4). A mixed batch ("Approve suggestions") shows Undo, which restores its Trash and Archive items and skips its keeps. The info toast "Nothing needed restoring. These emails were already back or untouched." remains only for a mixed, Trash or Archive batch whose items were already back, and that batch then reads "Undone" (an all-skipped batch stays undone). The code is aligned with this in the same change set.
 
 ### 5.3 Insights (`/insights`)
 
@@ -1875,8 +1875,8 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 
 | `kind` | What | Result | Last column |
 |---|---|---|---|
-| `cleanup` | **Clean up** · 1,284 emails (+ ", 371 sender groups" when `result.groups`) | "1,280 done · 4 already moved" (from `executed`, `skipped`, `failed`; "Done" when all executed) | Batch undoable: secondary sm "Undo"; `undoneAt`: `text-ink-3` "Undone"; expired: `text-small text-ink-3` "Undo expired" |
-| `approve` | **Trash** / **Archive** / **Keep** · 248 emails (verb from the only non-zero of `result.delete/archive/keep`; several: **Approved**) | as cleanup | as cleanup |
+| `cleanup` | **Clean up** · 1,284 emails (+ ", 371 sender groups" when `result.groups`) | "1,280 done · 4 already moved" (from `executed`, `skipped`, `failed`; "Done" when all executed) | Batch undoable and `result.delete + result.archive > 0`: secondary sm "Undo"; `undoneAt`: `text-ink-3` "Undone"; expired: `text-small text-ink-3` "Undo expired"; keep-only batch (`result.delete + result.archive` is 0): no Undo and no "Undone" or "Undo expired" text, the cell is empty |
+| `approve` | **Trash** / **Archive** / **Keep** · 248 emails (verb from the only non-zero of `result.delete/archive/keep`; several: **Approved**) | as cleanup | as cleanup (a keep-only approve has no Undo) |
 | `override` | **Changed** · 12 emails to Trash (target from `result`) | as cleanup | as cleanup |
 | `undo` | **Undo** · 1,284 emails restored | "Done" or "1,280 restored · 4 failed" | none |
 | `account_connected` | **Connected** · you@gmail.com | "Sorting started" | none |
@@ -1892,7 +1892,7 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 
 **States:** loading (5 skeleton rows), ready, empty ("Nothing yet. Actions you take and nightly maintenance appear here."), error (table error row), load more (button "Load more" with loading "Loading…"), undo in progress (button loading "Undoing…"), undo done (row result updates to "Undone" after refetch; toast "Restored 248 emails to your inbox."), undo expired (410: toast error "Undo is no longer available for this action (24 hours passed)." and the cell switches to "Undo expired").
 
-**Interactions:** Undo: `POST /api/batches/:id/undo`, then invalidate `batches`, `activity`, `queue`, `groups`, `cleanup`. Focus moves to the row's "Undone" text afterwards. The Undo button comes back only when nothing was restored and something failed (the server keeps that batch undoable); a partly restored batch reads "Undone". A keep-only batch is listed as undoable too, but Undo restores nothing there: the toast is "Nothing needed restoring. These emails were already back or untouched." and the row reads "Undone" (5.2.6). The table waits for activity, accounts and batches before rendering, so rows never flash "Undo expired". Account Select filters. Row hover only highlights rows with an action.
+**Interactions:** Undo: `POST /api/batches/:id/undo`, then invalidate `batches`, `activity`, `queue`, `groups`, `cleanup`. Focus moves to the row's "Undone" text afterwards. The Undo button comes back only when nothing was restored and something failed (the server keeps that batch undoable); a partly restored batch reads "Undone". A keep-only batch (`result.delete + result.archive` is 0) shows no Undo at all, because Undo restores nothing for keeps (5.2.6); the server still reports such a batch as `undoable: true` and the SPA derives the button from the delete and archive counts (contracts 7.8). For a mixed, Trash or Archive batch whose items were already back, the toast is "Nothing needed restoring. These emails were already back or untouched." and the row reads "Undone". The table waits for activity, accounts and batches before rendering, so rows never flash "Undo expired". Account Select filters. Row hover only highlights rows with an action.
 
 ### 5.5 Accounts (`/accounts`)
 
@@ -2205,9 +2205,9 @@ Global defaults: `retry: 1` for queries (not for 4xx), `retry: 0` for mutations 
 - Durations: success with Undo 8 s, info 5 s, error until dismissed. Timers pause on hover, on keyboard focus inside the toast, and while the tab is hidden.
 - A toast with the same `dedupeKey` replaces the existing one in place (timer restarts).
 - The Undo action turns the toast into "Undoing…" (spinner, no buttons), then the toast is replaced by the result toast.
-- **Undo stack** (`UndoStackProvider`): every action that returns `batchId`s pushes `{ id, label, batchIds, expiresAt }` where `expiresAt` = earliest `undoExpiresAt` (fallback: now + 24 h). Max 20 entries, in memory (lost on reload; Activity remains the durable place to undo). `mod+Z` pops the newest unexpired entry and undoes all its batches (newest batch first). Empty stack: info toast "Nothing to undo here. Actions from earlier sessions can be undone in Activity for 24 hours." with action "View" (to `/activity`).
+- **Undo stack** (`UndoStackProvider`): every action that returns `batchId`s and has a Trash or Archive part (never a keep-only action, 5.2.6) pushes `{ id, label, batchIds, expiresAt }` where `expiresAt` = earliest `undoExpiresAt` (fallback: now + 24 h). Max 20 entries, in memory (lost on reload; Activity remains the durable place to undo). `mod+Z` pops the newest unexpired entry and undoes all its batches (newest batch first). Empty stack: info toast "Nothing to undo here. Actions from earlier sessions can be undone in Activity for 24 hours." with action "View" (to `/activity`).
 - The Undo stack entry is consumed before the server call and is never re-queued: a partly restored batch stays undone on the server, so there is no in-app retry. `mod+Z` ignores key auto-repeat (holding it must not walk the stack).
-- Undo result toasts: success "Restored 248 emails to your inbox."; partial "Restored 240 emails. 8 could not be restored." (a whole undo call failed, count unknown: "Restored 240 emails. Some could not be restored."); nothing restored and nothing failed (keep-only batches, items already back; 5.2.6): info "Nothing needed restoring. These emails were already back or untouched."; expired error "Undo is no longer available for this action (24 hours passed)."
+- Undo result toasts: success "Restored 248 emails to your inbox."; partial "Restored 240 emails. 8 could not be restored." (a whole undo call failed, count unknown: "Restored 240 emails. Some could not be restored."); nothing restored and nothing failed (items already back in a mixed, Trash or Archive batch; keep-only batches show no Undo, 5.2.6): info "Nothing needed restoring. These emails were already back or untouched."; expired error "Undo is no longer available for this action (24 hours passed)."
 
 ### 6.9 Shortcut help dialog (`?`)
 
@@ -2446,7 +2446,7 @@ src/web/
                                # SenderAvatar, VerdictTag, ConfidenceMeter, ConfidenceLabel, ReasonLine, DetailPanel,
                                # EmailPreviewList, ConfirmBar
     insights/                  # StatLine, WeeklyChart, BudgetPanel, ThresholdTable
-    accounts/                  # AccountCard, ProviderTile, DisconnectConfirm, OAuthResultBanner
+    accounts/                  # AccountCard, ProviderTile, DisconnectConfirm
     rules/                     # RuleField, RulesForm
 ```
 

@@ -352,7 +352,7 @@ The UI (a desktop-first "Clean up" dashboard for a weekly 5 to 10 minute session
 - **Session and accounts:** `GET /api/me`, accounts list, connect (OAuth start), pause, disconnect, and "Scan now".
 - **Queue:** summary counts per action, sender groups (paged, filter by account and action, sort by confidence), and group detail with items (subject, sender, date, snippet, signals, reasons, deep link to Gmail or Outlook, all plain text).
 - **Actions:** approve exact ids or a whole sender group, override an action (reject = keep), and **Clean up**: approve every pending suggestion at or above a confidence threshold (default current `τ_delete`), 100 per call, with a `remaining` count so the UI can loop.
-- **Undo** for the last 24 hours, by batch. It restores Trash and Archive items; Keep decisions change nothing in the mailbox, so undo skips them (a keep-only batch restores nothing).
+- **Undo** for the last 24 hours, by batch. It restores Trash and Archive items; Keep decisions change nothing in the mailbox, so undo skips them (a keep-only batch restores nothing, so the UI shows no Undo for it).
 - **Activity** feed from the audit log.
 - **Insights:** delete precision, label counts, `τ_delete` and calibration curve, today's budget usage, database size, and per-account sync status.
 - **Policy:** allow and deny lists ("Always keep sender", "Always allow delete"), `min_age_days`, record patterns, snippet and label-subject storage.

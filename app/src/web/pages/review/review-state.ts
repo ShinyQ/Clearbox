@@ -112,7 +112,8 @@ export function buildCopyContext(i: {
   pendingTotal: number;
   now: number;
 }): CopyContext {
-  const inactive = i.scope.find((a) => a.status === "needs_reauth") ?? null;
+  // The server leaves every non-active account (needs_reauth or config_error) out of trash/archive Clean up.
+  const inactive = i.scope.find((a) => a.status !== "active") ?? null;
   const providers = [...new Set(i.scope.map((a) => a.provider))];
   return {
     pendingTotal: i.pendingTotal,

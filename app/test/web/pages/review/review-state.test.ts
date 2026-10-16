@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCopyContext,
   firstSortProgress,
   moveTarget,
   nextAfterRemoval,
@@ -70,5 +71,23 @@ describe("review-state", () => {
         }),
       ]).value,
     ).toBeNull();
+  });
+
+  it("names any account that is not active as skipped by Clean up", () => {
+    const ctx = (status: "active" | "needs_reauth" | "config_error") =>
+      buildCopyContext({
+        scope: [
+          makeAccount(),
+          makeAccount({ id: "acc_other", email: "you@example.net", provider: "outlook", status }),
+        ],
+        accountId: undefined,
+        pendingTotal: 3,
+        now: T0,
+      }).inactiveEmail;
+    expect([ctx("active"), ctx("needs_reauth"), ctx("config_error")]).toEqual([
+      null,
+      "you@example.net",
+      "you@example.net",
+    ]);
   });
 });

@@ -1,6 +1,6 @@
 # Set up Google (Gmail)
 
-Each Clearbox deployment uses its own Google OAuth client. Clearbox requests one scope, `https://www.googleapis.com/auth/gmail.modify`, which can read, label, archive and trash mail but **cannot permanently delete** it.
+Each Clearbox deployment uses its own Google OAuth client. Clearbox requests one scope, `https://www.googleapis.com/auth/gmail.modify`, which can read, label, archive and trash mail and add the optional weekly reminder note to your inbox (`messages.insert`; nothing is sent), but **cannot permanently delete** it.
 
 You need the Worker URL from [setup-cloudflare.md](setup-cloudflare.md) (`https://clearbox.<subdomain>.workers.dev`). `pnpm setup:cf` prints the exact redirect URIs.
 

@@ -3,6 +3,8 @@ import {
   addEntry,
   fieldErrors,
   policiesEqual,
+  reminderDayOptions,
+  reminderLocalTime,
   removeEntry,
   scanHistoryDaysOf,
   scanHistoryValue,
@@ -55,5 +57,24 @@ describe("rules draft", () => {
       minAgeDays: "Too big",
     });
     expect(fieldErrors("nonsense")).toEqual({});
+  });
+
+  it("labels reminder days with the owner's local day and time of the 02:00 UTC run (contracts 12.8)", () => {
+    const utc = reminderDayOptions("UTC");
+    expect(utc.map((o) => o.value)).toEqual(["0", "1", "2", "3", "4", "5", "6"]);
+    expect(utc.map((o) => o.label)).toEqual([
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ]);
+    expect(reminderLocalTime("UTC")).toBe("2:00 AM");
+    expect(reminderDayOptions("Asia/Jakarta")[0]?.label).toBe("Sunday");
+    expect(reminderLocalTime("Asia/Jakarta")).toBe("9:00 AM");
+    expect(reminderDayOptions("America/Los_Angeles")[0]).toEqual({ value: "0", label: "Saturday" });
+    expect(reminderLocalTime("America/Los_Angeles")).toBe("7:00 PM");
   });
 });

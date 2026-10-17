@@ -24,6 +24,7 @@ import type {
   ChangesPage,
   GraphProviderDeps,
   IncrementalCursor,
+  InboxNote,
   InboxPage,
   MailProvider,
   RestoreItem,
@@ -46,6 +47,7 @@ import {
   subRequest,
 } from "./map.ts";
 import type { IncrementalState } from "./map.ts";
+import { CLEARBOX_NOTE_NAME, CLEARBOX_NOTE_SENDER } from "../../reminder/reminder.ts";
 import { classifyGraphApiError, graphMoveResult, isDeltaExpired, subRetryAfter } from "./oauth.ts";
 import type { GraphBatchSubRequest, GraphBatchSubResponse, GraphMessage } from "./types.ts";
 
@@ -470,6 +472,42 @@ function restore(client: GraphClient, items: readonly RestoreItem[]): Promise<Ac
   );
 }
 
+/**
+ * PR_MESSAGE_FLAGS (0x0E07) = MSGFLAG_UNMODIFIED (4): without it Exchange stores a message created through Graph
+ * as a draft ("This message hasn't been sent"). The read bit is clear, so the note arrives unread. Delivery and
+ * submit times (0x0E06, 0x0039) date it like received mail.
+ */
+const NOTE_MESSAGE_FLAGS = "4";
+
+function graphNoteBody(note: InboxNote): Record<string, unknown> {
+  const at = new Date(note.sentAt).toISOString();
+  const clearbox = { emailAddress: { name: CLEARBOX_NOTE_NAME, address: CLEARBOX_NOTE_SENDER } };
+  return {
+    subject: note.subject,
+    body: { contentType: "text", content: note.text },
+    from: clearbox,
+    sender: clearbox,
+    toRecipients: [{ emailAddress: { address: note.to } }],
+    isRead: false,
+    singleValueExtendedProperties: [
+      { id: "Integer 0x0E07", value: NOTE_MESSAGE_FLAGS },
+      { id: "SystemTime 0x0E06", value: at },
+      { id: "SystemTime 0x0039", value: at },
+    ],
+  };
+}
+
+/** POST /me/mailFolders/inbox/messages (Mail.ReadWrite): creates the note in Inbox. Nothing is sent. */
+async function insertInboxNote(client: GraphClient, note: InboxNote): Promise<string> {
+  const body = await client.json(graphUrl("/me/mailFolders/inbox/messages"), {
+    method: "POST",
+    body: graphNoteBody(note),
+  });
+  const id = stringField(body, "id");
+  if (id === null) throw new ProviderResponseError({ provider: PROVIDER, status: 201 });
+  return id;
+}
+
 /** Graph provider (contracts 4.3, 4.3.2). Every request carries Prefer: IdType="ImmutableId"; requests are sequential. */
 export function createGraphProvider(deps: GraphProviderDeps): MailProvider {
   const client = makeClient(deps);
@@ -484,5 +522,6 @@ export function createGraphProvider(deps: GraphProviderDeps): MailProvider {
     trash: (ids) => trash(client, ids),
     archive: (ids) => archive(client, ids, deps.archiveFolderId),
     restore: (items) => restore(client, items),
+    insertInboxNote: (note) => insertInboxNote(client, note),
   };
 }

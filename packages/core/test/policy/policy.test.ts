@@ -106,6 +106,47 @@ describe("parsePolicy", () => {
   });
 });
 
+describe("weeklyReminder (contracts 12.8)", () => {
+  it("defaults to on, Sunday (UTC)", () => {
+    expect(DEFAULT_POLICY.weeklyReminder).toEqual({ enabled: true, weekday: 0 });
+  });
+
+  it("accepts weekdays 0 to 6 only and rejects unknown keys", () => {
+    for (const weekday of [0, 3, 6]) {
+      expect(
+        PolicySchema.safeParse({ ...DEFAULT_POLICY, weeklyReminder: { enabled: false, weekday } }).success,
+      ).toBe(true);
+    }
+    for (const weekday of [-1, 7, 1.5, "1"]) {
+      expect(
+        PolicySchema.safeParse({ ...DEFAULT_POLICY, weeklyReminder: { enabled: true, weekday } }).success,
+      ).toBe(false);
+    }
+    expect(
+      PolicySchema.safeParse({ ...DEFAULT_POLICY, weeklyReminder: { enabled: true, weekday: 0, hour: 9 } })
+        .success,
+    ).toBe(false);
+    const missing: Record<string, unknown> = { ...DEFAULT_POLICY };
+    delete missing["weeklyReminder"];
+    expect(PolicySchema.safeParse(missing).success).toBe(false);
+  });
+
+  it("reads a policy stored before the reminder as the default", () => {
+    const legacy: Record<string, unknown> = { ...DEFAULT_POLICY, minAgeDays: 7 };
+    delete legacy["weeklyReminder"];
+    delete legacy["scanHistoryDays"];
+    const parsed = parsePolicy(JSON.stringify(legacy));
+    expect(parsed.weeklyReminder).toEqual({ enabled: true, weekday: 0 });
+    expect(parsed.scanHistoryDays).toBe(90);
+    expect(parsed.minAgeDays).toBe(7);
+  });
+
+  it("keeps a stored reminder choice", () => {
+    const stored = { ...DEFAULT_POLICY, weeklyReminder: { enabled: false, weekday: 5 } };
+    expect(parsePolicy(JSON.stringify(stored)).weeklyReminder).toEqual({ enabled: false, weekday: 5 });
+  });
+});
+
 describe("scan history helpers", () => {
   it("computes the cutoff, null for all mail", () => {
     expect(scanHistoryCutoff(90, 100 * 86_400_000)).toBe(10 * 86_400_000);

@@ -17,6 +17,7 @@ import type {
   BootstrapResult,
   ChangesPage,
   IncrementalCursor,
+  InboxNote,
   InboxPage,
   MailProvider,
   ProviderDeps,
@@ -40,6 +41,7 @@ import {
 import type { IncrementalState } from "./map.ts";
 import { classifyGmailApiError, classifyPart, parsePartBody, toActionOutcome } from "./oauth.ts";
 import type { ActionOutcome } from "./oauth.ts";
+import { base64UrlUtf8, buildGmailNoteMime } from "./note.ts";
 import type { GmailMessageMetadata } from "./types.ts";
 
 const PROVIDER = "gmail";
@@ -479,6 +481,24 @@ async function restore(client: GmailClient, items: readonly RestoreItem[]): Prom
   });
 }
 
+/**
+ * messages.insert (gmail.modify): adds the note to INBOX, unread, like IMAP APPEND. Nothing is sent and Gmail's
+ * spam classification is bypassed. internalDateSource=receivedTime dates it now (the insert time).
+ */
+async function insertInboxNote(client: GmailClient, note: InboxNote): Promise<string> {
+  const res = await client.request(`${USER_URL}/messages?internalDateSource=receivedTime`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ raw: base64UrlUtf8(buildGmailNoteMime(note)), labelIds: ["INBOX", "UNREAD"] }),
+  });
+  if (!res.ok) throw await client.error(res);
+  const body = await readJsonBody(res);
+  if (!isJsonObject(body) || typeof body.id !== "string" || body.id === "") {
+    throw new ProviderResponseError({ provider: PROVIDER, status: res.status });
+  }
+  return body.id;
+}
+
 /** Gmail provider (contracts 4.3, 4.3.2). Requests are strictly sequential; no hard delete exists. */
 export function createGmailProvider(deps: ProviderDeps): MailProvider {
   const client = makeClient(deps);
@@ -493,5 +513,6 @@ export function createGmailProvider(deps: ProviderDeps): MailProvider {
     trash: (ids) => trash(client, ids),
     archive: (ids) => archive(client, ids),
     restore: (items) => restore(client, items),
+    insertInboxNote: (note) => insertInboxNote(client, note),
   };
 }

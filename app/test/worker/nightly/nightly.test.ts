@@ -1,4 +1,5 @@
 import { PURGE_STOP_ROWS } from "@clearbox/core";
+import { makeSignals } from "@clearbox/core/testing";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runNightly } from "../../../src/worker/nightly/nightly.ts";
@@ -78,6 +79,60 @@ describe("runNightly", () => {
     );
     expect(audit?.count).toBe(110);
     expect(JSON.parse(audit?.result_json ?? "{}")).toEqual({ tauDelete: 0.86 });
+  });
+
+  it("calibrates a threshold per segment and pauses a segment that cannot reach 98% (contracts 12.10)", async () => {
+    for (let i = 0; i < 60; i++)
+      await seedLabel(ACCOUNT_A, { pDelete: 0.9, margin: 0.5, ownerAction: "delete" });
+    for (let i = 0; i < 70; i++) {
+      await seedLabel(ACCOUNT_A, { pDelete: 0.95, margin: 0.5, ownerAction: i < 10 ? "keep" : "delete" });
+    }
+    await env.DB.prepare(
+      "UPDATE labels SET segment = CASE WHEN p_delete < 0.92 THEN 'bulk' ELSE 'sender' END",
+    ).run();
+    await runNightly(env, { now: NOW });
+    expect(await setting("tau_segments")).toEqual({ sender: null, domain: 0.99, bulk: 0.8, other: 0.99 });
+    const calibration = await setting<{ segments: { segment: string; outcome: string }[] }>("calibration");
+    expect(calibration?.segments.map((g) => [g.segment, g.outcome])).toEqual([
+      ["sender", "no_tau_meets_target"],
+      ["domain", "insufficient_data"],
+      ["bulk", "calibrated"],
+      ["other", "insufficient_data"],
+    ]);
+  });
+
+  it("re-fuses pending suggestions with the new thresholds", async () => {
+    await env.DB.prepare(
+      "INSERT INTO settings (key, value, updated_at) VALUES ('tau_segments', ?1, 0) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+    )
+      .bind(JSON.stringify({ sender: null, domain: null, bulk: null, other: null }))
+      .run();
+    const id = await seedMessage(ACCOUNT_A, {
+      providerId: "fresh",
+      status: "pending",
+      receivedAt: NOW - 10 * DAY,
+    });
+    await env.DB.prepare(
+      `UPDATE suggestions SET action = 'delete', confidence = 0.95, p_delete = 0.95, margin = 0.9, ceiling = 'delete',
+         model_action_json = '{"delete":0.95,"archive":0.02,"keep":0.02,"unsure":0.01}',
+         flags_json = '{"isRecord":0.01,"isExpired":0.01,"isFromHuman":0.01}', importance = 0.5
+       WHERE message_id = ?1`,
+    )
+      .bind(id)
+      .run();
+    await env.DB.prepare("UPDATE messages SET signals_json = ?2 WHERE id = ?1")
+      .bind(
+        id,
+        JSON.stringify(makeSignals({ senderAddress: "news@shop.example", senderDomain: "shop.example" })),
+      )
+      .run();
+    await runNightly(env, { now: NOW });
+    // Too few labels: every segment keeps its current value, here paused, so the trash suggestion turns to Check.
+    expect(await one("SELECT action, segment FROM suggestions WHERE message_id = ?1", id)).toEqual({
+      action: "unsure",
+      segment: "other",
+    });
+    expect(await setting<{ refreshed: number }>("nightly")).toMatchObject({ refreshed: 1 });
   });
 
   it("keeps tau_delete with too few labels", async () => {

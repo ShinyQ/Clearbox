@@ -63,6 +63,33 @@ describe("GmailProvider.inboxEstimate", () => {
   });
 });
 
+describe("GmailProvider.unsubscribeHeaders", () => {
+  it("reads only the two List-Unsubscribe headers with one metadata request", async () => {
+    const m = box.addMessage({
+      headers: [
+        { name: "List-Unsubscribe", value: "<mailto:u@shop.example.com>, <https://shop.example.com/u/1>" },
+        { name: "List-Unsubscribe-Post", value: "List-Unsubscribe=One-Click" },
+      ],
+    });
+    expect(await provider.unsubscribeHeaders(m.id)).toEqual({
+      listUnsubscribe: "<mailto:u@shop.example.com>, <https://shop.example.com/u/1>",
+      listUnsubscribePost: "List-Unsubscribe=One-Click",
+    });
+    expect(box.requests).toEqual([`GET /gmail/v1/users/me/messages/${m.id}`]);
+  });
+
+  it("returns nulls for missing headers, null for a gone message, and throws on auth failure", async () => {
+    const m = box.addMessage({ headers: [] });
+    expect(await provider.unsubscribeHeaders(m.id)).toEqual({
+      listUnsubscribe: null,
+      listUnsubscribePost: null,
+    });
+    expect(await provider.unsubscribeHeaders("missing-id")).toBeNull();
+    box.failNext({ method: "GET", path: `/gmail/v1/users/me/messages/${m.id}`, status: 401, times: 2 });
+    await expect(provider.unsubscribeHeaders(m.id)).rejects.toBeInstanceOf(ProviderAuthError);
+  });
+});
+
 describe("GmailProvider.listInboxPage", () => {
   it("pages the inbox newest first with labelIds=INBOX and one metadata batch per page", async () => {
     for (let i = 0; i < 5; i++) box.addMessage();

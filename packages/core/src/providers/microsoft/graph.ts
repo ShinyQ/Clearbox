@@ -8,6 +8,7 @@ import {
   ProviderUnavailableError,
 } from "../../model/errors.ts";
 import type { MailMessage } from "../../model/mail.ts";
+import { headerValue } from "../../text/headers.ts";
 import {
   bestEffortCount,
   chunkIds,
@@ -30,6 +31,7 @@ import type {
   RestoreItem,
   SentCursor,
   SentPage,
+  UnsubscribeHeaders,
 } from "../provider.ts";
 import {
   GRAPH_DELTA_INBOX_SELECT,
@@ -194,6 +196,24 @@ async function withHeaders(client: GraphClient, messages: readonly GraphMessage[
     const headers = fetched.get(m.id);
     return headers === null ? [] : [mapGraphMessage({ ...m, internetMessageHeaders: headers ?? [] })];
   });
+}
+
+/** GET /me/messages/{id}?$select=internetMessageHeaders; only the two List-Unsubscribe headers are kept; null on 404. */
+async function getUnsubscribeHeaders(client: GraphClient, id: string): Promise<UnsubscribeHeaders | null> {
+  const res = await client.request(
+    graphUrl(`/me/messages/${encodeURIComponent(id)}`, { $select: "internetMessageHeaders" }),
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw await client.error(res);
+  const body = await readJsonBody(res);
+  if (!isJsonObject(body)) throw new ProviderResponseError({ provider: PROVIDER, status: res.status });
+  const headers = Array.isArray(body.internetMessageHeaders)
+    ? body.internetMessageHeaders.filter(isGraphHeader)
+    : [];
+  return {
+    listUnsubscribe: headerValue(headers, "List-Unsubscribe"),
+    listUnsubscribePost: headerValue(headers, "List-Unsubscribe-Post"),
+  };
 }
 
 // ---- Bootstrap ----
@@ -519,6 +539,7 @@ export function createGraphProvider(deps: GraphProviderDeps): MailProvider {
     syncChanges: (cursor, maxMessages) => syncChanges(client, cursor, maxMessages),
     resyncCursor: (watermark) => resyncCursor(client, watermark),
     inboxEstimate: () => getInboxEstimate(client),
+    unsubscribeHeaders: (id) => getUnsubscribeHeaders(client, id),
     trash: (ids) => trash(client, ids),
     archive: (ids) => archive(client, ids, deps.archiveFolderId),
     restore: (items) => restore(client, items),

@@ -179,3 +179,34 @@ describe("describeActivity (UI spec 5.4)", () => {
     expect(describeActivity({ ...base, id: 81, kind: "calibration" }, ctx).result).toBe("Unchanged");
   });
 });
+
+describe("describeActivity unsubscribe rows (contracts 12.9)", () => {
+  const entry = (outcome: string, count: number) =>
+    describeActivity(
+      {
+        id: 99,
+        ts: "2026-10-15T10:00:00.000Z",
+        kind: "unsubscribe",
+        accountId: null,
+        batchId: null,
+        count,
+        result: { outcome, status: 200 },
+      },
+      ctx,
+    );
+
+  it("names no sender and maps outcome codes to short results", () => {
+    expect(entry("unsubscribed", 1)).toMatchObject({
+      verb: "Unsubscribed",
+      detail: "one sender",
+      result: "Done",
+      last: null,
+    });
+    expect(entry("sender_redirect", 0)).toMatchObject({
+      verb: "Unsubscribe failed",
+      result: "Sender redirected",
+    });
+    expect(entry("unsafe_url", 0).result).toBe("Blocked: unsafe link");
+    expect(entry("provider_error", 0).result).toBe("Mailbox error");
+  });
+});

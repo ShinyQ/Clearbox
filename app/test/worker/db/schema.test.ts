@@ -15,6 +15,7 @@ const TABLES = [
   "sent_threads",
   "settings",
   "suggestions",
+  "unsubscribes",
 ];
 
 describe("0001_init migration", () => {

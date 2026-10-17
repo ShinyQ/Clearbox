@@ -29,6 +29,7 @@ const ACCOUNT_TABLES = [
   "senders",
   "correspondents",
   "sent_threads",
+  "unsubscribes",
 ];
 
 describe("purgeExpired", () => {
@@ -118,6 +119,9 @@ describe("purgeDisconnected", () => {
         ).bind(id),
         env.DB.prepare(
           "INSERT INTO sent_threads (account_id, thread_id, last_sent_at) VALUES (?1, 't-1', 0)",
+        ).bind(id),
+        env.DB.prepare(
+          "INSERT INTO unsubscribes (account_id, sender, unsubscribed_at) VALUES (?1, 'news@shop.example', 0)",
         ).bind(id),
         env.DB.prepare(
           "INSERT INTO leases (name, account_id, holder, acquired_at, expires_at, released_at) VALUES ('account:' || ?1, ?1, 'h', 0, 1, 1)",

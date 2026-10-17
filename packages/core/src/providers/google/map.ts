@@ -49,6 +49,11 @@ export function gmailMetadataPath(id: string): string {
   return metadataPath(id, GMAIL_METADATA_HEADERS, GMAIL_METADATA_FIELDS);
 }
 
+/** messages.get path for the two List-Unsubscribe headers only (contracts 12.9). */
+export function gmailUnsubscribePath(id: string): string {
+  return metadataPath(id, ["List-Unsubscribe", "List-Unsubscribe-Post"], "payload(headers)");
+}
+
 /** Batch part path for sent-message recipients. */
 export function gmailSentMetadataPath(id: string): string {
   return metadataPath(id, GMAIL_SENT_HEADERS, GMAIL_SENT_FIELDS);

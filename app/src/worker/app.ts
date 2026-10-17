@@ -19,6 +19,7 @@ import { meRoutes } from "./routes/me.ts";
 import { oauthRoutes } from "./routes/oauth.ts";
 import { policyRoutes } from "./routes/policy.ts";
 import { queueRoutes } from "./routes/queue.ts";
+import { unsubscribeRoutes } from "./routes/unsubscribe.ts";
 import { makeProvider, PROVIDER_OAUTH } from "./scan/providers.ts";
 import type { ProviderFactory, ProviderOAuthMap } from "./scan/providers.ts";
 
@@ -55,6 +56,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   app.route("/api/accounts", accountsRoutes);
   app.route("/api", queueRoutes);
   app.route("/api", actionsRoutes);
+  app.route("/api", unsubscribeRoutes);
   app.route("/api/batches", batchesRoutes);
   app.route("/api/activity", activityRoutes);
   app.route("/api/insights", insightsRoutes);

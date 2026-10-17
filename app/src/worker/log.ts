@@ -16,7 +16,8 @@ export type LogEventName =
   | "budget.gate"
   | "issue.raised"
   | "issue.cleared"
-  | "request.error";
+  | "request.error"
+  | "unsubscribe.done";
 
 export interface LogBase {
   app: "clearbox";

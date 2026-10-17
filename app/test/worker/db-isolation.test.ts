@@ -14,7 +14,7 @@ const sources = import.meta.glob(
 ) as Record<string, string>;
 
 const OWNED =
-  /\b(?:FROM|INTO|UPDATE|JOIN)\s+(messages|suggestions|labels|sender_priors|senders|correspondents|sent_threads)\b/i;
+  /\b(?:FROM|INTO|UPDATE|JOIN)\s+(messages|suggestions|labels|sender_priors|senders|correspondents|sent_threads|unsubscribes)\b/i;
 const SQL_START = /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH)\b/i;
 const SCOPED = /account_id\s*=\s*\?|account_id IN \(/;
 const EXEMPT = /--\s*isolation-exempt:\s*([a-z_]+)/;

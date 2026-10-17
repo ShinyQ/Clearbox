@@ -43,6 +43,7 @@ function stubProvider(): MailProvider {
       }),
     resyncCursor: () => Promise.resolve("{}"),
     inboxEstimate: () => Promise.resolve(null),
+    unsubscribeHeaders: () => Promise.resolve(null),
     trash: ok,
     archive: ok,
     restore: (items: readonly RestoreItem[]) => ok(items.map((i) => i.id)),

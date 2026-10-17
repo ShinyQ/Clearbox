@@ -47,6 +47,7 @@ Complete this list before the first production deploy and again after any change
 
 - [ ] Approval invariant tests pass: no provider call without a `pending` suggestion id in the request, cap 100 ids, idempotent repeats, `unsure` not approvable (`app/test/worker/actions/execute.test.ts`, `app/test/worker/routes/actions.test.ts`).
 - [ ] No hard-delete code path: `git grep -n "batchDelete\|messages/.*/delete\|permanentDelete" -- packages app/src` returns nothing.
+- [ ] Unsubscribe (contracts 12.9) tests pass: URL safety (`packages/core/test/text/unsubscribe.test.ts`), the POST shape, unsafe URLs never sent, redirects not followed, no URL or sender in logs (`app/test/worker/routes/unsubscribe.test.ts`). Nothing calls `/api/unsubscribe` outside the confirm buttons: `git grep -n "api.unsubscribe" -- app/src` lists only `use-unsubscribe.ts`.
 - [ ] Undo works within 24 hours on a real test mailbox for trash and archive batches (`app/test/worker/actions/undo.test.ts` covers the logic). Keep decisions are not undoable by design.
 
 ## Data minimization, residency and logs

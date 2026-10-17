@@ -108,6 +108,7 @@ const ACCOUNT_TABLE_DELETES: readonly string[] = [
   "DELETE FROM senders WHERE account_id = ?1 AND address IN (SELECT address FROM senders WHERE account_id = ?1 LIMIT 1000)",
   "DELETE FROM correspondents WHERE account_id = ?1 AND address IN (SELECT address FROM correspondents WHERE account_id = ?1 LIMIT 1000)",
   "DELETE FROM sent_threads WHERE account_id = ?1 AND thread_id IN (SELECT thread_id FROM sent_threads WHERE account_id = ?1 LIMIT 1000)",
+  "DELETE FROM unsubscribes WHERE account_id = ?1 AND sender IN (SELECT sender FROM unsubscribes WHERE account_id = ?1 LIMIT 1000)",
 ];
 
 /** Contracts 8.6: disconnected accounts, in table order, then the leases and the account row. */

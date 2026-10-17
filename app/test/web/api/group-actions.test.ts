@@ -35,6 +35,7 @@ const detail = (ids: number[]): GroupDetail => ({
   asOf: "2026-10-15T10:00:00.000Z",
   group: group(),
   items: { items: ids.map((id) => ({ id }) as SuggestionItem), nextCursor: null },
+  unsubscribe: { oneClick: false, unsubscribedAt: null },
 });
 
 function fakeDeps(o: Partial<GroupActionDeps>): GroupActionDeps {

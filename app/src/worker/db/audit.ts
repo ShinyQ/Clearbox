@@ -43,6 +43,7 @@ const RESULT_KEYS: Partial<Record<AuditKind, readonly string[]>> = {
   undo: ["restored", "failed"],
   policy_updated: ["allow", "deny"],
   calibration: ["tauDelete"],
+  unsubscribe: ["outcome", "status"],
   account_connected: [],
   account_reconnected: [],
   account_disconnected: [],

@@ -78,6 +78,12 @@ export type ActionResult =
   | { id: string; ok: true; newId: string }
   | { id: string; ok: false; error: ActionErrorCode; retryAfterMs: number | null };
 
+/** Raw List-Unsubscribe headers of one message (contracts 12.8); untrusted sender text. */
+export interface UnsubscribeHeaders {
+  listUnsubscribe: string | null;
+  listUnsubscribePost: string | null;
+}
+
 export type RestoreFrom = "trash" | "archive";
 export interface RestoreItem {
   id: string;
@@ -108,6 +114,11 @@ export interface MailProvider {
    * Best effort: null on rate limit, 5xx, network or shape errors; auth, config and budget errors still throw.
    */
   inboxEstimate(): Promise<number | null>;
+  /**
+   * List-Unsubscribe and List-Unsubscribe-Post of one message, one request (Gmail messages.get format=metadata,
+   * Graph GET message internetMessageHeaders). null when the message no longer exists (404).
+   */
+  unsubscribeHeaders(id: string): Promise<UnsubscribeHeaders | null>;
   /** Move to Trash / Deleted Items. Max 100 ids per call. */
   trash(ids: readonly string[]): Promise<ActionResult[]>;
   /** Gmail: remove INBOX; Graph: move to archiveFolderId. Max 100 ids per call. */

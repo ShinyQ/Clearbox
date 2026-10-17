@@ -26,6 +26,8 @@ import {
   type SuggestionItem,
   type TickReport,
   type UndoResponse,
+  type UnsubscribeErrorCode,
+  type UnsubscribeResponse,
 } from "../../shared/api.ts";
 
 // Every schema is checked against its contract type with `satisfies` (decision W1).
@@ -171,7 +173,17 @@ export const GroupDetailSchema = z.object({
   asOf: str,
   group: SenderGroupSchema,
   items: pageSchema(SuggestionItemSchema),
-}) satisfies z.ZodType<GroupDetail>;
+  // Contracts 12.8. Absent (older server) reads as "no one-click, never unsubscribed": no button is shown.
+  unsubscribe: z
+    .object({ oneClick: bool, unsubscribedAt: nstr })
+    .default({ oneClick: false, unsubscribedAt: null }),
+}) satisfies z.ZodType<GroupDetail, unknown>;
+
+export const UnsubscribeResponseSchema = z.object({
+  outcome: z.enum(["unsubscribed", "failed"]),
+  error: anyString<UnsubscribeErrorCode>().nullable(),
+  unsubscribedAt: nstr,
+}) satisfies z.ZodType<UnsubscribeResponse>;
 
 export const CleanupPreviewSchema = z.object({
   asOf: str,

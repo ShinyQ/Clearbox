@@ -1155,6 +1155,7 @@ interface ReasonLineProps { reason: ApiReason }   // { code, text }
   3. **Label** "Latest emails" (`text-meta font-emphasis text-ink-3`).
   4. **EmailPreviewList.**
   5. **Actions** (flex wrap, gap 6px): see table.
+  5a. **Unsubscribe** (contracts 12.8): see 4.14a. Rendered only for a known sender when `GroupDetail.unsubscribe` offers one-click or records a past unsubscribe.
   6. **Hints** (flex wrap, gap 10px, `text-meta text-ink-3`): Kbd J K "move", X "select", T "trash", A "archive", E "keep". Hidden below `lg`.
 
 | Verdict | Verdict tag label | Primary action | Other actions (secondary) | Ghost |
@@ -1202,6 +1203,24 @@ interface DetailPanelProps {
 | account needs reconnect | Warning line above actions (`text-small text-check-ink-strong`, warning icon): "Reconnect you@company.com to act on these emails." with link button "Reconnect". Actions disabled. |
 
 - **Accessibility:** inline: `aside aria-labelledby` the sender heading (`h2`). Slide-over: `role="dialog" aria-modal="false" aria-labelledby`, focus moves to the heading on open, Esc closes and returns focus to the row. Sheet: `role="dialog" aria-modal="true"`, focus trapped, Back button first in tab order. Action buttons expose shortcuts with `aria-keyshortcuts` ("T", "A", "E").
+
+### 4.14a UnsubscribeSection (contracts 12.8)
+
+- **Purpose:** owner-initiated RFC 8058 one-click unsubscribe for the active sender, inside the DetailPanel below the actions. Never automatic, never on a keyboard shortcut, always behind an inline confirmation because it cannot be undone.
+- **Data:** `GroupDetail.unsubscribe` (`oneClick`, `unsubscribedAt`) from the group detail query; `POST /api/unsubscribe { groupKey }`.
+
+| State | Rendering |
+|---|---|
+| not offered, never unsubscribed (or unknown sender) | Nothing. |
+| offered | `text-small` row: link button "Unsubscribe" (`aria-label` "Unsubscribe from Shopee"). |
+| unsubscribed before | Check icon 12px + "Unsubscribed on 13 Oct" (`text-small text-ink-3`); plus link button "Unsubscribe again" only while the newest email still offers one-click. |
+| confirming | Card (`bg-surface border border-line rounded-lg p-3`, `role="group"` labelled by the title, described by the sub-line). Title `text-small font-semibold`: "Unsubscribe from Shopee?" Sub-line `text-small text-ink-3`: "Clearbox sends the sender's one-click unsubscribe request. Unsubscribing can't be undone. Moving 248 emails to Trash can be undone for 24 hours." Buttons (size `sm`): danger "Trash 248 and unsubscribe" (trash icon, focused on open), secondary "Unsubscribe only", ghost "Cancel" (focus returns to the Unsubscribe link). |
+| running | The chosen button shows a spinner and "Unsubscribing…"; the other two are soft-disabled. |
+| disabled | Account needs reconnect, offline, Clean up preparing/confirming/running, or a group action in flight: buttons soft-disabled. |
+
+- **Flow:** "Unsubscribe only": `POST /api/unsubscribe`; success toast "Unsubscribed from Shopee. It can take a few days for their emails to stop." (no Undo); the section then reads "Unsubscribed on <date>". "Trash 248 and unsubscribe": unsubscribe first (it needs the group's newest pending email), then trash the group with the normal 6.4 path and its Undo toast, message "Unsubscribed from Shopee and moved 248 emails to Trash." A failed unsubscribe still trashes (the owner asked for both and only the trash can be undone), shows an error toast, and the trash toast uses the plain 5.1 copy.
+- **Error copy** (`lib/copy-unsubscribe.ts`): `not_available` "Shopee no longer offers one-click unsubscribe. Nothing was sent."; `message_gone` "The newest email from Shopee is gone, so its unsubscribe link couldn't be read. Nothing was sent."; `unsafe_url` "Shopee's unsubscribe link didn't pass Clearbox's safety check. Nothing was sent."; `account_inactive` "Reconnect this account to unsubscribe. Nothing was sent."; `sender_rejected` "Shopee didn't accept the unsubscribe request. Try again later, or use the link in one of their emails."; `sender_redirect` "Shopee answered with a redirect, which one-click unsubscribe doesn't allow. Use the link in one of their emails instead."; `sender_timeout` "Shopee didn't answer in time. Try again later."; `sender_unreachable` "Couldn't reach Shopee's unsubscribe server. Try again later."; provider errors "Couldn't read the unsubscribe link from your mailbox. Nothing was sent. Try again in a minute."; HTTP errors (`budget_exhausted`, `network`, ...) reuse the 5.1 action error copy.
+- **No "open unsubscribe page" link** for https links without one-click (contracts 12.8): the owner can use "Open in Gmail" / "Open in Outlook" on an email instead.
 
 ### 4.15 EmailPreviewList
 
@@ -1889,6 +1908,7 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 | `policy_updated` | **Rules updated** | "Always keep 3 · Always OK to trash 1" (from `result.allow`, `result.deny`; "Saved" when absent) | ghost sm "Open Rules" |
 | `calibration` | **Threshold tuned** · checked 312 trash decisions | "Now 86%" (from `result.tauDelete`), else "Unchanged" | none |
 | `purge` | **Nightly cleanup** · 4,210 old records removed (singular: "1 old record removed") | "Done" | none |
+| `unsubscribe` | **Unsubscribed** · one sender (failed: **Unsubscribe failed** · one sender); the audit row never names the sender | from `result.outcome`: "Done", "Not offered", "Email gone", "Blocked: unsafe link", "Needs reconnect", "Sender refused", "Sender redirected", "No answer", "Sender unreachable", else "Mailbox error" | none (cannot be undone) |
 
 **States:** loading (5 skeleton rows), ready, empty ("Nothing yet. Actions you take and nightly maintenance appear here."), error (table error row), load more (button "Load more" with loading "Loading…"), undo in progress (button loading "Undoing…"), undo done (row result updates to "Undone" after refetch; toast "Restored 248 emails to your inbox."), undo expired (410: toast error "Undo is no longer available for this action (24 hours passed)." and the cell switches to "Undo expired").
 

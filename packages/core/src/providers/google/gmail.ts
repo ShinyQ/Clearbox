@@ -10,6 +10,8 @@ import {
   ProviderUnavailableError,
 } from "../../model/errors.ts";
 import type { MailMessage } from "../../model/mail.ts";
+import { headerValue } from "../../text/headers.ts";
+import type { RawHeader } from "../../text/headers.ts";
 import { bestEffortCount, chunkIds, isJsonObject, readJsonBody, sendGuarded } from "../oauth.ts";
 import type {
   ActionResult,
@@ -23,6 +25,7 @@ import type {
   RestoreItem,
   SentCursor,
   SentPage,
+  UnsubscribeHeaders,
 } from "../provider.ts";
 import {
   GMAIL_API,
@@ -30,6 +33,7 @@ import {
   encodeIncremental,
   gmailMetadataPath,
   gmailSentMetadataPath,
+  gmailUnsubscribePath,
   mapGmailMessage,
   mapGmailSentItem,
   pageCursor,
@@ -250,6 +254,25 @@ async function bootstrap(client: GmailClient): Promise<BootstrapResult> {
 /** GET /users/me/labels/INBOX (1 quota unit, allowed with gmail.modify): messagesTotal. */
 function getInboxEstimate(client: GmailClient): Promise<number | null> {
   return bestEffortCount(() => client.json(`${USER_URL}/labels/INBOX`), "messagesTotal");
+}
+
+/** GET messages/{id}?format=metadata with only the List-Unsubscribe headers; null on 404. */
+async function getUnsubscribeHeaders(client: GmailClient, id: string): Promise<UnsubscribeHeaders | null> {
+  const res = await client.request(`${GMAIL_API}${gmailUnsubscribePath(id)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw await client.error(res);
+  const body = await readJsonBody(res);
+  if (!isJsonObject(body)) throw new ProviderResponseError({ provider: PROVIDER, status: res.status });
+  const payload = isJsonObject(body.payload) ? body.payload : {};
+  const headers = Array.isArray(payload.headers) ? payload.headers.filter(isRawHeader) : [];
+  return {
+    listUnsubscribe: headerValue(headers, "List-Unsubscribe"),
+    listUnsubscribePost: headerValue(headers, "List-Unsubscribe-Post"),
+  };
+}
+
+function isRawHeader(value: unknown): value is RawHeader {
+  return isJsonObject(value) && typeof value.name === "string" && typeof value.value === "string";
 }
 
 async function listInboxPage(
@@ -490,6 +513,7 @@ export function createGmailProvider(deps: ProviderDeps): MailProvider {
     syncChanges: (cursor, maxMessages) => syncChanges(client, cursor, maxMessages),
     resyncCursor: (watermark) => resyncCursor(client, watermark),
     inboxEstimate: () => getInboxEstimate(client),
+    unsubscribeHeaders: (id) => getUnsubscribeHeaders(client, id),
     trash: (ids) => trash(client, ids),
     archive: (ids) => archive(client, ids),
     restore: (items) => restore(client, items),

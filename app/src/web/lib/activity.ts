@@ -1,5 +1,6 @@
 import type { AccountView, ActionBatchView, ActivityEntry } from "../../shared/api.ts";
 import { isKeepOnly } from "./keep-only.ts";
+import { unsubscribeActivityResult } from "./copy-unsubscribe.ts";
 import { toPercent } from "./confidence.ts";
 import { formatCount, plural } from "./format.ts";
 
@@ -147,6 +148,15 @@ export function describeActivity(e: ActivityEntry, ctx: ActivityContext): Activi
         detail: `${plural(e.count, "old record", "old records")} removed`,
         result: "Done",
       };
+    case "unsubscribe": {
+      const done = r["outcome"] === "unsubscribed";
+      return {
+        ...base,
+        verb: done ? "Unsubscribed" : "Unsubscribe failed",
+        detail: "one sender",
+        result: unsubscribeActivityResult(r["outcome"]),
+      };
+    }
     default:
       return { ...base, verb: "Activity", detail: emails, result: "Done" };
   }

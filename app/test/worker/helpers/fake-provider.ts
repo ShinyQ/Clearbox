@@ -8,6 +8,7 @@ import type {
   ProviderDeps,
   ProviderKind,
   RestoreItem,
+  UnsubscribeHeaders,
 } from "@clearbox/core";
 import { PROVIDER_OAUTH } from "../../../src/worker/scan/providers.ts";
 import type {
@@ -18,7 +19,7 @@ import type {
 } from "../../../src/worker/scan/providers.ts";
 
 export interface FakeCall {
-  method: "bootstrap" | "inboxEstimate" | "trash" | "archive" | "restore";
+  method: "bootstrap" | "inboxEstimate" | "unsubscribeHeaders" | "trash" | "archive" | "restore";
   ids: string[];
   target: ProviderTarget;
 }
@@ -32,6 +33,8 @@ export interface FakeProviderOptions {
   bootstrap?: BootstrapResult;
   /** Value returned by inboxEstimate(); default null (unknown). */
   inboxEstimate?: number | null;
+  /** Per provider message id List-Unsubscribe headers; a missing id returns null (message gone). */
+  unsubscribeHeaders?: ReadonlyMap<string, UnsubscribeHeaders>;
 }
 
 const DEFAULT_BOOTSTRAP: BootstrapResult = {
@@ -87,6 +90,13 @@ export class FakeProvider {
         const failure = this.options.failWith?.inboxEstimate;
         if (failure) throw failure;
         return this.options.inboxEstimate ?? null;
+      },
+      unsubscribeHeaders: async (id: string) => {
+        this.calls.push({ method: "unsubscribeHeaders", ids: [id], target });
+        await deps.tokens.getAccessToken();
+        const failure = this.options.failWith?.unsubscribeHeaders;
+        if (failure) throw failure;
+        return this.options.unsubscribeHeaders?.get(id) ?? null;
       },
       listInboxPage: unused("listInboxPage"),
       listSentPage: unused("listSentPage"),

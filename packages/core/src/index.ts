@@ -50,6 +50,13 @@ export {
   parseListUnsubscribe,
 } from "./text/headers.ts";
 export type { ListUnsubscribe, ParsedAuthResults, RawHeader } from "./text/headers.ts";
+export {
+  UNSUBSCRIBE_URL_MAX_CHARS,
+  checkUnsubscribeUrl,
+  isOneClickPost,
+  oneClickTarget,
+} from "./text/unsubscribe.ts";
+export type { CheckedUrl, UnsafeUrlReason } from "./text/unsubscribe.ts";
 export { collapseWhitespace, decodeHtmlEntities, truncateChars } from "./text/truncate.ts";
 
 export type {
@@ -68,6 +75,7 @@ export type {
   SentCursor,
   SentItem,
   SentPage,
+  UnsubscribeHeaders,
 } from "./providers/provider.ts";
 export type { OAuthTokens, TokenSource, TokenUpdate } from "./providers/token.ts";
 export {

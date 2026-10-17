@@ -6,6 +6,7 @@ import type {
   PatchAccountBody,
   PatchSenderBodySchema,
   PutPolicyBodySchema,
+  UnsubscribeBody,
 } from "../../shared/api.ts";
 import type { GroupSort, Verdict } from "../lib/view-types.ts";
 import { apiGet, apiSend } from "./client.ts";
@@ -25,6 +26,7 @@ import {
   SenderGroupPageSchema,
   TickReportSchema,
   UndoResponseSchema,
+  UnsubscribeResponseSchema,
 } from "./schemas.ts";
 
 export type PutPolicyBody = z.input<typeof PutPolicyBodySchema>;
@@ -67,6 +69,8 @@ export const api = {
     apiGet(`/api/groups/${seg(key)}`, GroupDetailSchema, { limit: q.limit, cursor: q.cursor }),
   approve: (body: ApproveBody) => apiSend("POST", "/api/approve", ActionResponseSchema, body),
   override: (body: OverrideBody) => apiSend("POST", "/api/override", ActionResponseSchema, body),
+  unsubscribe: (body: UnsubscribeBody) =>
+    apiSend("POST", "/api/unsubscribe", UnsubscribeResponseSchema, body),
   cleanupPreview: (q: PreviewQuery) =>
     apiGet("/api/cleanup/preview", CleanupPreviewSchema, {
       actions: q.actions,

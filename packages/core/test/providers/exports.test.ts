@@ -77,6 +77,7 @@ describe("@clearbox/core provider exports", () => {
           "resyncCursor",
           "syncChanges",
           "trash",
+          "unsubscribeHeaders",
         ].sort(),
       );
     }

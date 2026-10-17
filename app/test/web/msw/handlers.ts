@@ -135,7 +135,26 @@ export function fakeApiHandlers(s: FakeApiState) {
         .filter((i) => keyOf(i) === group.key)
         .sort((a, b) => b.confidence - a.confidence || b.receivedAt.localeCompare(a.receivedAt))
         .map((i) => toSuggestionItem(s, i));
-      return HttpResponse.json({ asOf: iso(s.now), group, items: paginate(items, url) });
+      return HttpResponse.json({
+        asOf: iso(s.now),
+        group,
+        items: paginate(items, url),
+        unsubscribe: s.unsubscribe[group.sender] ?? { oneClick: false, unsubscribedAt: null },
+      });
+    }),
+    route("unsubscribe", "post", "/api/unsubscribe", ({ body }) => {
+      const key = (body as { groupKey: string }).groupKey;
+      const group = deriveGroups(s).find((g) => g.key === key);
+      if (!group) return errorResponse(404, "not_found");
+      const result = s.unsubscribeResult ?? {
+        outcome: "unsubscribed" as const,
+        error: null,
+        unsubscribedAt: iso(s.now),
+      };
+      if (result.unsubscribedAt !== null) {
+        s.unsubscribe[group.sender] = { oneClick: true, unsubscribedAt: result.unsubscribedAt };
+      }
+      return HttpResponse.json(result);
     }),
     route("approve", "post", "/api/approve", ({ body }) => {
       const b = body as { ids?: number[]; groupKey?: string };

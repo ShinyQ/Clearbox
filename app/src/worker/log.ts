@@ -17,7 +17,8 @@ export type LogEventName =
   | "issue.raised"
   | "issue.cleared"
   | "request.error"
-  | "unsubscribe.done";
+  | "unsubscribe.done"
+  | "auto_trash.done";
 
 export interface LogBase {
   app: "clearbox";

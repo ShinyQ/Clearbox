@@ -1,5 +1,7 @@
 import type { Policy } from "@clearbox/core";
 import {
+  AUTO_TRASH_DESCRIPTION,
+  AUTO_TRASH_KILLED_NOTE,
   addEntry,
   MIN_AGE_OPTIONS,
   MOVED_NOTE,
@@ -25,9 +27,19 @@ export interface RulesFormProps {
   notes: Readonly<Record<string, string>>;
   onChange: (next: Policy) => void;
   onMoved: (value: string, note: string) => void;
+  /** contracts 12.11: the deployment kill switch blocks auto-trash; the owner's choice is kept but inert. */
+  autoTrashKillSwitch?: boolean;
 }
 
-export function RulesForm({ draft, disabled, errors, notes, onChange, onMoved }: RulesFormProps) {
+export function RulesForm({
+  draft,
+  disabled,
+  errors,
+  notes,
+  onChange,
+  onMoved,
+  autoTrashKillSwitch = false,
+}: RulesFormProps) {
   const add = (list: ListKey) => (value: string) => {
     const out = addEntry(draft, list, value);
     onChange(out.policy);
@@ -69,6 +81,23 @@ export function RulesForm({ draft, disabled, errors, notes, onChange, onMoved }:
           />
         </RuleField>
       ))}
+      <RuleField
+        id="rule-auto-trash"
+        title="Auto-trash for Always OK senders"
+        description={
+          autoTrashKillSwitch ? `${AUTO_TRASH_DESCRIPTION} ${AUTO_TRASH_KILLED_NOTE}` : AUTO_TRASH_DESCRIPTION
+        }
+        row
+      >
+        <Toggle
+          checked={draft.autoTrash}
+          disabled={disabled || autoTrashKillSwitch}
+          onChange={(v) => onChange({ ...draft, autoTrash: v })}
+          label="Auto-trash for Always OK senders"
+          labelledBy="rule-auto-trash-title"
+          describedBy="rule-auto-trash-desc"
+        />
+      </RuleField>
       <RuleField
         id="rule-history"
         title="Scan history"

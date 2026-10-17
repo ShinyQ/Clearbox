@@ -68,32 +68,52 @@ export interface ReminderInput {
   /** The mailbox the note is added to (lowercased). */
   to: string;
   now: number;
+  /** Contracts 12.11: emails auto-trashed in the 7 days before this note; 0 or absent omits the line. */
+  autoTrashed?: number;
 }
 
 /** Plain text only: no HTML, no images, no remote content, no tracking. ASCII, so no encoding questions. */
 export function buildReminderNote(input: ReminderInput): InboxNote {
   const total = pendingTotal(input.counts);
+  const auto = input.autoTrashed ?? 0;
   const emails = plural(total, "email", "emails");
   const lines = ACTION_LINES.filter((l) => input.counts.pending[l.action] > 0).map(
     (l) => `  ${l.label}: ${count(input.counts.pending[l.action])}`,
   );
-  const review =
-    input.origin === null ? "Open Clearbox and go to Review." : `Review them: ${input.origin}/review`;
+  const link = (path: string, open: string, see: string): string =>
+    input.origin === null ? open : `${see}: ${input.origin}${path}`;
   const rules =
     input.origin === null
       ? "To turn it off or change the day, open Rules in Clearbox and use Weekly reminder."
       : `To turn it off or change the day, open ${input.origin}/rules and use Weekly reminder.`;
+  const pending =
+    total > 0
+      ? [
+          `Clearbox has sorted your inbox. ${emails} ${total === 1 ? "is" : "are"} ready for your weekly cleanup.`,
+          "",
+          "Suggested actions:",
+          ...lines,
+          "",
+          `${plural(input.counts.groups, "sender group needs", "sender groups need")} a decision.`,
+          "",
+          link("/review", "Open Clearbox and go to Review.", "Review them"),
+        ]
+      : ["Clearbox has sorted your inbox. Nothing is waiting for review."];
+  const autoLines =
+    auto > 0
+      ? [
+          "",
+          `Auto-trash moved ${plural(auto, "email", "emails")} from your Always OK to trash senders to Trash this week.`,
+          link("/activity", "Open Activity in Clearbox to see it.", "See it in Activity"),
+        ]
+      : [];
   const text = [
-    `Clearbox has sorted your inbox. ${emails} ${total === 1 ? "is" : "are"} ready for your weekly cleanup.`,
+    ...pending,
+    ...autoLines,
     "",
-    "Suggested actions:",
-    ...lines,
-    "",
-    `${plural(input.counts.groups, "sender group needs", "sender groups need")} a decision.`,
-    "",
-    review,
-    "",
-    "Nothing is trashed or archived until you approve it.",
+    auto > 0
+      ? "Anything else is trashed or archived only when you approve it."
+      : "Nothing is trashed or archived until you approve it.",
     "",
     "--",
     "This weekly reminder comes from your own Clearbox deployment. Clearbox added it to this inbox",
@@ -101,5 +121,9 @@ export function buildReminderNote(input: ReminderInput): InboxNote {
     rules,
     "",
   ].join("\n");
-  return { subject: `Clearbox: ${emails} ready to review`, text, to: input.to, sentAt: input.now };
+  const subject =
+    total === 0 && auto > 0
+      ? `Clearbox: ${plural(auto, "email", "emails")} auto-trashed this week`
+      : `Clearbox: ${emails} ready to review`;
+  return { subject, text, to: input.to, sentAt: input.now };
 }

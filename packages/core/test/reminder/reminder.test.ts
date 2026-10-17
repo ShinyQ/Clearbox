@@ -99,6 +99,43 @@ describe("buildReminderNote", () => {
     expect(note.text).toContain("Open Clearbox and go to Review.");
   });
 
+  it("counts auto-trashed emails of the last 7 days (contracts 12.11)", () => {
+    const note = buildReminderNote({
+      counts: counts({ delete: 2 }, 1),
+      origin: null,
+      to: "o@example.test",
+      now: 0,
+      autoTrashed: 1234,
+    });
+    expect(note.subject).toBe("Clearbox: 2 emails ready to review");
+    expect(note.text).toContain(
+      "Auto-trash moved 1,234 emails from your Always OK to trash senders to Trash this week.",
+    );
+    expect(note.text).toContain("Anything else is trashed or archived only when you approve it.");
+    expect(note.text).not.toContain("Nothing is trashed or archived until you approve it.");
+  });
+
+  it("still reports auto-trash when nothing is waiting for review", () => {
+    const note = buildReminderNote({
+      counts: counts({}, 0),
+      origin: "https://clearbox.example.test",
+      to: "o@example.test",
+      now: 0,
+      autoTrashed: 1,
+    });
+    expect(note.subject).toBe("Clearbox: 1 email auto-trashed this week");
+    expect(note.text).toContain("Nothing is waiting for review.");
+    expect(note.text).toContain("Auto-trash moved 1 email from your Always OK to trash senders");
+    expect(note.text).not.toContain("Suggested actions:");
+    expect(note.text).toContain("See it in Activity: https://clearbox.example.test/activity");
+  });
+
+  it("omits the auto-trash line when nothing was auto-trashed", () => {
+    const note = buildReminderNote({ counts: counts({ delete: 1 }, 1), origin: null, to: "o", now: 0 });
+    expect(note.text).not.toContain("Auto-trash");
+    expect(note.text).toContain("Nothing is trashed or archived until you approve it.");
+  });
+
   it("is plain ASCII text with no markup, remote content or em dash", () => {
     const note = buildReminderNote({
       counts: counts({ delete: 3, archive: 2, keep: 1, unsure: 4 }),

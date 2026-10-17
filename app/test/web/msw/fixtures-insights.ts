@@ -89,6 +89,7 @@ export function makePolicyResponse(): PolicyResponse {
     recordPatterns: ["receipt", "invoice", "tax", "statement", "contract", "medical", "legal"],
     scanHistoryDays: 90 as const,
     weeklyReminder: { enabled: true, weekday: 0 },
+    autoTrash: false,
   };
   return {
     policy: {
@@ -98,5 +99,6 @@ export function makePolicyResponse(): PolicyResponse {
     },
     version: 4,
     defaults,
+    autoTrashKillSwitch: false,
   };
 }

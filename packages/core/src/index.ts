@@ -146,6 +146,8 @@ export {
   reminderDue,
 } from "./reminder/reminder.ts";
 export type { ReminderCounts, ReminderInput } from "./reminder/reminder.ts";
+export { AUTO_TRASH_DAILY_CAP, autoTrashBlock } from "./autotrash/autotrash.ts";
+export type { AutoTrashBlock, AutoTrashCandidate } from "./autotrash/autotrash.ts";
 export { evaluateGuardrails } from "./guardrails/guardrails.ts";
 export type { GuardrailInput, GuardrailResult } from "./guardrails/guardrails.ts";
 export {

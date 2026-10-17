@@ -186,6 +186,7 @@ export function RulesPage() {
             notes={notes}
             onChange={setDraft}
             onMoved={onMoved}
+            autoTrashKillSwitch={data?.autoTrashKillSwitch ?? false}
           />
           <p className="mt-2.5 text-small text-ink-3">
             Rule changes apply to new emails right away. Suggestions already in Review follow: sender lists at

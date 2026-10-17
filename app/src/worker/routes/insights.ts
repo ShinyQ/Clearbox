@@ -46,7 +46,7 @@ insightsRoutes.get("/", async (c) => {
   const stmts: D1PreparedStatement[] = [
     selectBudgetStmt(db, today),
     selectBudgetHistoryStmt(db, utcDate(now - 13 * DAY_MS)),
-    selectAuditKindsSinceStmt(db, firstWeek, ["approve", "override", "cleanup", "undo"]),
+    selectAuditKindsSinceStmt(db, firstWeek, ["approve", "override", "cleanup", "auto_trash", "undo"]),
   ];
   // Task 7: the account-scoped builders produce `IN ()` on an empty list.
   if (allIds.length > 0) {

@@ -39,6 +39,8 @@ export default defineConfig((ctx) => {
         ENVIRONMENT: bindings.text(environment),
         DEV_AUTH_BYPASS: bindings.text(mode === "development" ? "true" : "false"),
         FREE_TIER: bindings.text("true"),
+        // contracts 12.11: "on" stops auto-trash for the whole deployment, whatever the owner's Rules toggle says.
+        AUTO_TRASH_KILL_SWITCH: bindings.text("off"),
         AZURE_DECISION_ENDPOINT: bindings.secret(),
         AZURE_DECISION_KEY: bindings.secret(),
         AZURE_DECISION_DEPLOYMENT: bindings.secret(),

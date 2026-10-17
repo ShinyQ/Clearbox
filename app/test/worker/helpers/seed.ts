@@ -1,4 +1,12 @@
-import type { ActionKind, Ceiling, ProviderKind, Reason, Signals, SuggestedAction } from "@clearbox/core";
+import type {
+  ActionKind,
+  Ceiling,
+  DecisionSegment,
+  ProviderKind,
+  Reason,
+  Signals,
+  SuggestedAction,
+} from "@clearbox/core";
 import { makeSignals } from "@clearbox/core/testing";
 import { env } from "cloudflare:workers";
 import type { AccountPhase, SuggestionStatus } from "../../../src/shared/api.ts";
@@ -150,6 +158,8 @@ export interface SeedSuggestionOptions {
   margin?: number | null;
   ceiling?: Ceiling;
   ceilingApplied?: boolean;
+  /** contracts 12.10; omitted leaves NULL. */
+  segment?: DecisionSegment | null;
   reasons?: Reason[];
   modelVersion?: string | null;
   policyVersion?: number;
@@ -220,6 +230,11 @@ export async function seedSuggestions(
       createdAt,
       expiresAt: createdAt + 90 * 24 * HOUR,
     }).run();
+    if (o.segment !== undefined) {
+      await env.DB.prepare("UPDATE suggestions SET segment = ?2 WHERE message_id = ?1")
+        .bind(messageId, o.segment)
+        .run();
+    }
     if (status !== "pending" && status !== "awaiting_model") {
       await env.DB.prepare(
         `UPDATE suggestions SET status = ?2, final_action = ?3, decided_via = ?4, batch_id = ?5, label_id = ?6,

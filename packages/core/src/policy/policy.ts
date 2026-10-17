@@ -38,6 +38,8 @@ export const PolicySchema = z
     recordPatterns: z.array(z.string().trim().toLowerCase().min(2).max(40)).max(100),
     scanHistoryDays: ScanHistoryDaysSchema,
     weeklyReminder: WeeklyReminderSchema,
+    /** Contracts 12.11: trash Always OK to trash mail without review (nightly, undoable for 24 hours). Off by default. */
+    autoTrash: z.boolean(),
   })
   .strict();
 
@@ -52,6 +54,7 @@ export const DEFAULT_POLICY: Policy = {
   recordPatterns: ["receipt", "invoice", "tax", "statement", "contract", "medical", "legal"],
   scanHistoryDays: DEFAULT_SCAN_HISTORY_DAYS,
   weeklyReminder: DEFAULT_WEEKLY_REMINDER,
+  autoTrash: false,
 };
 
 const PolicyJsonSchema = z
@@ -69,13 +72,15 @@ const PolicyJsonSchema = z
 
 /**
  * Policies stored before rev 2.4 have no scanHistoryDays; they read as the default (90 days). Policies stored
- * before the weekly reminder (12.8) have no weeklyReminder; they read as the default (on, Sunday).
+ * before the weekly reminder (12.8) have no weeklyReminder; they read as the default (on, Sunday). Policies stored
+ * before auto-trash (12.11) have no autoTrash; they read as off.
  */
 function withStoredDefaults(value: unknown): unknown {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
   const out: Record<string, unknown> = { ...value };
   if (!("scanHistoryDays" in out)) out.scanHistoryDays = DEFAULT_SCAN_HISTORY_DAYS;
   if (!("weeklyReminder" in out)) out.weeklyReminder = { ...DEFAULT_WEEKLY_REMINDER };
+  if (!("autoTrash" in out)) out.autoTrash = false;
   return out;
 }
 
@@ -96,7 +101,7 @@ export function scanHistoryWidened(prev: ScanHistoryDays, next: ScanHistoryDays)
 /**
  * Parses stored JSON; returns a copy of DEFAULT_POLICY when input is null; throws ZodError when invalid.
  * A stored policy without scanHistoryDays (written before rev 2.4) gets DEFAULT_SCAN_HISTORY_DAYS; one without
- * weeklyReminder gets DEFAULT_WEEKLY_REMINDER.
+ * weeklyReminder gets DEFAULT_WEEKLY_REMINDER; one without autoTrash gets false.
  */
 export function parsePolicy(json: string | null): Policy {
   if (json === null) return structuredClone(DEFAULT_POLICY);

@@ -6,6 +6,7 @@ import { PatchSenderBodySchema, PutPolicyBodySchema } from "../../shared/api.ts"
 import type { PolicyResponse } from "../../shared/api.ts";
 import { refreshForEntries } from "../actions/refresh.ts";
 import { readSettings, writePolicy } from "../db/settings.ts";
+import { autoTrashKilled } from "../env.ts";
 import type { AppEnv } from "../env.ts";
 import { logEvent } from "../log.ts";
 import { ApiError, parseWith, readJsonBody } from "../middleware/errors.ts";
@@ -54,6 +55,7 @@ async function policyResponse(c: Context<AppEnv>): Promise<Response> {
     policy: settings.policy,
     version: settings.policyVersion,
     defaults: DEFAULT_POLICY,
+    autoTrashKillSwitch: autoTrashKilled(c.env),
   };
   return c.json(body);
 }

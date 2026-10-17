@@ -81,6 +81,14 @@ export function describeActivity(e: ActivityEntry, ctx: ActivityContext): Activi
       const detail = groups > 0 ? `${emails}, ${plural(groups, "sender group", "sender groups")}` : emails;
       return { ...base, verb: "Clean up", detail, result: batchResult(r), last: batchLast(e, ctx) };
     }
+    case "auto_trash":
+      return {
+        ...base,
+        verb: "Auto-trash",
+        detail: `${emails} from Always OK to trash senders`,
+        result: batchResult(r),
+        last: batchLast(e, ctx),
+      };
     case "approve": {
       const only = onlyAction(r);
       const verb = only ? ACTION_WORD[only] : "Approved";

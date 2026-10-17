@@ -459,6 +459,64 @@ export function remainingCleanupQuery(
   return { sql, params: [...accountIds, ...actions, threshold, asOf] };
 }
 
+/**
+ * Auto-trash scope (contracts 12.11), the SQL half: pending trash suggestions in the "Always OK to trash" segment
+ * with the trash ceiling, a known date at least policy.minAgeDays old, and no starred, important, replied,
+ * correspondent or attachment signal. Missing signal keys never match (fail closed). The worker re-checks every
+ * row against the current policy (core autoTrashBlock) before it claims anything.
+ */
+function autoTrashScope(receivedBefore: string): string {
+  return `s.status = 'pending' AND s.action = 'delete' AND s.segment = 'rule' AND s.ceiling = 'delete'
+      AND m.received_at > 0 AND m.received_at <= ${receivedBefore}
+      AND json_extract(m.signals_json, '$.starred') = 0 AND json_extract(m.signals_json, '$.providerImportant') = 0
+      AND json_extract(m.signals_json, '$.ownerReplied') = 0 AND json_extract(m.signals_json, '$.isCorrespondent') = 0
+      AND json_extract(m.signals_json, '$.hasAttachments') = 0`;
+}
+
+export interface AutoTrashTargetRow extends TargetRow {
+  snippet: string | null;
+  received_at: number;
+  signals_json: string;
+}
+
+/** Oldest first, after `afterId`, so rows the worker rejects never block the ones behind them. */
+export function autoTrashTargetsQuery(
+  accountId: string,
+  afterId: number,
+  receivedBefore: number,
+  limit: number,
+): SqlQuery {
+  const sql = `SELECT ${TARGET_COLUMNS}, m.snippet, m.received_at, m.signals_json
+    FROM suggestions s JOIN messages m ON m.id = s.message_id AND m.account_id = s.account_id
+    WHERE s.account_id = ?1 AND s.message_id > ?2 AND ${autoTrashScope("?3")}
+    ORDER BY s.message_id
+    LIMIT ?4`;
+  return { sql, params: [accountId, afterId, receivedBefore, limit] };
+}
+
+/** Candidates per account for the nightly auto-trash step (contracts 12.11). */
+export function autoTrashCountsQuery(accountIds: readonly string[], receivedBefore: number): SqlQuery {
+  const a = accountIds.length;
+  const sql = `SELECT s.account_id, COUNT(*) AS n
+    FROM suggestions s JOIN messages m ON m.id = s.message_id AND m.account_id = s.account_id
+    WHERE s.account_id IN (${placeholders(a)}) AND ${autoTrashScope(`?${a + 1}`)}
+    GROUP BY s.account_id`;
+  return { sql, params: [...accountIds, receivedBefore] };
+}
+
+/**
+ * Auto-trash claim: like claimQuery, but only while the owner's toggle is still on and the row is still a rule trash
+ * suggestion, so turning auto-trash off stops a run before any provider call.
+ */
+export function autoTrashClaimQuery(accountId: string, ids: readonly number[], now: number): SqlQuery {
+  const sql = `UPDATE suggestions SET status = 'approved', updated_at = ?2
+    WHERE account_id = ?1 AND status = 'pending' AND action = 'delete' AND segment = 'rule'
+      AND message_id IN (${placeholders(ids.length, 3)})
+      AND EXISTS (SELECT 1 FROM settings WHERE key = 'policy' AND json_extract(value, '$.autoTrash') = 1)
+    RETURNING message_id`;
+  return { sql, params: [accountId, now, ...ids] };
+}
+
 /** pending -> approved; RETURNING lists the rows this request owns. */
 export function claimQuery(accountId: string, ids: readonly number[], now: number): SqlQuery {
   const sql = `UPDATE suggestions SET status = 'approved', updated_at = ?2
@@ -467,7 +525,10 @@ export function claimQuery(accountId: string, ids: readonly number[], now: numbe
   return { sql, params: [accountId, now, ...ids] };
 }
 
-/** Must directly follow the label insert (and the batch insert) in the same D1 batch (decision 9). */
+/**
+ * Must directly follow the label insert (and the batch insert) in the same D1 batch (decision 9). An automatic
+ * trash (contracts 12.11) writes no label: `withLabel` false leaves label_id NULL.
+ */
 export function markExecutedQuery(
   accountId: string,
   messageId: number,
@@ -475,12 +536,17 @@ export function markExecutedQuery(
   decidedVia: "approve" | "override" | "cleanup",
   decidedAt: number,
   expiresAt: number,
+  withLabel = true,
 ): SqlQuery {
   const sql = `UPDATE suggestions SET status = 'executed', final_action = ?3, decided_via = ?4, decided_at = ?5,
       updated_at = ?5, expires_at = ?6, exec_error = NULL,
-      batch_id = (SELECT MAX(id) FROM action_batches), label_id = (SELECT MAX(id) FROM labels)
+      batch_id = (SELECT MAX(id) FROM action_batches),
+      label_id = CASE WHEN ?7 = 1 THEN (SELECT MAX(id) FROM labels) END
     WHERE account_id = ?1 AND message_id = ?2 AND status = 'approved'`;
-  return { sql, params: [accountId, messageId, finalAction, decidedVia, decidedAt, expiresAt] };
+  return {
+    sql,
+    params: [accountId, messageId, finalAction, decidedVia, decidedAt, expiresAt, withLabel ? 1 : 0],
+  };
 }
 
 export function markFailedQuery(accountId: string, messageId: number, code: string, now: number): SqlQuery {

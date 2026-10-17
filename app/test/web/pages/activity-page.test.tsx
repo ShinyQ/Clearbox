@@ -83,6 +83,51 @@ describe("Activity page", () => {
     expect(within(table).getAllByRole("button", { name: "Undo" })).toHaveLength(1);
   });
 
+  it("shows nightly Auto-trash runs with Undo (contracts 12.11)", async () => {
+    const { state, user } = setup((s) => {
+      s.batches.unshift({
+        id: 31,
+        kind: "auto_trash",
+        createdAt: iso(T0 - 7 * 3_600_000),
+        requestedCount: 12,
+        executedCount: 12,
+        failedCount: 0,
+        byAction: { delete: 12, archive: 0, keep: 0 },
+        undoable: true,
+        undoExpiresAt: iso(T0 + 17 * 3_600_000),
+        undoneAt: null,
+        itemIds: [],
+      });
+      s.activity.unshift({
+        id: 31,
+        ts: iso(T0 - 7 * 3_600_000),
+        kind: "auto_trash",
+        accountId: null,
+        batchId: 31,
+        count: 12,
+        result: {
+          executed: 12,
+          failed: 0,
+          skipped: 0,
+          retryLater: 0,
+          delete: 12,
+          archive: 0,
+          keep: 0,
+          groups: 2,
+        },
+      });
+    });
+    const table = await screen.findByRole("table", { name: "Activity" });
+    const row = (
+      await within(table).findByRole("cell", {
+        name: "Auto-trash · 12 emails from Always OK to trash senders",
+      })
+    ).closest("tr")!;
+    await user.click(within(row).getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Restored 12 emails to your inbox.")).toBeTruthy();
+    expect(state.requests.some((r) => r.url.pathname === "/api/batches/31/undo")).toBe(true);
+  });
+
   it("undoes a batch and shows the result", async () => {
     const { state, user } = setup();
     await user.click(await screen.findByRole("button", { name: "Undo" }));

@@ -60,6 +60,13 @@ export function reminderLocalTime(timeZone?: string): string {
   }).format(reminderInstant(0));
 }
 
+/** Contracts 12.11, UI spec 5.6. */
+export const AUTO_TRASH_DESCRIPTION =
+  "Each night Clearbox moves trash suggestions from your Always OK to trash senders to Trash without asking. " +
+  "Starred, flagged, important and replied emails, attachments and receipts are never included, and nothing is " +
+  "deleted for good. Undo it from Activity for 24 hours. At most 500 a day.";
+export const AUTO_TRASH_KILLED_NOTE = "Turned off for this deployment (AUTO_TRASH_KILL_SWITCH).";
+
 const other = (list: ListKey): ListKey => (list === "allowlist" ? "denylist" : "allowlist");
 
 /** Adding to one list removes the entry from the other (UI spec 5.6, contracts 7.11). */
@@ -101,6 +108,7 @@ const POLICY_KEYS = [
   "recordPatterns",
   "scanHistoryDays",
   "weeklyReminder",
+  "autoTrash",
 ] as const;
 
 /** Maps validation_failed details ({ path, message }[]) to one message per field. */

@@ -206,7 +206,16 @@ describe("policy routes", () => {
       policy: DEFAULT_POLICY,
       version: 1,
       defaults: DEFAULT_POLICY,
+      autoTrashKillSwitch: false,
     });
+  });
+
+  it("reports the auto-trash kill switch (contracts 12.11)", async () => {
+    const on = await readJson<PolicyResponse>(
+      await apiFetch("/api/policy", {}, { app, env: { AUTO_TRASH_KILL_SWITCH: "on" } }),
+    );
+    expect(on.autoTrashKillSwitch).toBe(true);
+    expect(on.policy.autoTrash).toBe(false);
   });
 
   it("updates with optimistic concurrency and writes an audit row", async () => {
@@ -267,5 +276,22 @@ describe("policy routes", () => {
       { app },
     );
     expect(invalid.status).toBe(400);
+  });
+});
+
+describe("GET /api/insights weekly with auto-trash (contracts 12.11)", () => {
+  it("counts auto-trashed emails as cleaned", async () => {
+    const cleaned = async () =>
+      (await readJson<Insights>(await apiFetch("/api/insights", {}, { app }))).weekly[5]?.cleaned ?? 0;
+    const before = await cleaned();
+    await auditStmt(env.DB, {
+      ts: SEED_NOW - 1_000,
+      accountId: null,
+      kind: "auto_trash",
+      batchId: null,
+      count: 4,
+      result: { executed: 4, delete: 4 },
+    }).run();
+    expect((await cleaned()) - before).toBe(4);
   });
 });

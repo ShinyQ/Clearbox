@@ -210,3 +210,59 @@ describe("describeActivity unsubscribe rows (contracts 12.9)", () => {
     expect(entry("provider_error", 0).result).toBe("Mailbox error");
   });
 });
+
+describe("describeActivity auto-trash rows (contracts 12.11)", () => {
+  const counts = {
+    executed: 3,
+    failed: 0,
+    skipped: 0,
+    retryLater: 0,
+    delete: 3,
+    archive: 0,
+    keep: 0,
+    groups: 1,
+  };
+  const batch = (over: object = {}) => ({
+    id: 90,
+    kind: "auto_trash" as const,
+    createdAt: "2026-10-15T02:00:00.000Z",
+    requestedCount: 3,
+    executedCount: 3,
+    failedCount: 0,
+    byAction: { delete: 3, archive: 0, keep: 0 },
+    undoable: true,
+    undoExpiresAt: "2026-10-16T02:00:00.000Z",
+    undoneAt: null,
+    ...over,
+  });
+  const entry = (b: ReturnType<typeof batch> | null, count = 3, result: Record<string, number> = counts) =>
+    describeActivity(
+      {
+        id: 90,
+        ts: "2026-10-15T02:00:00.000Z",
+        kind: "auto_trash",
+        accountId: null,
+        batchId: 90,
+        count,
+        result,
+      },
+      { ...ctx, batchesById: b ? { 90: b } : {} },
+    );
+
+  it("names the rule, not a sender, and offers Undo while the batch is undoable", () => {
+    expect(entry(batch())).toMatchObject({
+      verb: "Auto-trash",
+      detail: "3 emails from Always OK to trash senders",
+      result: "Done",
+      account: "All accounts",
+      last: { kind: "undo", batchId: 90 },
+    });
+    expect(entry(batch({ undoable: false, undoneAt: "2026-10-15T03:00:00.000Z" })).last).toEqual({
+      kind: "undone",
+    });
+    expect(entry(null).last).toEqual({ kind: "expired" });
+    expect(entry(batch(), 1, { ...counts, executed: 1, delete: 1 }).detail).toBe(
+      "1 email from Always OK to trash senders",
+    );
+  });
+});

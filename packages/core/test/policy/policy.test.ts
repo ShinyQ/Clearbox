@@ -147,6 +147,25 @@ describe("weeklyReminder (contracts 12.8)", () => {
   });
 });
 
+describe("autoTrash (contracts 12.11)", () => {
+  it("is off by default and required in the schema", () => {
+    expect(DEFAULT_POLICY.autoTrash).toBe(false);
+    expect(PolicySchema.safeParse({ ...DEFAULT_POLICY, autoTrash: true }).success).toBe(true);
+    expect(PolicySchema.safeParse({ ...DEFAULT_POLICY, autoTrash: "true" }).success).toBe(false);
+    const missing: Record<string, unknown> = { ...DEFAULT_POLICY };
+    delete missing["autoTrash"];
+    expect(PolicySchema.safeParse(missing).success).toBe(false);
+  });
+
+  it("reads a policy stored before auto-trash as off and keeps a stored choice", () => {
+    const legacy: Record<string, unknown> = { ...DEFAULT_POLICY };
+    delete legacy["autoTrash"];
+    expect(parsePolicy(JSON.stringify(legacy)).autoTrash).toBe(false);
+    expect(parsePolicy(JSON.stringify({ ...DEFAULT_POLICY, autoTrash: true })).autoTrash).toBe(true);
+    expect(parsePolicy(null).autoTrash).toBe(false);
+  });
+});
+
 describe("scan history helpers", () => {
   it("computes the cutoff, null for all mail", () => {
     expect(scanHistoryCutoff(90, 100 * 86_400_000)).toBe(10 * 86_400_000);

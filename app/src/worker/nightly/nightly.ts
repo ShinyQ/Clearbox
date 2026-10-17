@@ -9,6 +9,7 @@ import {
   calibrateSegments,
   parsePolicy,
   createSubrequestCounter,
+  reminderDue,
 } from "@clearbox/core";
 import type { ActionKind, Ceiling, DecisionSegment, Policy, SegmentCalibrationSample } from "@clearbox/core";
 import { refreshPending } from "../actions/refresh.ts";
@@ -27,9 +28,12 @@ import {
   utcDate,
 } from "../scan/write-plan.ts";
 import type { BatchResult, Stmt } from "../scan/write-plan.ts";
+import { AUTO_TRASH_PURGE_FLOOR, DEFAULT_AUTO_TRASH_DEPS, runAutoTrash } from "./auto-trash.ts";
+import type { AutoTrashDeps } from "./auto-trash.ts";
 import { newPurgeState, purgeDisconnected, purgeExpired } from "./purge.ts";
 import {
   DEFAULT_REMINDER_DEPS,
+  REMINDER_MAX_SUBREQUESTS,
   REMINDER_SETTINGS_SQL,
   REMINDER_TARGETS_SQL,
   parseReminderSettings,
@@ -83,6 +87,8 @@ export interface NightlyOptions {
   now: number;
   /** Tests inject the provider fetch, factory and sleep of the weekly reminder (contracts 12.8). */
   reminder?: Partial<ReminderDeps>;
+  /** Tests inject the provider fetch, factory and OAuth clients of auto-trash (contracts 12.11). */
+  autoTrash?: Partial<AutoTrashDeps>;
 }
 
 function parseTau(value: string | undefined): number {
@@ -149,6 +155,33 @@ export async function runNightly(env: Env, opts: NightlyOptions): Promise<void> 
     ])),
   );
 
+  const reminderSettings = parseReminderSettings(rowsOf(claim[4]));
+  const reminderTargets = rowsOf<{ id: string; email: string }>(claim[5]);
+
+  // Contracts 12.11: before the weekly reminder (which counts it) and the purge; both keep their reserve.
+  try {
+    const due = reminderDue(reminderSettings.reminder, reminderSettings.lastSentAt, now);
+    await runAutoTrash({
+      env,
+      run,
+      work,
+      runId,
+      now,
+      policy: parseNightlyPolicy(extra.get("policy")),
+      accountIds: reminderTargets.map((t) => t.id),
+      rowsToday: startRows + sumMeta(results, "rows_written"),
+      reserveAfter: AUTO_TRASH_PURGE_FLOOR + (due ? REMINDER_MAX_SUBREQUESTS : 0),
+      deps: { ...DEFAULT_AUTO_TRASH_DEPS, ...opts.autoTrash },
+      results,
+    });
+  } catch (err) {
+    logEvent("request.error", {
+      requestId: runId,
+      route: "nightly",
+      errorName: err instanceof Error ? err.name : "unknown",
+    });
+  }
+
   // Contracts 12.8: before the purge, which then gets only the subrequests left over.
   try {
     await runWeeklyReminder({
@@ -157,8 +190,8 @@ export async function runNightly(env: Env, opts: NightlyOptions): Promise<void> 
       work,
       runId,
       now,
-      settings: parseReminderSettings(rowsOf(claim[4])),
-      targets: rowsOf<{ id: string; email: string }>(claim[5]),
+      settings: reminderSettings,
+      targets: reminderTargets,
       visibleIds: accounts.filter((a) => a.status !== "disconnected").map((a) => a.id),
       deps: { ...DEFAULT_REMINDER_DEPS, ...opts.reminder },
       results,

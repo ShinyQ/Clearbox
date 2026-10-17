@@ -35,6 +35,7 @@ export const REMINDER_LEASE_TTL_MS = 120_000;
 /** The 02:00 tick often holds the account lease for a few seconds: wait and retry the claim. */
 export const REMINDER_LEASE_ATTEMPTS = 3;
 export const REMINDER_LEASE_RETRY_MS = 15_000;
+const DAY_MS = 86_400_000;
 /**
  * Worst case: 3 claim attempts (D1) + token refresh 1 + insert 1 + 401 retry (refresh + insert) 2 + write (D1) 1.
  * Reserved before starting so the purge only gets what is left (contracts 8.6).
@@ -47,12 +48,17 @@ export const REMINDER_SETTINGS_SQL =
 export const REMINDER_TARGETS_SQL =
   "SELECT id, email FROM accounts WHERE status = 'active' AND paused = 0 ORDER BY created_at, id";
 
-/** Taken only when there is something to review in the visible accounts. */
+/** Emails auto-trashed (contracts 12.11) in the 7 days before this run: (?1, ?2]. */
+const AUTO_TRASHED_SQL = `SELECT COALESCE(SUM(json_extract(result_json, '$.delete')), 0) AS n FROM audit_log
+WHERE kind = 'auto_trash' AND ts > ?1 AND ts <= ?2`;
+
+/** Taken only when there is something to review in the visible accounts, or something was auto-trashed. */
 const LEASE_CLAIM = (
   visible: number,
 ) => `INSERT INTO leases (name, account_id, holder, acquired_at, expires_at, released_at)
 SELECT 'account:' || ?1, ?1, ?2, ?3, ?4, NULL
-WHERE EXISTS (SELECT 1 FROM suggestions WHERE account_id IN (${Array.from({ length: visible }, (_, i) => `?${i + 5}`).join(", ")}) AND status = 'pending')
+WHERE EXISTS (SELECT 1 FROM suggestions WHERE account_id IN (${Array.from({ length: visible }, (_, i) => `?${i + 6}`).join(", ")}) AND status = 'pending')
+  OR EXISTS (SELECT 1 FROM audit_log WHERE kind = 'auto_trash' AND ts > ?5 AND ts <= ?3 AND count > 0)
 ON CONFLICT (name) DO UPDATE SET account_id = excluded.account_id, holder = excluded.holder,
   acquired_at = excluded.acquired_at, expires_at = excluded.expires_at, released_at = NULL
 WHERE leases.released_at IS NOT NULL OR leases.expires_at <= excluded.acquired_at
@@ -162,6 +168,7 @@ export interface ReminderRun {
 /** Returns null when the reminder is not due today (nothing read, written or logged). */
 export async function runWeeklyReminder(r: ReminderRun): Promise<ReminderOutcome | null> {
   if (!reminderDue(r.settings.reminder, r.settings.lastSentAt, r.now)) return null;
+  let autoTrashed = 0;
   const log = (
     outcome: ReminderOutcome,
     extra: { accountId?: string; counts?: ReminderCounts; errorCode?: string } = {},
@@ -172,6 +179,7 @@ export async function runWeeklyReminder(r: ReminderRun): Promise<ReminderOutcome
       accountId: extra.accountId ?? null,
       pending: extra.counts ? pendingTotal(extra.counts) : 0,
       groups: extra.counts?.groups ?? 0,
+      autoTrashed,
       errorCode: extra.errorCode ?? null,
     });
     return outcome;
@@ -185,6 +193,7 @@ export async function runWeeklyReminder(r: ReminderRun): Promise<ReminderOutcome
     return log("no_budget", { accountId: target.id });
 
   const counts = pendingByActionQuery(r.visibleIds);
+  const since = r.now - 7 * DAY_MS;
   let claimed = false;
   let parsedCounts: ReminderCounts = countsOf([]);
   let row: (TickTokenRow & { email: string; archive_folder_id: string | null }) | undefined;
@@ -198,13 +207,16 @@ export async function runWeeklyReminder(r: ReminderRun): Promise<ReminderOutcome
         r.runId,
         r.now,
         r.now + REMINDER_LEASE_TTL_MS,
+        since,
         ...r.visibleIds,
       ),
       stmt(TOKEN_ROW, target.id),
+      stmt(AUTO_TRASHED_SQL, since, r.now),
     ]);
     r.results.push(...res);
     parsedCounts = countsOf(rowsOf<{ action: SuggestedAction; n: number; g: number }>(res[0]));
-    if (pendingTotal(parsedCounts) === 0)
+    autoTrashed = rowsOf<{ n: number }>(res[3])[0]?.n ?? 0;
+    if (pendingTotal(parsedCounts) === 0 && autoTrashed === 0)
       return log("nothing_to_review", { accountId: target.id, counts: parsedCounts });
     claimed = rowsOf(res[1]).length > 0;
     row = rowsOf<TickTokenRow & { email: string; archive_folder_id: string | null }>(res[2])[0];
@@ -233,6 +245,7 @@ export async function runWeeklyReminder(r: ReminderRun): Promise<ReminderOutcome
     origin: r.settings.origin,
     to: row.email,
     now: r.now,
+    autoTrashed,
   });
   let errorCode: string | null = null;
   try {

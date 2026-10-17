@@ -42,6 +42,7 @@ WHERE segment IS NULL;
 -- Open suggestions made before this migration have no stored model output, and many were frozen at keep by the
 -- old "too recent" cap or fused before any owner decision existed. Queue them for one fresh decision (the next
 -- ticks re-decide them with today's priors, rules and thresholds; recent mail is held until old enough).
+-- retry_after NULL means due now and keeps them out of the "recent held" count (decision_attempts 0 plus a time).
 UPDATE suggestions SET status = 'awaiting_model', action = NULL, confidence = NULL, decision_attempts = 0,
-  retry_after = CAST(strftime('%s', 'now') AS INTEGER) * 1000, updated_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  retry_after = NULL, updated_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
 WHERE status = 'pending' AND model_action_json IS NULL;

@@ -7,21 +7,31 @@ export const RULE_MIN_DECISIONS = 10;
 export const RULE_MIN_AGREEMENT = 0.95;
 /** No contrary decision within this window. */
 export const RULE_QUIET_MS = 30 * 86_400_000;
-export const RULE_CANDIDATES_MAX = 50;
+/** Prior rows read as candidates; listed and dismissed senders are dropped before RULE_LABEL_CHECK_MAX. */
+export const RULE_CANDIDATES_MAX = 200;
+/** Candidates checked against the labels (one statement, under the bound-parameter limit). */
+export const RULE_LABEL_CHECK_MAX = 50;
 export const RULE_SUGGESTIONS_MAX = 10;
 export const RULE_DISMISSALS_MAX = 200;
 
 /**
- * Cheap prefilter on the per-sender prior counts (one row per sender): enough trashes with few keeps, or enough
- * keeps with no trash. Sender keys only (domain keys start with "@").
+ * Cheap prefilter on the per-sender prior counts (one row per sender): enough trashes or enough non-trash
+ * decisions, each with at least 95% agreement (keeps include archives here; the labels check is stricter).
+ * Sender keys only (domain keys start with "@").
  */
+export interface RuleCandidateRow {
+  sender: string;
+  deletes: number;
+  keeps: number;
+}
+
 export function ruleCandidatesQuery(accountIds: readonly string[], minDecisions: number): SqlQuery {
   const a = accountIds.length;
   const sql = `SELECT key AS sender, SUM(deletes) AS deletes, SUM(keeps) AS keeps FROM sender_priors
     WHERE account_id IN (${placeholders(a)}) AND key NOT LIKE '@%' AND key <> ''
     GROUP BY key
     HAVING (SUM(deletes) >= ?${a + 1} AND SUM(keeps) * 19 <= SUM(deletes))
-        OR (SUM(keeps) >= ?${a + 1} AND SUM(deletes) = 0)
+        OR (SUM(keeps) >= ?${a + 1} AND SUM(deletes) * 19 <= SUM(keeps))
     ORDER BY SUM(deletes) + SUM(keeps) DESC, key
     LIMIT ?${a + 2}`;
   return { sql, params: [...accountIds, minDecisions, RULE_CANDIDATES_MAX] };

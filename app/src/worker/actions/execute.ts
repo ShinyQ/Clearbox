@@ -54,7 +54,7 @@ import { callbackPath } from "../scan/providers.ts";
 import { createD1TokenSource, refreshFnFor, tokenUpdateStmt } from "../scan/token-source.ts";
 import type { D1TokenSource } from "../scan/token-source.ts";
 import { decisionPriorDeltas, labelFor } from "./learn.ts";
-import { refreshPending } from "./refresh.ts";
+import { refreshScoped } from "./refresh.ts";
 import type { DecidedItem } from "./learn.ts";
 
 export type ExecuteRequest =
@@ -525,10 +525,10 @@ export async function executeSuggestions(ctx: ActionContext, req: ExecuteRequest
   let refreshRows = { read: 0, written: 0 };
   for (const [accountId, items] of groupBy(executed, (e) => e.cand.account.id)) {
     try {
-      const out = await refreshPending(
+      const out = await refreshScoped(
         db,
+        accountId,
         {
-          accountId,
           senders: items.map((e) => e.cand.row.sender),
           domains: items.map((e) => e.cand.row.sender_domain),
         },

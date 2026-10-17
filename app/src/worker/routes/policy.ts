@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { PatchSenderBodySchema, PutPolicyBodySchema } from "../../shared/api.ts";
 import type { PolicyResponse } from "../../shared/api.ts";
-import { refreshForEntry } from "../actions/refresh.ts";
+import { refreshForEntries } from "../actions/refresh.ts";
 import { readSettings, writePolicy } from "../db/settings.ts";
 import type { AppEnv } from "../env.ts";
 import { logEvent } from "../log.ts";
@@ -32,12 +32,12 @@ export function changedSenderEntries(prev: Policy, next: Policy): string[] {
 async function refreshEntries(
   c: Context<AppEnv>,
   entries: readonly string[],
-  settings: Parameters<typeof refreshForEntry>[2],
+  settings: Parameters<typeof refreshForEntries>[2],
   now: number,
   route: string,
 ): Promise<void> {
   try {
-    for (const entry of entries) await refreshForEntry(c.env.DB, entry, settings, now);
+    await refreshForEntries(c.env.DB, entries, settings, now);
   } catch (err) {
     // Best effort: the rules are already saved, and the nightly job re-fuses everything pending.
     logEvent("request.error", {

@@ -2,11 +2,12 @@ import { DEFAULT_POLICY } from "@clearbox/core";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import type { CleanupPreview, PolicyResponse, RuleSuggestionsResponse } from "../../../src/shared/api.ts";
-import { refreshPending } from "../../../src/worker/actions/refresh.ts";
+import { refreshPending, refreshScoped } from "../../../src/worker/actions/refresh.ts";
 import { createApp } from "../../../src/worker/app.ts";
 import { priorUpsertStmt } from "../../../src/worker/db/priors.ts";
 import { readSettings } from "../../../src/worker/db/settings.ts";
 import { changedSenderEntries } from "../../../src/worker/routes/policy.ts";
+import { openRuleCandidates, pickRuleSuggestions } from "../../../src/worker/routes/rules.ts";
 import { FakeProvider, fakeOAuth } from "../helpers/fake-provider.ts";
 import { apiFetch, jsonInit, readJson } from "../helpers/request.ts";
 import { SEED_NOW, getSuggestionRow, seedAccount, seedLabels, seedSuggestions } from "../helpers/seed.ts";
@@ -234,5 +235,53 @@ describe("PUT /api/policy refreshes changed list entries", () => {
     );
     expect(res.status).toBe(200);
     expect(await getSuggestionRow(id ?? 0)).toMatchObject({ action: "delete", segment: "rule" });
+  });
+});
+
+describe("review fixes", () => {
+  it("refreshes every decided domain, past the first parameter chunk", async () => {
+    await env.DB.prepare("UPDATE settings SET value = '0.8' WHERE key = 'tau_delete'").run();
+    const acc = await seedAccount();
+    const [id] = await seedKeeps(acc.id, "alerts@d100.example.com", 1);
+    await prior(acc.id, "alerts@d100.example.com", 40, 0);
+    const domains = Array.from({ length: 120 }, (_, i) => `d${i}.example.com`);
+    const out = await refreshScoped(
+      env.DB,
+      acc.id,
+      { senders: [], domains },
+      await readSettings(env.DB),
+      SEED_NOW,
+    );
+    expect(out.d1Calls).toBeGreaterThanOrEqual(2);
+    expect(await getSuggestionRow(id ?? 0)).toMatchObject({ action: "delete" });
+  });
+
+  it("offers Always keep at 95% keeps, and listed senders never crowd out others", () => {
+    const settings = {
+      policy: { ...DEFAULT_POLICY, denylist: ["@bulk.example.com"] },
+      ruleDismissals: [{ entry: "gone@x.example.com", list: "deny" as const, at: 0 }],
+    };
+    const rows = [
+      ...Array.from({ length: 60 }, (_, i) => ({ sender: `s${i}@bulk.example.com`, deletes: 99, keeps: 0 })),
+      { sender: "gone@x.example.com", deletes: 50, keeps: 0 },
+      { sender: "open@y.example.com", deletes: 12, keeps: 0 },
+    ];
+    expect(openRuleCandidates(rows, settings)).toEqual(["open@y.example.com"]);
+    const picked = pickRuleSuggestions(
+      [
+        {
+          sender: "friend@z.example.org",
+          deletes: 1,
+          keeps: 40,
+          archives: 0,
+          last_at: SEED_NOW,
+          last_not_delete: SEED_NOW,
+          last_not_keep: SEED_NOW - 60 * DAY,
+        },
+      ],
+      { policy: DEFAULT_POLICY, ruleDismissals: [] },
+      SEED_NOW,
+    );
+    expect(picked.map((p) => [p.entry, p.list])).toEqual([["friend@z.example.org", "allow"]]);
   });
 });

@@ -4,6 +4,7 @@ import { DismissRuleSuggestionBodySchema } from "../../shared/api.ts";
 import type { RuleSuggestion, RuleSuggestionsResponse } from "../../shared/api.ts";
 import {
   RULE_DISMISSALS_MAX,
+  RULE_LABEL_CHECK_MAX,
   RULE_MIN_AGREEMENT,
   RULE_MIN_DECISIONS,
   RULE_QUIET_MS,
@@ -11,7 +12,7 @@ import {
   ruleCandidatesQuery,
   ruleLabelsQuery,
 } from "../db/rules.ts";
-import type { RuleLabelRow } from "../db/rules.ts";
+import type { RuleCandidateRow, RuleLabelRow } from "../db/rules.ts";
 import { readSettings, setSettingStmt } from "../db/settings.ts";
 import type { RuleDismissal, Settings } from "../db/settings.ts";
 import { bindQuery, toIso } from "../db/sql.ts";
@@ -23,6 +24,28 @@ export const rulesRoutes = new Hono<AppEnv>();
 
 function domainOf(address: string): string {
   return address.slice(address.lastIndexOf("@") + 1);
+}
+
+/**
+ * Pure: drops senders already covered by a list, and senders whose likely offer was dismissed, before the labels
+ * check, so accepted or dismissed high-volume senders never crowd out the rest.
+ */
+export function openRuleCandidates(
+  rows: readonly RuleCandidateRow[],
+  settings: Pick<Settings, "policy" | "ruleDismissals">,
+): string[] {
+  const dismissed = new Set(settings.ruleDismissals.map((d) => `${d.list}\u001f${d.entry}`));
+  const { allowlist, denylist } = settings.policy;
+  return rows
+    .filter((r) => {
+      const domain = domainOf(r.sender);
+      if (matchesSenderList(r.sender, domain, allowlist) || matchesSenderList(r.sender, domain, denylist))
+        return false;
+      const likely = r.deletes >= r.keeps ? "deny" : "allow";
+      return !dismissed.has(`${likely}\u001f${r.sender}`);
+    })
+    .map((r) => r.sender)
+    .slice(0, RULE_LABEL_CHECK_MAX);
 }
 
 /**

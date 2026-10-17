@@ -16,7 +16,10 @@ import { bindQuery, MAX_BOUND_PARAMS, sumRowsRead, sumRowsWritten, utcDate } fro
 
 /** Rows re-fused per call by an owner action or a rule change; the nightly job pages through the rest. */
 export const REFRESH_LIMIT = 200;
-const SCOPE_MAX = 40;
+/** Senders plus domains per refresh query (the statement also binds the account, keyset and limit). */
+const SCOPE_MAX = MAX_BOUND_PARAMS - 4;
+/** Scoped queries per account and request; more is left to the nightly refresh. */
+export const REFRESH_MAX_CHUNKS = 2;
 const EPS = 1e-9;
 
 export interface RefreshSettings {
@@ -129,17 +132,10 @@ export async function refreshPending(
   settings: RefreshSettings,
   now: number,
 ): Promise<RefreshOutcome> {
-  let senders = [...new Set(scope.senders ?? [])].filter((x) => x !== "");
-  let domains = [...new Set(scope.domains ?? [])].filter((x) => x !== "");
-  // A wide scope would not fit the parameter limit; refreshing the newest rows of the account is a superset.
-  if (
-    senders.length > SCOPE_MAX ||
-    domains.length > SCOPE_MAX ||
-    senders.length + domains.length > MAX_BOUND_PARAMS - 4
-  ) {
-    senders = [];
-    domains = [];
-  }
+  const senders = [...new Set(scope.senders ?? [])].filter((x) => x !== "");
+  const domains = [...new Set(scope.domains ?? [])].filter((x) => x !== "");
+  if (senders.length + domains.length > SCOPE_MAX)
+    throw new RangeError("refresh scope too wide; use refreshScoped");
   const filter: RefreshFilter = {
     senders,
     domains,
@@ -173,29 +169,95 @@ export async function refreshPending(
   };
 }
 
+function addOutcome(a: RefreshOutcome, b: RefreshOutcome): RefreshOutcome {
+  return {
+    scanned: a.scanned + b.scanned,
+    updated: a.updated + b.updated,
+    rowsRead: a.rowsRead + b.rowsRead,
+    rowsWritten: a.rowsWritten + b.rowsWritten,
+    d1Calls: a.d1Calls + b.d1Calls,
+    lastId: b.lastId ?? a.lastId,
+  };
+}
+
+const EMPTY: RefreshOutcome = {
+  scanned: 0,
+  updated: 0,
+  rowsRead: 0,
+  rowsWritten: 0,
+  d1Calls: 0,
+  lastId: null,
+};
+
 /**
- * contracts 12.10: after an "Always keep" / "Always OK to trash" change, re-fuse the pending suggestions it covers
- * in every connected account and count the rows in today's budget. "@domain" entries cover the registrable domain
- * (a superset of the subdomain entry; the guardrails decide per row).
+ * contracts 12.10: re-fuse the pending suggestions of these domains and senders in one account. A domain covers
+ * every sender in it, so senders only matter when their domain is unknown or not listed. Chunked to the parameter
+ * limit, at most REFRESH_MAX_CHUNKS queries; the nightly refresh covers anything beyond.
  */
-export async function refreshForEntry(
+export async function refreshScoped(
   db: D1Database,
-  entry: string,
+  accountId: string,
+  scope: { senders: readonly string[]; domains: readonly string[] },
+  settings: RefreshSettings,
+  now: number,
+): Promise<RefreshOutcome> {
+  const domains = [...new Set(scope.domains.filter((d) => d !== ""))];
+  const covered = new Set(domains);
+  const senders = [...new Set(scope.senders.filter((x) => x !== ""))].filter(
+    (x) => !covered.has(x.slice(x.lastIndexOf("@") + 1)) && !covered.has(registrableOf(x)),
+  );
+  const keys: { kind: "domain" | "sender"; value: string }[] = [
+    ...domains.map((value) => ({ kind: "domain" as const, value })),
+    ...senders.map((value) => ({ kind: "sender" as const, value })),
+  ];
+  let out = EMPTY;
+  for (let i = 0, chunks = 0; i < keys.length && chunks < REFRESH_MAX_CHUNKS; i += SCOPE_MAX, chunks++) {
+    const part = keys.slice(i, i + SCOPE_MAX);
+    const res = await refreshPending(
+      db,
+      {
+        accountId,
+        domains: part.filter((k) => k.kind === "domain").map((k) => k.value),
+        senders: part.filter((k) => k.kind === "sender").map((k) => k.value),
+      },
+      settings,
+      now,
+    );
+    out = addOutcome(out, res);
+  }
+  return out;
+}
+
+function registrableOf(address: string): string {
+  const host = address.slice(address.lastIndexOf("@") + 1);
+  return host === "" ? "" : registrableDomain(host);
+}
+
+/**
+ * contracts 12.10: after "Always keep" / "Always OK to trash" changes, re-fuse the pending suggestions they cover in
+ * every connected account (one scoped refresh per account) and count the rows in today's budget once. "@domain"
+ * entries cover the registrable domain (a superset of a subdomain entry; the guardrails decide per row).
+ */
+export async function refreshForEntries(
+  db: D1Database,
+  entries: readonly string[],
   settings: RefreshSettings,
   now: number,
 ): Promise<void> {
+  if (entries.length === 0) return;
+  const scope = {
+    senders: entries.filter((e) => !e.startsWith("@")),
+    domains: entries.filter((e) => e.startsWith("@")).map((e) => registrableDomain(e.slice(1))),
+  };
   const accounts = await listAccounts(db, { includeDisconnected: false });
-  const scope = entry.startsWith("@")
-    ? { senders: [], domains: [registrableDomain(entry.slice(1))] }
-    : { senders: [entry], domains: [] };
-  let rowsRead = 0;
-  let rowsWritten = 0;
-  for (const a of accounts) {
-    const out = await refreshPending(db, { accountId: a.id, ...scope }, settings, now);
-    rowsRead += out.rowsRead;
-    rowsWritten += out.rowsWritten;
-  }
-  if (rowsRead + rowsWritten > 0) {
-    await budgetDeltaStmt(db, utcDate(now), { rowsWritten: rowsWritten + 1, rowsRead }, now).run();
+  let total = EMPTY;
+  for (const a of accounts) total = addOutcome(total, await refreshScoped(db, a.id, scope, settings, now));
+  if (total.rowsRead + total.rowsWritten > 0) {
+    await budgetDeltaStmt(
+      db,
+      utcDate(now),
+      { rowsWritten: total.rowsWritten + 1, rowsRead: total.rowsRead },
+      now,
+    ).run();
   }
 }

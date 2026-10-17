@@ -216,7 +216,7 @@ export const ActionResponseSchema = z.object({
 
 export const ActionBatchViewSchema = z.object({
   id: num,
-  kind: z.enum(["approve", "override", "cleanup"]),
+  kind: z.enum(["approve", "override", "cleanup", "auto_trash"]),
   createdAt: str,
   requestedCount: num,
   executedCount: num,
@@ -303,6 +303,7 @@ export const PolicyResponseSchema = z.object({
   policy,
   version: num,
   defaults: policy,
+  autoTrashKillSwitch: bool,
 }) satisfies z.ZodType<PolicyResponse>;
 
 export const RuleSuggestionsSchema = z.object({

@@ -1901,6 +1901,7 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 | `cleanup` | **Clean up** · 1,284 emails (+ ", 371 sender groups" when `result.groups`) | "1,280 done · 4 already moved" (from `executed`, `skipped`, `failed`; "Done" when all executed) | Batch undoable and `result.delete + result.archive > 0`: secondary sm "Undo"; `undoneAt`: `text-ink-3` "Undone"; expired: `text-small text-ink-3` "Undo expired"; keep-only batch (`result.delete + result.archive` is 0): no Undo and no "Undone" or "Undo expired" text, the cell is empty |
 | `approve` | **Trash** / **Archive** / **Keep** · 248 emails (verb from the only non-zero of `result.delete/archive/keep`; several: **Approved**) | as cleanup | as cleanup (a keep-only approve has no Undo) |
 | `override` | **Changed** · 12 emails to Trash (target from `result`) | as cleanup | as cleanup |
+| `auto_trash` (contracts 12.11) | **Auto-trash** · 12 emails from Always OK to trash senders (singular "1 email"); never names a sender | as cleanup | as cleanup (Undo for 24 hours; the toast is the 5.4 undo toast) |
 | `undo` | **Undo** · 1,284 emails restored | "Done" or "1,280 restored · 4 failed" | none |
 | `account_connected` | **Connected** · you@gmail.com | "Sorting started" | none |
 | `account_reconnected` | **Reconnected** · you@gmail.com | "Sorting resumed" | none |
@@ -1978,6 +1979,7 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 |---|---|---|---|---|
 | 1 | "Always keep these senders" | "Never suggested for trash or archive." | ChipInput, placeholder "Add sender or @domain" | `allowlist` |
 | 2 | "Always OK to trash" | "Skip the confidence check for these." | ChipInput, same placeholder | `denylist` |
+| 2a | "Auto-trash for Always OK senders" (contracts 12.11) | "Each night Clearbox moves trash suggestions from your Always OK to trash senders to Trash without asking. Starred, flagged, important and replied emails, attachments and receipts are never included, and nothing is deleted for good. Undo it from Activity for 24 hours. At most 500 a day." When `autoTrashKillSwitch` is true the description adds "Turned off for this deployment (AUTO_TRASH_KILL_SWITCH)." and the Toggle is disabled (the saved choice is kept) | Toggle; default off | `autoTrash` |
 | 3 | "Scan history" (rev 2.4) | "How far back Clearbox sorts mail already in your inbox. New mail is always scanned. A longer window picks up where the last scan stopped; a shorter one keeps existing suggestions." | Select (Last 30 days, Last 90 days, Last year, All mail); default Last 90 days | `scanHistoryDays` (30, 90, 365, null) |
 | 4 | "Leave recent emails alone" | "Don't suggest anything for emails newer than this." (12.10: such emails are not decided until they are old enough, then appear with a real suggestion) | Select (Off, 1 day, 2, 3, 5, 7, 14, 30 days) | `minAgeDays` |
 | 5 | "Protect starred, flagged and replied threads" | "Always on. These are never trashed." | Toggle locked on | none (fixed guardrail) |
@@ -1988,7 +1990,7 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 
 Above the form (contracts 12.10): the "Suggested rules" panel with every offer (same rows as the Review card, 5.1 item 3a), hidden when there is none. Below the panel, `text-small text-ink-3`: "Rule changes apply to new emails right away. Suggestions already in Review follow: sender lists at once, other rules overnight." and a link button "Reset to defaults" (fills the form with `defaults`, marks dirty; does not save).
 
-**Data needed:** `GET /api/policy` (`["policy"]`): `policy`, `version`, `defaults`. Mutation: `PUT /api/policy { policy, expectedVersion: version }`.
+**Data needed:** `GET /api/policy` (`["policy"]`): `policy`, `version`, `defaults`, `autoTrashKillSwitch` (12.11). Mutation: `PUT /api/policy { policy, expectedVersion: version }`.
 
 **Editing model:** the form holds a local draft of the full `Policy`. Adding an entry to one list removes it from the other in the draft (chip note "Moved from Always OK to trash" / "Moved from Always keep"). Entries are lowercased and trimmed before validation with the shared `SenderEntrySchema` (client-side zod schema from `shared/api.ts`). Duplicates are rejected with "This entry is already in the list.".
 

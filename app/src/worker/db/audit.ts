@@ -40,6 +40,7 @@ const RESULT_KEYS: Partial<Record<AuditKind, readonly string[]>> = {
   approve: ACTION_RESULT_KEYS,
   override: ACTION_RESULT_KEYS,
   cleanup: ACTION_RESULT_KEYS,
+  auto_trash: ACTION_RESULT_KEYS,
   undo: ["restored", "failed"],
   policy_updated: ["allow", "deny"],
   calibration: ["tauDelete"],
@@ -122,7 +123,7 @@ export function selectBatchAuditStmt(db: D1Database, batchIds: readonly number[]
   return db
     .prepare(
       `SELECT id, ts, account_id, kind, batch_id, count, result_json FROM audit_log
-       WHERE kind IN ('approve', 'override', 'cleanup') AND batch_id IN (${placeholders(batchIds.length)})`,
+       WHERE kind IN ('approve', 'override', 'cleanup', 'auto_trash') AND batch_id IN (${placeholders(batchIds.length)})`,
     )
     .bind(...batchIds);
 }

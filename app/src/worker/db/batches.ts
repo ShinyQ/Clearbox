@@ -1,4 +1,5 @@
-export type BatchKind = "approve" | "override" | "cleanup";
+/** contracts 12.11: auto_trash is a nightly automatic trash of Always OK to trash mail. */
+export type BatchKind = "approve" | "override" | "cleanup" | "auto_trash";
 
 export interface BatchRow {
   id: number;

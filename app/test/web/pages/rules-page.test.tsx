@@ -100,6 +100,40 @@ describe("Rules page", () => {
     expect(body.policy.weeklyReminder).toEqual({ enabled: false, weekday: 3 });
   });
 
+  it("offers auto-trash for Always OK senders, off by default, and saves it (contracts 12.11)", async () => {
+    const { state, user, container } = setup();
+    const toggle = await screen.findByRole("switch", { name: "Auto-trash for Always OK senders" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(
+      screen.getByText(
+        /Each night Clearbox moves trash suggestions from your Always OK to trash senders to Trash without asking\./,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Starred, flagged, important and replied emails, attachments and receipts/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Undo it from Activity for 24 hours\./)).toBeTruthy();
+    await expectNoA11yViolations(container);
+
+    await user.click(toggle);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    await user.click(screen.getAllByRole("button", { name: "Save changes" })[0]!);
+    expect(await screen.findByText("Rules saved. They apply to new emails from now on.")).toBeTruthy();
+    const body = state.requests.find((r) => r.route === "putPolicy")?.body as {
+      policy: { autoTrash: boolean };
+    };
+    expect(body.policy.autoTrash).toBe(true);
+  });
+
+  it("shows auto-trash as off for the deployment when the kill switch is on", async () => {
+    setup((s) => {
+      s.policy = { ...s.policy, policy: { ...s.policy.policy, autoTrash: true }, autoTrashKillSwitch: true };
+    });
+    const toggle = await screen.findByRole("switch", { name: "Auto-trash for Always OK senders" });
+    expect(toggle.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByText(/Turned off for this deployment \(AUTO_TRASH_KILL_SWITCH\)\./)).toBeTruthy();
+  });
+
   it("validates record words on the client", async () => {
     const { user } = setup();
     await user.type(await screen.findByRole("textbox", { name: "Record words" }), "a{Enter}");

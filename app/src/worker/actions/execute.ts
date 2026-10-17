@@ -1,6 +1,7 @@
 import {
   BUDGET_ROWS_PER_DAY,
   ClearboxError,
+  autoTrashBlock,
   DECIDED_TTL_MS,
   MAX_ITEMS_PER_ACTION_REQUEST,
   ProviderAuthError,
@@ -9,7 +10,7 @@ import {
   ProviderUnavailableError,
   UNDO_WINDOW_MS,
 } from "@clearbox/core";
-import type { ActionErrorCode, ActionKind, MailProvider } from "@clearbox/core";
+import type { ActionErrorCode, ActionKind, MailProvider, Policy, Signals } from "@clearbox/core";
 import type { ActionResponse, AppIssue, ItemErrorCode, ItemOutcome, ItemResult } from "../../shared/api.ts";
 import { importEncKey } from "../crypto/aead.ts";
 import { listAccounts, markAccountStatusStmt } from "../db/accounts.ts";
@@ -35,6 +36,8 @@ import {
 } from "../db/sql.ts";
 import type { SqlQuery } from "../db/sql.ts";
 import {
+  autoTrashClaimQuery,
+  autoTrashTargetsQuery,
   claimQuery,
   markExecutedQuery,
   markFailedQuery,
@@ -45,7 +48,7 @@ import {
   targetsForCleanupQuery,
   targetsForGroupQuery,
 } from "../db/suggestions.ts";
-import type { TargetRow } from "../db/suggestions.ts";
+import type { AutoTrashTargetRow, TargetRow } from "../db/suggestions.ts";
 import type { AppConfig, AppDeps } from "../env.ts";
 import { logEvent } from "../log.ts";
 import { ApiError } from "../middleware/errors.ts";
@@ -68,6 +71,24 @@ export type ExecuteRequest =
       accountId: string | null;
       asOf: number;
     };
+
+/** Contracts 12.11: one nightly auto-trash round for one account, oldest suggestions after `afterId` first. */
+export interface AutoTrashRequest {
+  accountId: string;
+  limit: number;
+  afterId: number;
+}
+
+export interface AutoTrashOutcome {
+  response: ActionResponse;
+  /** Rows the scope query returned (before the policy re-check), and the last one, for the next round. */
+  scanned: number;
+  lastId: number | null;
+}
+
+type AnyRequest = ExecuteRequest | ({ kind: "auto_trash" } & AutoTrashRequest);
+
+const DAY_MS = 86_400_000;
 
 export interface ActionContext {
   db: D1Database;
@@ -200,7 +221,8 @@ function groupBy<T>(items: readonly T[], key: (item: T) => string): Map<string, 
   return out;
 }
 
-function batchKindOf(req: ExecuteRequest): BatchKind {
+function batchKindOf(req: AnyRequest): BatchKind {
+  if (req.kind === "auto_trash") return "auto_trash";
   return req.kind === "override" ? "override" : req.kind === "cleanup" ? "cleanup" : "approve";
 }
 
@@ -232,14 +254,24 @@ function cleanupScope(
 
 async function selectTargets(
   db: D1Database,
-  req: ExecuteRequest,
+  req: AnyRequest,
   accounts: readonly Account[],
+  policy: Policy,
+  now: number,
 ): Promise<TargetRow[]> {
   const accountIds = accounts.map((a) => a.id);
   if (accountIds.length === 0) return [];
   if (accountIds.length > 90) throw new ClearboxError("too_many_accounts");
   let queries: SqlQuery[] = [];
-  if (req.kind === "approve_ids" || req.kind === "override") {
+  if (req.kind === "auto_trash") {
+    // Paused accounts are left alone too: pausing means "hands off this mailbox".
+    const account = accounts.find((a) => a.id === req.accountId);
+    if (account?.status === "active" && !account.paused) {
+      queries = [
+        autoTrashTargetsQuery(req.accountId, req.afterId, now - policy.minAgeDays * DAY_MS, req.limit),
+      ];
+    }
+  } else if (req.kind === "approve_ids" || req.kind === "override") {
     queries = chunk([...new Set(req.ids)], MAX_BOUND_PARAMS - accountIds.length).map((part) =>
       targetsByIdsQuery(accountIds, part),
     );
@@ -280,23 +312,78 @@ function decided(c: Candidate): DecidedItem {
   };
 }
 
+/** Contracts 12.11: the current-policy re-check of an auto-trash row; unreadable signals never qualify. */
+function autoTrashAllowed(row: AutoTrashTargetRow, policy: Policy, now: number): boolean {
+  let signals: Signals;
+  try {
+    signals = JSON.parse(row.signals_json) as Signals;
+  } catch {
+    return false;
+  }
+  return (
+    autoTrashBlock(
+      {
+        action: row.action,
+        segment: row.segment,
+        ceiling: row.ceiling,
+        signals,
+        receivedAt: row.received_at,
+        subject: row.subject ?? "",
+        snippet: row.snippet ?? "",
+      },
+      policy,
+      now,
+    ) === null
+  );
+}
+
 /**
  * Contracts 7.7: approve, override and Clean up share this path.
  * Invariant: no provider call happens for a suggestion this request did not move from pending to approved.
  */
 export async function executeSuggestions(ctx: ActionContext, req: ExecuteRequest): Promise<ActionResponse> {
+  return (await execute(ctx, req)).response;
+}
+
+/**
+ * Contracts 12.11: the nightly auto-trash round. Same path, batches, audit and undo as an owner Clean up, but it
+ * writes no label and no prior (it is not an owner decision), never re-fuses, and stops when the toggle is off.
+ */
+export async function executeAutoTrash(ctx: ActionContext, req: AutoTrashRequest): Promise<AutoTrashOutcome> {
+  return execute(ctx, { kind: "auto_trash", ...req });
+}
+
+async function execute(ctx: ActionContext, req: AnyRequest): Promise<AutoTrashOutcome> {
   const { db, deps } = ctx;
   const now = deps.now();
   const kind = batchKindOf(req);
+  const auto = req.kind === "auto_trash";
   const [budget, settings, visible] = await Promise.all([
     readBudget(db, utcDate(now)),
     readSettings(db),
     listAccounts(db, { includeDisconnected: false }),
   ]);
   assertOwnerBudget(budget, ctx.config, now);
+  if (auto && !settings.policy.autoTrash) {
+    const response: ActionResponse = {
+      batchId: null,
+      results: [],
+      executed: 0,
+      failed: 0,
+      skipped: 0,
+      retryLater: 0,
+      remaining: 0,
+    };
+    return { response, scanned: 0, lastId: null };
+  }
   const accounts = new Map(visible.map((a) => [a.id, a]));
   const accountIds = [...accounts.keys()];
-  const targets = await selectTargets(db, req, visible);
+  const selected = await selectTargets(db, req, visible, settings.policy, now);
+  const scanned = selected.length;
+  const lastId = selected[selected.length - 1]?.message_id ?? null;
+  const targets = auto
+    ? selected.filter((t) => autoTrashAllowed(t as AutoTrashTargetRow, settings.policy, now))
+    : selected;
 
   const results = new Map<number, ItemResult>();
   const set = (id: number, outcome: ItemOutcome, action: ActionKind | null, error: ItemErrorCode | null) =>
@@ -340,7 +427,9 @@ export async function executeSuggestions(ctx: ActionContext, req: ExecuteRequest
       items.map((c) => c.row.message_id),
       MAX_BOUND_PARAMS - 2,
     )) {
-      claimStmts.push(bindQuery(db, claimQuery(accountId, part, now)));
+      claimStmts.push(
+        bindQuery(db, auto ? autoTrashClaimQuery(accountId, part, now) : claimQuery(accountId, part, now)),
+      );
     }
   }
   const claimed = new Set<number>();
@@ -452,11 +541,26 @@ export async function executeSuggestions(ctx: ActionContext, req: ExecuteRequest
   }
   for (const e of executed) {
     const { row, action, account } = e.cand;
+    // contracts 12.11: an automatic trash is not an owner decision, so it writes no label (calibration, precision
+    // and rule offers stay owner-only) and keeps decided_via within the existing CHECK; the batch kind tells it apart.
+    if (kind !== "auto_trash") {
+      stmts.push(
+        insertLabelStmt(db, account.id, labelFor(decided(e.cand), kind, settings.policy.labelSubjects, now)),
+      );
+    }
     stmts.push(
-      insertLabelStmt(db, account.id, labelFor(decided(e.cand), kind, settings.policy.labelSubjects, now)),
-    );
-    stmts.push(
-      bindQuery(db, markExecutedQuery(account.id, row.message_id, action, kind, now, now + DECIDED_TTL_MS)),
+      bindQuery(
+        db,
+        markExecutedQuery(
+          account.id,
+          row.message_id,
+          action,
+          kind === "auto_trash" ? "cleanup" : kind,
+          now,
+          now + DECIDED_TTL_MS,
+          kind !== "auto_trash",
+        ),
+      ),
     );
     if (e.newId !== null && e.newId !== row.provider_msg_id) {
       stmts.push(updateProviderMsgIdStmt(db, account.id, row.message_id, e.newId));
@@ -472,7 +576,8 @@ export async function executeSuggestions(ctx: ActionContext, req: ExecuteRequest
       stmts.push(bindQuery(db, releaseQuery(accountId, part, now)));
     }
   }
-  stmts.push(...priorStatements(db, decisionPriorDeltas(executed.map((e) => decided(e.cand))), now));
+  if (!auto)
+    stmts.push(...priorStatements(db, decisionPriorDeltas(executed.map((e) => decided(e.cand))), now));
   stmts.push(...accountFailureStatements(db, failures, settings.issues, now));
   stmts.push(...tokenStmts);
   if (executed.length + failed.length > 0) {
@@ -523,7 +628,7 @@ export async function executeSuggestions(ctx: ActionContext, req: ExecuteRequest
   // contracts 12.10: owner decisions just moved these priors; re-fuse what is still pending for the same senders and
   // domains so Review reflects them now. Best effort: a failure here never fails the action.
   let refreshRows = { read: 0, written: 0 };
-  for (const [accountId, items] of groupBy(executed, (e) => e.cand.account.id)) {
+  for (const [accountId, items] of groupBy(auto ? [] : executed, (e) => e.cand.account.id)) {
     try {
       const out = await refreshScoped(
         db,
@@ -575,5 +680,5 @@ export async function executeSuggestions(ctx: ActionContext, req: ExecuteRequest
     skipped: response.skipped,
     retryLater: response.retryLater,
   });
-  return response;
+  return { response, scanned, lastId };
 }

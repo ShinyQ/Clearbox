@@ -12,6 +12,7 @@ export default defineConfig({
           ENVIRONMENT: "test",
           DEV_AUTH_BYPASS: "false",
           FREE_TIER: "true",
+          AUTO_TRASH_KILL_SWITCH: "off",
           OWNER_EMAIL: "owner@example.test",
           ACCESS_TEAM_DOMAIN: "https://test-team.cloudflareaccess.com",
           ACCESS_AUD: "test-aud-0000000000000000000000000000000000000000000000000000000000",

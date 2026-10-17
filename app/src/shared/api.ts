@@ -325,7 +325,8 @@ export interface ActionResponse {
 }
 export interface ActionBatchView {
   id: number;
-  kind: "approve" | "override" | "cleanup";
+  /** contracts 12.11: auto_trash is the nightly automatic trash of Always OK to trash mail. */
+  kind: "approve" | "override" | "cleanup" | "auto_trash";
   createdAt: string;
   requestedCount: number;
   executedCount: number;
@@ -366,7 +367,8 @@ export type ActivityKind =
   | "policy_updated"
   | "calibration"
   | "purge"
-  | "unsubscribe";
+  | "unsubscribe"
+  | "auto_trash";
 
 export interface ActivityEntry {
   id: number;
@@ -416,6 +418,8 @@ export interface PolicyResponse {
   policy: Policy;
   version: number;
   defaults: Policy;
+  /** contracts 12.11: true when the deployment kill switch (AUTO_TRASH_KILL_SWITCH) blocks auto-trash. */
+  autoTrashKillSwitch: boolean;
 }
 
 export const PutPolicyBodySchema = z.strictObject({ policy: PolicySchema, expectedVersion: z.int().min(1) });

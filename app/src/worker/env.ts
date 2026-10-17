@@ -81,6 +81,14 @@ function decisionEndpoint(raw: string): string | undefined {
   return url.origin;
 }
 
+/**
+ * Contracts 12.11 kill switch: auto-trash runs only while AUTO_TRASH_KILL_SWITCH is exactly "off". "on", any other
+ * value or a missing var stops it for the whole deployment, whatever the owner's Rules toggle says (fail closed).
+ */
+export function autoTrashKilled(env: Env): boolean {
+  return String((env as unknown as Record<string, unknown>)["AUTO_TRASH_KILL_SWITCH"] ?? "") !== "off";
+}
+
 const cache = new WeakMap<object, ConfigResult>();
 
 /** Validates every secret and var once per env object (one per isolate in production). Fails closed. */

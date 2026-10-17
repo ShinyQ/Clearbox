@@ -166,20 +166,23 @@ export async function undoBatch(ctx: ActionContext, batchId: number): Promise<Un
       if (r.newId !== r.row.provider_msg_id)
         stmts.push(updateProviderMsgIdStmt(db, r.account.id, r.row.message_id, r.newId));
     }
-    stmts.push(
-      ...priorStatements(
-        db,
-        undoPriorDeltas(
-          restored.map((r) => ({
-            accountId: r.account.id,
-            sender: r.row.sender,
-            senderDomain: r.row.sender_domain,
-            finalAction: r.finalAction,
-          })),
+    // contracts 12.11: an auto-trash batch never moved the priors (and wrote no labels), so its undo leaves them alone.
+    if (batch.kind !== "auto_trash") {
+      stmts.push(
+        ...priorStatements(
+          db,
+          undoPriorDeltas(
+            restored.map((r) => ({
+              accountId: r.account.id,
+              sender: r.row.sender,
+              senderDomain: r.row.sender_domain,
+              finalAction: r.finalAction,
+            })),
+          ),
+          now,
         ),
-        now,
-      ),
-    );
+      );
+    }
     stmts.push(...accountFailureStatements(db, failures, settings.issues, now));
     stmts.push(...tokenStmts);
     const touched = new Set(restored.map((r) => r.account.id));

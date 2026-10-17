@@ -48,7 +48,7 @@ Each deployment serves a single owner. You run your own copy on Cloudflare Worke
 
 - Gmail and Outlook (Microsoft Graph) only; no IMAP.
 - Single owner; not a multi-tenant service.
-- No permanent deletion and no unsubscribe automation, by design.
+- No permanent deletion and no automatic unsubscribing, by design. Unsubscribe is RFC 8058 one-click only and only when you click it; `mailto:` unsubscribe links are not supported.
 - The first backfill sorts the last 90 days of your inbox by default (**Scan history** on Rules: 30 days, 90 days, a year or all mail). New mail is always scanned. Widening the window later continues where the backfill stopped; all mail in a large inbox takes days on the Free plan (D1 write budget).
 - Microsoft-Decision-1 is a Preview model; version 1 retires on 2027-02-04 ([runbook](docs/runbook.md#11-decision-1-outage-or-errors)).
 - A personal Google OAuth app shows the "unverified app" warning (you approve your own app once).
@@ -66,6 +66,7 @@ Each deployment serves a single owner. You run your own copy on Cloudflare Worke
 - **Guardrails**: starred, flagged and replied threads, recent mail and your always-keep senders are never trashed; people you write to, attachments and receipts are capped at keep or archive unless you mark the sender as always OK to trash.
 - **Learns from your choices**: every approval or override updates per-sender priors, and a nightly job tunes the trash threshold to the lowest value that keeps delete precision at or above 98%.
 - **Gmail and Outlook, multi-account**: connect several mailboxes in one deployment and review them together or one at a time.
+- **One-click unsubscribe**: when a sender's newest email supports RFC 8058 one-click (and passed DKIM), the detail panel offers "Unsubscribe" or "Trash and unsubscribe"; Clearbox sends the request from the Worker after you confirm and shows "Unsubscribed on <date>" afterwards.
 - **Undo for 24 hours**: trash and archive moves can be restored from Activity for 24 hours (the providers keep Trash for about 30 days).
 - **Keyboard-first**: `J`/`K` to move, `X` to select, `T`/`A`/`E` for trash, archive and keep, `Cmd`/`Ctrl`+`Enter` to Clean up, `G` then a letter to switch pages, `?` for the full list.
 - **Runs on Cloudflare Free**: a once-a-minute tick processes one page per mailbox within the Workers and D1 Free limits; Workers Paid only makes it faster.
@@ -273,6 +274,7 @@ A 50,000-email inbox costs roughly $0.95 to $1.70 to sort once.
 - **Least-privilege OAuth**: Gmail `gmail.modify` cannot permanently delete; Graph uses delegated `Mail.ReadWrite`. Authorization code with PKCE and an HMAC-signed state cookie.
 - **Approval required**: no code path moves a message without a pending suggestion you approved in that request; requests are capped at 100 items and idempotent, and trash and archive moves can be undone for 24 hours.
 - **Data minimization and residency**: metadata and the provider snippet only, never full bodies; message rows are purged 30 days after a decision. Logs contain opaque ids and counts only.
+- **Unsubscribe links are untrusted**: read from the provider when you click, never stored or logged, `https` to a public host only (no IP literals, local names or the app itself), one POST with no cookies or credentials, no redirects followed, a short timeout, response discarded.
 - **Hostile content**: plain-text rendering, a strict CSP, `X-Clearbox-CSRF` on mutating calls, no CORS.
 
 Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md). Before a first deploy, work through the [security review checklist](docs/security-review-checklist.md).

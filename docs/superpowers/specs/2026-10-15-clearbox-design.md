@@ -28,7 +28,7 @@ The repository is public and generic (anyone can self-host with their own accoun
 - Fully automatic actions without approval.
 - Multi-tenant SaaS (one deployment serves one owner).
 - Generative explanations or summaries (a plugin seam is reserved; see section 14).
-- Unsubscribe automation.
+- Unsubscribe automation (Clearbox never unsubscribes on its own; the owner-initiated one-click assistant is in contracts 12.9).
 - IMAP or other providers.
 
 ## 3. Verified model facts
@@ -277,6 +277,7 @@ The highest-value asset is a mailbox refresh token. Other assets are email metad
 | Prompt injection | Email text is untrusted `state`. Decision-1 returns only bounded probabilities, so there are no tools and no generated text. The blast radius is limited by guardrails based on headers and history, by mandatory human approval, and by trash-only actions. |
 | Destructive actions | Approval targets exact suggestion IDs, a sender group bounded by the `asOf` time the UI displayed, or the Clean up threshold the UI displayed. The server verifies each suggestion is `pending` and belongs to its account, caps every request at 100 items, and executes idempotently. Undo is available for 24 hours (the provider keeps trash for about 30 days). The audit log is append-only. |
 | Data minimization and residency | Clearbox stores metadata plus the snippet; snippet storage and label subjects can be turned off in the policy. Message rows are purged 30 days after a decision (90 days if never reviewed). `labels` keep only the sender, the domain, and a subject truncated to 60 characters. D1 is created with **EU jurisdiction**, and Decision-1 runs on **DataZoneStandard (EU)**. Logs contain opaque IDs and counts only, never addresses, subjects, snippets, provider message ids or query strings (`redactQueryString` is on, because OAuth callbacks carry codes). |
+| Unsubscribe (contracts 12.9) | Owner-initiated only, RFC 8058 one-click only (no `mailto:`), offered only with provider DKIM pass. The URL is read from the provider at request time and never stored or logged; it must be `https` on the default port with a public DNS name (no userinfo, IP literals, local or reserved names, or the app's own host). One POST with the fixed one-click body and no other context, no redirects followed, a 5 s timeout, response body discarded unread. Audit rows hold the outcome code and HTTP status only. |
 | Isolation | Every repository function on account-owned tables requires an account id, and a test scans the SQL to enforce it. |
 | Public repo hygiene | No secrets or environment-specific values (account ids, subdomains, team names, Azure resource names) in the repo. `.dev.vars` and `app/clearbox.local.json` are gitignored, and fixtures are synthetic only. Secrets: `AZURE_DECISION_ENDPOINT`, `AZURE_DECISION_KEY`, `AZURE_DECISION_DEPLOYMENT`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `TOKEN_ENC_KEY`, `STATE_SIGNING_KEY`, `OWNER_EMAIL`, `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`. |
 | Supply chain | Exact dependency versions, lockfile committed, minimal dependencies, Dependabot, CodeQL, and GitHub secret scanning with push protection. |
@@ -294,6 +295,7 @@ Full DDL, indexes and CHECK constraints are in contracts section 6. Summary:
 | `suggestions` | One per message | status `awaiting_model`, `pending`, `approved`, `executed`, `failed`, `dismissed`, `undone`; fused probabilities, ceiling, reasons, versions, `expires_at`; partial index on open suggestions |
 | `labels` | Owner decisions, kept after messages are purged | eval, calibration and few-shot pool |
 | `sender_priors`, `senders`, `correspondents`, `sent_threads` | Learned priors, sender counters, sent-mail sets | WITHOUT ROWID, keyed by account |
+| `unsubscribes` | Senders the owner unsubscribed from (one-click) | WITHOUT ROWID, `(account, sender)`, date only; migration 0002 |
 | `action_batches` | Executed batches for undo | 24-hour undo window, kept 7 days |
 | `audit_log` | Append-only activity | counts and codes only |
 | `budget` | Daily rows written, ticks, Decision-1 calls and tokens, database size | enforces the Free write budget |
@@ -382,7 +384,7 @@ The UI (a desktop-first "Clean up" dashboard for a weekly 5 to 10 minute session
 ## 14. Future extensions (not in v1)
 
 - An `Explainer` plugin interface that sends `unsure` items to a generative model for a summary.
-- An unsubscribe assistant using `List-Unsubscribe` and one-click unsubscribe.
+- Shipped 2026-10-17 (contracts 12.9): an owner-initiated unsubscribe assistant using `List-Unsubscribe` and RFC 8058 one-click.
 - Multi-tenant mode.
 - Embeddings-based similar-decision retrieval.
 - Entra ID auth to Foundry, replacing the API key.

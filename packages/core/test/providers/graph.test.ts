@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   ProviderAuthError,
+  ProviderRateLimitError,
   ProviderResponseError,
   ProviderUnavailableError,
 } from "../../src/model/errors.ts";
@@ -85,6 +86,31 @@ describe("GraphProvider.inboxEstimate", () => {
     expect(await provider.inboxEstimate()).toBe(1);
     box.failNext({ method: "GET", path: "/me/mailFolders/inbox", status: 429 });
     expect(await provider.inboxEstimate()).toBeNull();
+  });
+});
+
+describe("GraphProvider.unsubscribeHeaders", () => {
+  it("reads internetMessageHeaders of one message and keeps only the List-Unsubscribe pair", async () => {
+    const m = box.addMessage({
+      headers: [
+        { name: "List-Unsubscribe", value: "<https://shop.example.com/u/1>" },
+        { name: "List-Unsubscribe-Post", value: "List-Unsubscribe=One-Click" },
+      ],
+    });
+    const provider = makeProvider();
+    expect(await provider.unsubscribeHeaders(m.id)).toEqual({
+      listUnsubscribe: "<https://shop.example.com/u/1>",
+      listUnsubscribePost: "List-Unsubscribe=One-Click",
+    });
+    expect(box.requests).toEqual([`GET /me/messages/${m.id}`]);
+  });
+
+  it("returns null for a gone message and throws on throttling", async () => {
+    const m = box.addMessage();
+    const provider = makeProvider();
+    expect(await provider.unsubscribeHeaders("missing-id")).toBeNull();
+    box.failNext({ method: "GET", path: `/me/messages/${m.id}`, status: 429 });
+    await expect(provider.unsubscribeHeaders(m.id)).rejects.toBeInstanceOf(ProviderRateLimitError);
   });
 });
 

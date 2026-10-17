@@ -1,4 +1,4 @@
--- Migration number: 0002 	 2026-10-17T00:00:00.000Z
+-- Migration number: 0003 	 2026-10-17T00:00:00.000Z
 -- Accuracy and learning (contracts 12.10): decision segments, per-suggestion trash threshold, stored model output.
 
 ALTER TABLE suggestions ADD COLUMN segment TEXT

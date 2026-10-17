@@ -163,6 +163,7 @@ function scriptedProvider(script: Script): { provider: MailProvider; calls: stri
   const provider: MailProvider = {
     kind: "gmail",
     bootstrap: unexpected("bootstrap"),
+    unsubscribeHeaders: unexpected("unsubscribeHeaders"),
     listInboxPage: async (cursor) => {
       calls.push(`inbox:${cursor ?? "null"}`);
       if (script.inbox === undefined) throw new Error("unexpected listInboxPage");

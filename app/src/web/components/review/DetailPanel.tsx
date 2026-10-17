@@ -43,6 +43,8 @@ export interface DetailPanelProps {
   onClose: () => void;
   onRetry: () => void;
   onReconnect: (account: AccountView) => void;
+  /** Unsubscribe assistant (UI spec 4.14a), rendered below the actions. */
+  unsubscribe?: ReactNode;
 }
 
 function tagLabel(g: SenderGroup): string {
@@ -172,6 +174,7 @@ export function DetailPanel({ headingRef, ...p }: DetailPanelProps) {
         onAlwaysTrash={p.onAlwaysTrash}
         onCopyAddress={p.onCopyAddress}
       />
+      {p.unsubscribe}
       <div className="hidden flex-wrap gap-2.5 text-meta text-ink-3 lg:flex">
         {HINTS.map(([keys, label]) => (
           <span key={label} className="inline-flex items-center gap-1">

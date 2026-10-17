@@ -377,7 +377,7 @@ export interface TargetRow {
   p_delete: number | null;
   margin: number | null;
   ceiling: Ceiling;
-  /** contracts 12.10; null on rows written before migration 0002. */
+  /** contracts 12.10; null on rows written before migration 0003. */
   segment: DecisionSegment | null;
   model_version: string | null;
   policy_version: number;

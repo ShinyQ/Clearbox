@@ -32,6 +32,7 @@ import {
   pendingByActionQuery,
 } from "../db/suggestions.ts";
 import type { GroupItemRow, GroupRow, ReasonCountRow } from "../db/suggestions.ts";
+import { newestPendingFromSenderQuery, oneClickOffered, unsubscribedAtQuery } from "../db/unsubscribes.ts";
 import type { AppEnv } from "../env.ts";
 import { logEvent } from "../log.ts";
 import { ApiError, parseWith } from "../middleware/errors.ts";
@@ -345,6 +346,11 @@ const ItemCursorSchema = z.strictObject({
   i: z.int(),
 });
 
+function unsubscribedAtOf(row: unknown): string | null {
+  const at = (row as { unsubscribed_at?: unknown } | undefined)?.unsubscribed_at;
+  return typeof at === "number" ? toIso(at) : null;
+}
+
 queueRoutes.get("/groups/:key", async (c) => {
   const key = c.req.param("key");
   const decoded = decodeGroupKey(key);
@@ -358,7 +364,7 @@ queueRoutes.get("/groups/:key", async (c) => {
   const [account] = await scopeAccounts(db, decoded.accountId);
   if (!account) throw new ApiError(404, "not_found", "Group not found");
 
-  const [groupRes, itemsRes] = await db.batch([
+  const [groupRes, itemsRes, newestRes, unsubRes] = await db.batch([
     bindQuery(
       db,
       groupsQuery(
@@ -379,6 +385,8 @@ queueRoutes.get("/groups/:key", async (c) => {
         q.limit + 1,
       ),
     ),
+    bindQuery(db, newestPendingFromSenderQuery(account.id, decoded.sender)),
+    bindQuery(db, unsubscribedAtQuery(account.id, decoded.sender)),
   ]);
   const groupRow = (groupRes?.results ?? [])[0] as GroupRow | undefined;
   if (!groupRow) throw new ApiError(404, "not_found", "Group not found");
@@ -401,6 +409,12 @@ queueRoutes.get("/groups/:key", async (c) => {
         rows.length > q.limit && last
           ? encodeCursor({ v: 1, f: key, c: last.confidence ?? 0, r: last.received_at, i: last.message_id })
           : null,
+    },
+    unsubscribe: {
+      oneClick:
+        decoded.sender !== "" &&
+        oneClickOffered((newestRes?.results[0] as { signals_json?: string } | undefined)?.signals_json),
+      unsubscribedAt: unsubscribedAtOf(unsubRes?.results[0]),
     },
   };
   logSkippedReasons(c, skips);

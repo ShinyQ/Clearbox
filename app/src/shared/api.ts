@@ -246,6 +246,8 @@ export interface GroupDetail {
   asOf: string;
   group: SenderGroup;
   items: Page<SuggestionItem>; // sorted by confidence desc, then receivedAt desc
+  /** Contracts 12.9: one-click unsubscribe state of the group's sender. */
+  unsubscribe: GroupUnsubscribe;
 }
 export const ApproveBodySchema = z.union([
   z.strictObject({ ids: SuggestionIdsSchema }),
@@ -363,7 +365,8 @@ export type ActivityKind =
   | "undo"
   | "policy_updated"
   | "calibration"
-  | "purge";
+  | "purge"
+  | "unsubscribe";
 
 export interface ActivityEntry {
   id: number;
@@ -463,3 +466,36 @@ export const DismissRuleSuggestionBodySchema = z.strictObject({
   entry: SenderEntrySchema,
   list: z.enum(["allow", "deny"]),
 });
+
+/** Contracts 12.9: unsubscribe assistant (RFC 8058 one-click only). */
+export interface GroupUnsubscribe {
+  /** The newest pending email from this sender offers one-click unsubscribe and passed DKIM. */
+  oneClick: boolean;
+  /** Last successful one-click unsubscribe from this sender in this account, else null. */
+  unsubscribedAt: string | null;
+}
+
+export const UnsubscribeBodySchema = z.strictObject({ groupKey: z.string().min(1).max(1024) });
+export type UnsubscribeBody = z.infer<typeof UnsubscribeBodySchema>;
+
+export const UNSUBSCRIBE_ERRORS = [
+  "not_available", // no pending email with one-click (or DKIM did not pass), or the headers changed
+  "message_gone", // the newest email no longer exists at the provider
+  "unsafe_url", // the sender's URL failed the safety check (not https, IP literal, local host, ...)
+  "account_inactive", // the account needs a reconnect
+  "rate_limited", // the provider throttled the header read
+  "unavailable", // the provider was unavailable
+  "provider_error", // any other provider failure
+  "sender_rejected", // the sender answered 4xx or 5xx
+  "sender_redirect", // the sender answered 3xx (RFC 8058 forbids redirects; not followed)
+  "sender_timeout", // no answer within the timeout
+  "sender_unreachable", // DNS, TLS or network failure
+] as const;
+export type UnsubscribeErrorCode = (typeof UNSUBSCRIBE_ERRORS)[number];
+
+export interface UnsubscribeResponse {
+  outcome: "unsubscribed" | "failed";
+  error: UnsubscribeErrorCode | null;
+  /** Set when outcome is "unsubscribed". */
+  unsubscribedAt: string | null;
+}

@@ -18,7 +18,7 @@ function setup() {
   return { app, fake };
 }
 
-/** Pending keep suggestions that kept their raw model output (written by a tick after migration 0002). */
+/** Pending keep suggestions that kept their raw model output (written by a tick after migration 0003). */
 async function seedKeeps(
   accountId: string,
   sender: string,

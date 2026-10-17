@@ -19,6 +19,7 @@ const TABLES = [
   "senders",
   "correspondents",
   "sent_threads",
+  "unsubscribes",
   "action_batches",
   "audit_log",
   "budget",

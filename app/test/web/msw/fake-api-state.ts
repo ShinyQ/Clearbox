@@ -5,6 +5,8 @@ import type {
   ActivityEntry,
   ApiErrorCode,
   ApiReason,
+  GroupUnsubscribe,
+  UnsubscribeResponse,
   Insights,
   ItemErrorCode,
   MeResponse,
@@ -59,7 +61,8 @@ export type RouteName =
   | "insights"
   | "policy"
   | "putPolicy"
-  | "patchSender";
+  | "patchSender"
+  | "unsubscribe";
 
 export interface Failure {
   status: number;
@@ -98,6 +101,10 @@ export interface FakeApiState {
   failIds: Set<number>;
   requests: RecordedRequest[];
   nextBatchId: number;
+  /** Contracts 12.9 state per sender address; absent = no one-click, never unsubscribed. */
+  unsubscribe: Record<string, GroupUnsubscribe>;
+  /** Response of POST /api/unsubscribe; default success. */
+  unsubscribeResult: UnsubscribeResponse | null;
 }
 
 export function createFakeApiState(): FakeApiState {
@@ -121,6 +128,8 @@ export function createFakeApiState(): FakeApiState {
     failIds: new Set(),
     requests: [],
     nextBatchId: 10,
+    unsubscribe: {},
+    unsubscribeResult: null,
   };
 }
 

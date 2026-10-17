@@ -1,3 +1,4 @@
+import { DEFAULT_POLICY } from "@clearbox/core";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import type { CleanupPreview, PolicyResponse, RuleSuggestionsResponse } from "../../../src/shared/api.ts";
@@ -5,6 +6,7 @@ import { refreshPending } from "../../../src/worker/actions/refresh.ts";
 import { createApp } from "../../../src/worker/app.ts";
 import { priorUpsertStmt } from "../../../src/worker/db/priors.ts";
 import { readSettings } from "../../../src/worker/db/settings.ts";
+import { changedSenderEntries } from "../../../src/worker/routes/policy.ts";
 import { FakeProvider, fakeOAuth } from "../helpers/fake-provider.ts";
 import { apiFetch, jsonInit, readJson } from "../helpers/request.ts";
 import { SEED_NOW, getSuggestionRow, seedAccount, seedLabels, seedSuggestions } from "../helpers/seed.ts";
@@ -206,5 +208,31 @@ describe("GET /api/rules/suggestions", () => {
       await apiFetch("/api/rules/suggestions", {}, { app }),
     );
     expect(body.suggestions.map((s) => s.entry).filter((e) => e.endsWith("@skip.example.com"))).toEqual([]);
+  });
+});
+
+describe("PUT /api/policy refreshes changed list entries", () => {
+  it("finds added and removed entries in either list", () => {
+    const base = { ...DEFAULT_POLICY, allowlist: ["a@x.example"], denylist: ["@y.example"] };
+    expect(
+      changedSenderEntries(base, { ...base, allowlist: [], denylist: ["@y.example", "b@z.example"] }),
+    ).toEqual(["a@x.example", "b@z.example"]);
+  });
+
+  it("re-fuses suggestions of a sender added on a full save", async () => {
+    const { app } = setup();
+    const acc = await seedAccount();
+    const [id] = await seedKeeps(acc.id, "promo@save.example.net", 1);
+    const current = await readJson<PolicyResponse>(await apiFetch("/api/policy", {}, { app }));
+    const res = await apiFetch(
+      "/api/policy",
+      jsonInit("PUT", {
+        policy: { ...current.policy, denylist: [...current.policy.denylist, "promo@save.example.net"] },
+        expectedVersion: current.version,
+      }),
+      { app },
+    );
+    expect(res.status).toBe(200);
+    expect(await getSuggestionRow(id ?? 0)).toMatchObject({ action: "delete", segment: "rule" });
   });
 });

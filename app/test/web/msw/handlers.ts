@@ -277,7 +277,16 @@ export function fakeApiHandlers(s: FakeApiState) {
       if (b.list === "allow") allowlist.push(b.entry);
       if (b.list === "deny") denylist.push(b.entry);
       s.policy = { ...s.policy, policy: { ...p, allowlist, denylist }, version: s.policy.version + 1 };
+      s.ruleSuggestions = s.ruleSuggestions.filter((r) => r.entry !== b.entry);
       return HttpResponse.json(s.policy);
+    }),
+    route("ruleSuggestions", "get", "/api/rules/suggestions", () =>
+      HttpResponse.json({ suggestions: s.ruleSuggestions }),
+    ),
+    route("dismissRuleSuggestion", "post", "/api/rules/suggestions/dismiss", ({ body }) => {
+      const b = body as { entry: string; list: "allow" | "deny" };
+      s.ruleSuggestions = s.ruleSuggestions.filter((r) => !(r.entry === b.entry && r.list === b.list));
+      return new HttpResponse(null, { status: 204 });
     }),
   ];
 }

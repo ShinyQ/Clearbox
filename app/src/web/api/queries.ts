@@ -157,3 +157,13 @@ export function usePolicy() {
     refetchOnWindowFocus: false,
   });
 }
+
+/** Contracts 12.10: one-click sender rules offered from consistent decisions. */
+export function useRuleSuggestions() {
+  return useQuery({
+    queryKey: qk.ruleSuggestions,
+    queryFn: api.ruleSuggestions,
+    staleTime: MIN,
+    refetchOnWindowFocus: true,
+  });
+}

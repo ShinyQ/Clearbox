@@ -14,4 +14,5 @@ export const qk = {
   activity: (accountId?: string) => ["activity", { accountId: accountId ?? null }] as const,
   insights: ["insights"] as const,
   policy: ["policy"] as const,
+  ruleSuggestions: ["rules", "suggestions"] as const,
 };

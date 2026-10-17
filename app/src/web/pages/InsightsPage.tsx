@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useAccounts, useInsights, useMe } from "../api/queries.ts";
 import { BudgetPanel } from "../components/insights/BudgetPanel.tsx";
+import { SegmentThresholds } from "../components/insights/SegmentThresholds.tsx";
 import { StatLine } from "../components/insights/StatLine.tsx";
 import { ThresholdTable } from "../components/insights/ThresholdTable.tsx";
 import { WeeklyChart } from "../components/insights/WeeklyChart.tsx";
@@ -111,6 +112,7 @@ export function InsightsPage() {
               />
             </Panel>
           </div>
+          <SegmentThresholds segments={data.calibration.segments} />
           <Panel
             className="mt-3.5"
             title="Accounts and daily budget"

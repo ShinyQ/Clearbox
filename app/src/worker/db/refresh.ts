@@ -39,7 +39,11 @@ export interface RefreshRow {
 /** Conditions after `s.account_id = ?1`; params must start with [accountId]. */
 function where(f: RefreshFilter, params: unknown[]): string {
   params.push(f.afterId);
-  const parts = ["s.status = 'pending'", "s.model_action_json IS NOT NULL", `s.message_id > ?${params.length}`];
+  const parts = [
+    "s.status = 'pending'",
+    "s.model_action_json IS NOT NULL",
+    `s.message_id > ?${params.length}`,
+  ];
   const scope: string[] = [];
   if (f.senders.length > 0) {
     const start = params.length + 1;

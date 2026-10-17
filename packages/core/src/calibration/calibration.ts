@@ -168,7 +168,9 @@ export function calibrateSegments(
       tauDelete: tau,
       outcome: r.outcome,
       deleteSuggestions: r.deleteSuggestions,
-      precisionAtTau: r.precisionAtTau,
+      // A paused segment reports its agreement at TAU_DELETE_MIN (the widest support), for the Insights note.
+      precisionAtTau:
+        r.outcome === "no_tau_meets_target" ? (r.points[0]?.precision ?? null) : r.precisionAtTau,
       points: r.points,
     });
   }

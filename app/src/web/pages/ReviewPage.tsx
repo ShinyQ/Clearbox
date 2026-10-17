@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router";
 import { ActionTabs } from "../components/review/ActionTabs.tsx";
 import { CleanupBar } from "../components/review/CleanupBar.tsx";
+import { RuleSuggestions } from "../components/rules/RuleSuggestions.tsx";
 import { SummaryCard } from "../components/review/SummaryCard.tsx";
 import { AppBanners } from "../components/shell/AppBanners.tsx";
 import { PageHeader } from "../components/shell/PageHeader.tsx";
@@ -149,6 +150,7 @@ export function ReviewPage() {
               preview={preview}
               pendingTotal={summary?.pending.total ?? 0}
               awaitingModel={summary?.awaitingModel ?? 0}
+              recentHeld={summary?.recentHeld ?? 0}
               groupsLeft={preview && typeof preview.groupsLeft === "number" ? preview.groupsLeft : null}
               tau={c.tau}
               catchingUp={isCatchingUp(c.scope)}
@@ -160,6 +162,7 @@ export function ReviewPage() {
               buttonRef={c.summaryButtonRef}
             />
           )}
+          <RuleSuggestions variant="review" />
           <ActionTabs
             value={c.tab}
             counts={c.counts}

@@ -316,3 +316,6 @@ export const RuleSuggestionsSchema = z.object({
     }),
   ),
 }) satisfies z.ZodType<RuleSuggestionsResponse>;
+
+/** 204 No Content. */
+export const NoContentSchema = z.undefined();

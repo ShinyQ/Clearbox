@@ -26,7 +26,7 @@ export interface UnsubscribeApi {
 }
 
 /**
- * Contracts 12.8, UI spec 4.14a. Unsubscribe first (it needs the group's newest pending email), then, for
+ * Contracts 12.9, UI spec 4.14a. Unsubscribe first (it needs the group's newest pending email), then, for
  * "Trash and unsubscribe", trash the group through the normal group action so it keeps its Undo toast. A failed
  * unsubscribe still trashes: the owner asked for both, and only the trash part can be undone.
  */

@@ -101,7 +101,7 @@ export interface FakeApiState {
   failIds: Set<number>;
   requests: RecordedRequest[];
   nextBatchId: number;
-  /** Contracts 12.8 state per sender address; absent = no one-click, never unsubscribed. */
+  /** Contracts 12.9 state per sender address; absent = no one-click, never unsubscribed. */
   unsubscribe: Record<string, GroupUnsubscribe>;
   /** Response of POST /api/unsubscribe; default success. */
   unsubscribeResult: UnsubscribeResponse | null;

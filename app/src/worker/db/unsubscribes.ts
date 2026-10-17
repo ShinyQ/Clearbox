@@ -1,6 +1,6 @@
 import type { SqlQuery } from "./sql.ts";
 
-/** Contracts 12.8: the newest pending email of one sender in one account (uses suggestions_open). */
+/** Contracts 12.9: the newest pending email of one sender in one account (uses suggestions_open). */
 export interface NewestPendingRow {
   message_id: number;
   provider_msg_id: string;

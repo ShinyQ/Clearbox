@@ -10,6 +10,7 @@ export type LogEventName =
   | "action.executed"
   | "undo.done"
   | "nightly.done"
+  | "reminder.done"
   | "access.denied"
   | "config.invalid"
   | "budget.gate"

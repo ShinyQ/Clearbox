@@ -3,7 +3,7 @@
 - **Status:** Ready for implementation (derived from the approved mockup v4)
 - **Date:** 2026-10-15
 - **Owner:** ShinyQ
-- **Revision:** rev 2.3 reconciliation (2026-10-16): copy and behavior from implementation layer 5 (model banner, Scan now toasts, Clean up and keeps wording, Undo and keeps, account card status text). See contracts 12.6. Rev 2.4 (2026-10-16): Scan history rule and window-aware progress copy (5.1, 5.3, 5.5, 5.6, 5.8). See contracts 12.7.
+- **Revision:** rev 2.3 reconciliation (2026-10-16): copy and behavior from implementation layer 5 (model banner, Scan now toasts, Clean up and keeps wording, Undo and keeps, account card status text). See contracts 12.6. Rev 2.4 (2026-10-16): Scan history rule and window-aware progress copy (5.1, 5.3, 5.5, 5.6, 5.8). See contracts 12.7. Weekly reminder (2026-10-17): Rules field 9 (5.6). See contracts 12.8. Unsubscribe assistant (2026-10-17): DetailPanel 4.14a, Activity 5.4. See contracts 12.9.
 - **Approved mockup:** [`docs/design/clearbox-ui-v4.html`](../../design/clearbox-ui-v4.html)
 - **Companions:** [`2026-10-15-clearbox-design.md`](2026-10-15-clearbox-design.md) (narrative design, section 11 Review UI, section 7 security) and [`2026-10-15-clearbox-contracts.md`](2026-10-15-clearbox-contracts.md) (REST API in section 7, SPA layout in section 1.1, dependencies in section 2). When this spec and the contracts disagree on an API shape, the contracts win; every place where the UI needs something the contracts do not yet provide is listed in section 9.3 with the interim behavior.
 
@@ -1155,7 +1155,7 @@ interface ReasonLineProps { reason: ApiReason }   // { code, text }
   3. **Label** "Latest emails" (`text-meta font-emphasis text-ink-3`).
   4. **EmailPreviewList.**
   5. **Actions** (flex wrap, gap 6px): see table.
-  5a. **Unsubscribe** (contracts 12.8): see 4.14a. Rendered only for a known sender when `GroupDetail.unsubscribe` offers one-click or records a past unsubscribe.
+  5a. **Unsubscribe** (contracts 12.9): see 4.14a. Rendered only for a known sender when `GroupDetail.unsubscribe` offers one-click or records a past unsubscribe.
   6. **Hints** (flex wrap, gap 10px, `text-meta text-ink-3`): Kbd J K "move", X "select", T "trash", A "archive", E "keep". Hidden below `lg`.
 
 | Verdict | Verdict tag label | Primary action | Other actions (secondary) | Ghost |
@@ -1204,7 +1204,7 @@ interface DetailPanelProps {
 
 - **Accessibility:** inline: `aside aria-labelledby` the sender heading (`h2`). Slide-over: `role="dialog" aria-modal="false" aria-labelledby`, focus moves to the heading on open, Esc closes and returns focus to the row. Sheet: `role="dialog" aria-modal="true"`, focus trapped, Back button first in tab order. Action buttons expose shortcuts with `aria-keyshortcuts` ("T", "A", "E").
 
-### 4.14a UnsubscribeSection (contracts 12.8)
+### 4.14a UnsubscribeSection (contracts 12.9)
 
 - **Purpose:** owner-initiated RFC 8058 one-click unsubscribe for the active sender, inside the DetailPanel below the actions. Never automatic, never on a keyboard shortcut, always behind an inline confirmation because it cannot be undone.
 - **Data:** `GroupDetail.unsubscribe` (`oneClick`, `unsubscribedAt`) from the group detail query; `POST /api/unsubscribe { groupKey }`.
@@ -1220,7 +1220,7 @@ interface DetailPanelProps {
 
 - **Flow:** "Unsubscribe only": `POST /api/unsubscribe`; success toast "Unsubscribed from Shopee. It can take a few days for their emails to stop." (no Undo); the section then reads "Unsubscribed on <date>". "Trash 248 and unsubscribe": unsubscribe first (it needs the group's newest pending email), then trash the group with the normal 6.4 path and its Undo toast, message "Unsubscribed from Shopee and moved 248 emails to Trash." A failed unsubscribe still trashes (the owner asked for both and only the trash can be undone), shows an error toast, and the trash toast uses the plain 5.1 copy.
 - **Error copy** (`lib/copy-unsubscribe.ts`): `not_available` "Shopee no longer offers one-click unsubscribe. Nothing was sent."; `message_gone` "The newest email from Shopee is gone, so its unsubscribe link couldn't be read. Nothing was sent."; `unsafe_url` "Shopee's unsubscribe link didn't pass Clearbox's safety check. Nothing was sent."; `account_inactive` "Reconnect this account to unsubscribe. Nothing was sent."; `sender_rejected` "Shopee didn't accept the unsubscribe request. Try again later, or use the link in one of their emails."; `sender_redirect` "Shopee answered with a redirect, which one-click unsubscribe doesn't allow. Use the link in one of their emails instead."; `sender_timeout` "Shopee didn't answer in time. Try again later."; `sender_unreachable` "Couldn't reach Shopee's unsubscribe server. Try again later."; provider errors "Couldn't read the unsubscribe link from your mailbox. Nothing was sent. Try again in a minute."; HTTP errors (`budget_exhausted`, `network`, ...) reuse the 5.1 action error copy.
-- **No "open unsubscribe page" link** for https links without one-click (contracts 12.8): the owner can use "Open in Gmail" / "Open in Outlook" on an email instead.
+- **No "open unsubscribe page" link** for https links without one-click (contracts 12.9): the owner can use "Open in Gmail" / "Open in Outlook" on an email instead.
 
 ### 4.15 EmailPreviewList
 
@@ -1980,6 +1980,7 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 | 6 | "Receipts and attachments go to Archive, not Trash" | "Always on. Emails with files, and emails whose subject or preview contains one of the words below." + nested ChipInput "Record words" (placeholder "Add a word", validation 2 to 40 characters, max 100) | Toggle locked on | `recordPatterns` |
 | 7 | "Store email previews" | "Keeps a short snippet for 30 days to show in Review. Turn off to store subjects only." | Toggle | `storeSnippets` |
 | 8 | "Remember subjects of emails you decide" | "Keeps the first 60 characters of the subject with each decision to improve suggestions. Turn off to keep only the sender." | Toggle | `labelSubjects` |
+| 9 | "Weekly reminder" (contracts 12.8) | "A short note in your inbox when emails are ready to review, with counts and a link to Review. Clearbox adds it to your inbox directly, so nothing is sent, and it is never sorted. Arrives around {local time} your time." ({local time} is 02:00 UTC in the browser's time zone, for example "9:00 AM") | Select "Reminder day" (seven weekdays; each option's value is the UTC weekday, its label the owner's local day of 02:00 UTC on that weekday; disabled while the reminder is off) and Toggle; default on, Sunday (UTC) | `weeklyReminder` (`{ enabled, weekday }`) |
 
 Below the panel, `text-small text-ink-3`: "Rule changes apply to emails sorted from now on. Suggestions already in Review keep their current verdict." and a link button "Reset to defaults" (fills the form with `defaults`, marks dirty; does not save).
 

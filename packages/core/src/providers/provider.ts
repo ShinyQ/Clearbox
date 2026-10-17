@@ -78,7 +78,7 @@ export type ActionResult =
   | { id: string; ok: true; newId: string }
   | { id: string; ok: false; error: ActionErrorCode; retryAfterMs: number | null };
 
-/** Raw List-Unsubscribe headers of one message (contracts 12.8); untrusted sender text. */
+/** Raw List-Unsubscribe headers of one message (contracts 12.9); untrusted sender text. */
 export interface UnsubscribeHeaders {
   listUnsubscribe: string | null;
   listUnsubscribePost: string | null;
@@ -88,6 +88,18 @@ export type RestoreFrom = "trash" | "archive";
 export interface RestoreItem {
   id: string;
   from: RestoreFrom;
+}
+
+/** A plain text note Clearbox adds to the owner's own inbox (contracts 12.8). Never sent over SMTP. */
+export interface InboxNote {
+  /** One ASCII line. */
+  subject: string;
+  /** Plain text body, "\n" line breaks. */
+  text: string;
+  /** The mailbox address (lowercased); shown as the recipient. */
+  to: string;
+  /** Epoch ms; the note's date. */
+  sentAt: number;
 }
 
 /**
@@ -125,4 +137,10 @@ export interface MailProvider {
   archive(ids: readonly string[]): Promise<ActionResult[]>;
   /** Back to inbox. Gmail trash: untrash, then add INBOX if missing. Graph: move to "inbox". Max 100 per call. */
   restore(items: readonly RestoreItem[]): Promise<ActionResult[]>;
+  /**
+   * Adds an unread note to the inbox without sending anything (contracts 12.8), one request. Gmail
+   * `messages.insert` (allowed with gmail.modify); Graph `POST /me/mailFolders/inbox/messages` (Mail.ReadWrite).
+   * The sender is CLEARBOX_NOTE_SENDER so ingestion skips it. Returns the new provider message id.
+   */
+  insertInboxNote(note: InboxNote): Promise<string>;
 }

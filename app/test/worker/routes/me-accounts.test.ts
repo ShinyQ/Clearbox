@@ -9,6 +9,7 @@ import type {
 } from "../../../src/shared/api.ts";
 import { createApp } from "../../../src/worker/app.ts";
 import { getAccount } from "../../../src/worker/db/accounts.ts";
+import { appOriginOf } from "../../../src/worker/db/settings.ts";
 import { FakeProvider, fakeOAuth } from "../helpers/fake-provider.ts";
 import { apiFetch, jsonInit, readJson } from "../helpers/request.ts";
 import { getSuggestionRow, SEED_NOW, seedAccount, seedSuggestions } from "../helpers/seed.ts";
@@ -46,6 +47,34 @@ describe("GET /api/me", () => {
     const { app } = setup();
     const res = await apiFetch("/api/me", {}, { app, env: { GOOGLE_CLIENT_ID: "" } });
     expect((await readJson<MeResponse>(res)).providers).toEqual({ gmail: false, outlook: true });
+  });
+
+  it("records the deployment origin for the weekly reminder link, writing only when it changes", async () => {
+    const { app } = setup();
+    const origin = () =>
+      env.DB.prepare("SELECT value, updated_at FROM settings WHERE key = 'app_origin'").first<{
+        value: string;
+        updated_at: number;
+      }>();
+    await env.DB.prepare("DELETE FROM settings WHERE key = 'app_origin'").run();
+    await apiFetch("/api/me", {}, { app });
+    expect(await origin()).toEqual({
+      value: JSON.stringify("https://clearbox.example.test"),
+      updated_at: SEED_NOW,
+    });
+
+    const later = createApp({ now: () => SEED_NOW + 1_000, providerFactory: new FakeProvider().factory() });
+    await apiFetch("/api/me", {}, { app: later });
+    expect((await origin())?.updated_at).toBe(SEED_NOW);
+  });
+});
+
+describe("appOriginOf", () => {
+  it("accepts https and local http only", () => {
+    expect(appOriginOf("https://clearbox.example.test/api/me?x=1")).toBe("https://clearbox.example.test");
+    expect(appOriginOf("http://localhost:5173/api/me")).toBe("http://localhost:5173");
+    expect(appOriginOf("http://127.0.0.1:8787/api/me")).toBe("http://127.0.0.1:8787");
+    expect(appOriginOf("http://clearbox.example.test/api/me")).toBeNull();
   });
 });
 

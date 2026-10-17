@@ -1,6 +1,6 @@
 import { parseListUnsubscribe } from "./headers.ts";
 
-/** RFC 8058 one-click unsubscribe (contracts 12.8). Sender-supplied values are untrusted. */
+/** RFC 8058 one-click unsubscribe (contracts 12.9). Sender-supplied values are untrusted. */
 
 export const UNSUBSCRIBE_URL_MAX_CHARS = 2_048;
 const HOSTNAME_MAX_CHARS = 253;

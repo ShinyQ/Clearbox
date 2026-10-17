@@ -81,7 +81,7 @@ interface Attempt {
 }
 
 /**
- * Contracts 12.8: owner-initiated one-click unsubscribe from the sender of one group. Reads the List-Unsubscribe
+ * Contracts 12.9: owner-initiated one-click unsubscribe from the sender of one group. Reads the List-Unsubscribe
  * headers of the sender's newest pending email from the provider (nothing is stored at ingest), checks the URL,
  * POSTs once and records the sender on success. Never retried automatically.
  */

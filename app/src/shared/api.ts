@@ -244,7 +244,7 @@ export interface GroupDetail {
   asOf: string;
   group: SenderGroup;
   items: Page<SuggestionItem>; // sorted by confidence desc, then receivedAt desc
-  /** Contracts 12.8: one-click unsubscribe state of the group's sender. */
+  /** Contracts 12.9: one-click unsubscribe state of the group's sender. */
   unsubscribe: GroupUnsubscribe;
 }
 export const ApproveBodySchema = z.union([
@@ -434,7 +434,7 @@ export const OAUTH_CALLBACK_ERRORS = [
 ] as const;
 export type OAuthCallbackErrorCode = (typeof OAUTH_CALLBACK_ERRORS)[number];
 
-/** Contracts 12.8: unsubscribe assistant (RFC 8058 one-click only). */
+/** Contracts 12.9: unsubscribe assistant (RFC 8058 one-click only). */
 export interface GroupUnsubscribe {
   /** The newest pending email from this sender offers one-click unsubscribe and passed DKIM. */
   oneClick: boolean;

@@ -1,5 +1,5 @@
 -- Migration number: 0002 	 2026-10-17T00:00:00.000Z
--- Unsubscribe assistant (contracts 12.8).
+-- Unsubscribe assistant (contracts 12.9).
 
 -- One row per (account, sender) the owner unsubscribed from with RFC 8058 one-click. No URL is stored:
 -- the Worker reads the List-Unsubscribe headers from the provider at request time. Kept while the account

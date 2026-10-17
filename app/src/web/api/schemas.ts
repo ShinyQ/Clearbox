@@ -173,7 +173,7 @@ export const GroupDetailSchema = z.object({
   asOf: str,
   group: SenderGroupSchema,
   items: pageSchema(SuggestionItemSchema),
-  // Contracts 12.8. Absent (older server) reads as "no one-click, never unsubscribed": no button is shown.
+  // Contracts 12.9. Absent (older server) reads as "no one-click, never unsubscribed": no button is shown.
   unsubscribe: z
     .object({ oneClick: bool, unsubscribedAt: nstr })
     .default({ oneClick: false, unsubscribedAt: null }),

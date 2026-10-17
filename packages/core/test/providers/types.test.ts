@@ -47,6 +47,7 @@ function stubProvider(): MailProvider {
     trash: ok,
     archive: ok,
     restore: (items: readonly RestoreItem[]) => ok(items.map((i) => i.id)),
+    insertInboxNote: () => Promise.resolve("note-1"),
   };
 }
 

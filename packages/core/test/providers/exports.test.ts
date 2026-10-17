@@ -70,6 +70,7 @@ describe("@clearbox/core provider exports", () => {
           "archive",
           "bootstrap",
           "inboxEstimate",
+          "insertInboxNote",
           "kind",
           "listInboxPage",
           "listSentPage",

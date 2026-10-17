@@ -76,6 +76,30 @@ describe("Rules page", () => {
     expect(body.policy.scanHistoryDays).toBeNull();
   });
 
+  it("shows the weekly reminder, on by default, and saves the day and the switch (contracts 12.8)", async () => {
+    const { state, user, container } = setup();
+    const toggle = await screen.findByRole("switch", { name: "Weekly reminder" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    const day = screen.getByRole("combobox", { name: "Reminder day" }) as HTMLSelectElement;
+    expect(day.value).toBe("0");
+    expect([...day.options].map((o) => o.value)).toEqual(["0", "1", "2", "3", "4", "5", "6"]);
+    expect(
+      screen.getByText(/nothing is sent, and it is never sorted\. Arrives around .+ your time\./),
+    ).toBeTruthy();
+    await expectNoA11yViolations(container);
+
+    await user.selectOptions(day, "3");
+    await user.click(toggle);
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(day.disabled).toBe(true);
+    await user.click(screen.getAllByRole("button", { name: "Save changes" })[0]!);
+    expect(await screen.findByText("Rules saved. They apply to new emails from now on.")).toBeTruthy();
+    const body = state.requests.find((r) => r.route === "putPolicy")?.body as {
+      policy: { weeklyReminder: { enabled: boolean; weekday: number } };
+    };
+    expect(body.policy.weeklyReminder).toEqual({ enabled: false, weekday: 3 });
+  });
+
   it("validates record words on the client", async () => {
     const { user } = setup();
     await user.type(await screen.findByRole("textbox", { name: "Record words" }), "a{Enter}");

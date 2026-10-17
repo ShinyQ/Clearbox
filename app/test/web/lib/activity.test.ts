@@ -180,7 +180,7 @@ describe("describeActivity (UI spec 5.4)", () => {
   });
 });
 
-describe("describeActivity unsubscribe rows (contracts 12.8)", () => {
+describe("describeActivity unsubscribe rows (contracts 12.9)", () => {
   const entry = (outcome: string, count: number) =>
     describeActivity(
       {

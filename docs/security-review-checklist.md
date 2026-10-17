@@ -22,6 +22,7 @@ Complete this list before the first production deploy and again after any change
 ## OAuth
 
 - [ ] Scopes are exactly `gmail.modify` (Google) and `offline_access User.Read Mail.ReadWrite` (Microsoft) (`GOOGLE_SCOPES`, `MICROSOFT_SCOPES` in `packages/core/src/providers/oauth.ts`). `git grep -n '"https://mail.google.com/"' -- packages app/src` (the full-access scope) returns nothing.
+- [ ] The weekly reminder (contracts 12.8) only adds a note to the owner's own inbox (Gmail `messages.insert`, Graph create in Inbox), never sends mail, carries plain text with no remote content or tracking, and is never ingested (`app/test/worker/tick/tick-notes.test.ts`, `app/test/worker/nightly/reminder.test.ts`).
 - [ ] Granted scopes are checked on connect (`scope_missing` case in `app/test/worker/oauth/oauth-routes.test.ts`).
 - [ ] PKCE S256 and the HMAC-signed `__Host-clearbox_oauth` cookie: tampered, expired, provider-mismatch and state-mismatch tests pass (`app/test/worker/oauth/state-cookie.test.ts`, `app/test/worker/oauth/oauth-routes.test.ts`, `app/test/worker/crypto/pkce.test.ts`); the cookie is cleared on every callback.
 - [ ] Redirect URIs in Google and Entra are exactly `https://clearbox.<subdomain>.workers.dev/oauth/<provider>/callback` (plus optional localhost); Microsoft uses the Web platform, not SPA.
@@ -46,7 +47,7 @@ Complete this list before the first production deploy and again after any change
 
 - [ ] Approval invariant tests pass: no provider call without a `pending` suggestion id in the request, cap 100 ids, idempotent repeats, `unsure` not approvable (`app/test/worker/actions/execute.test.ts`, `app/test/worker/routes/actions.test.ts`).
 - [ ] No hard-delete code path: `git grep -n "batchDelete\|messages/.*/delete\|permanentDelete" -- packages app/src` returns nothing.
-- [ ] Unsubscribe (contracts 12.8) tests pass: URL safety (`packages/core/test/text/unsubscribe.test.ts`), the POST shape, unsafe URLs never sent, redirects not followed, no URL or sender in logs (`app/test/worker/routes/unsubscribe.test.ts`). Nothing calls `/api/unsubscribe` outside the confirm buttons: `git grep -n "api.unsubscribe" -- app/src` lists only `use-unsubscribe.ts`.
+- [ ] Unsubscribe (contracts 12.9) tests pass: URL safety (`packages/core/test/text/unsubscribe.test.ts`), the POST shape, unsafe URLs never sent, redirects not followed, no URL or sender in logs (`app/test/worker/routes/unsubscribe.test.ts`). Nothing calls `/api/unsubscribe` outside the confirm buttons: `git grep -n "api.unsubscribe" -- app/src` lists only `use-unsubscribe.ts`.
 - [ ] Undo works within 24 hours on a real test mailbox for trash and archive batches (`app/test/worker/actions/undo.test.ts` covers the logic). Keep decisions are not undoable by design.
 
 ## Data minimization, residency and logs

@@ -8,7 +8,7 @@ import { actionContext } from "./actions.ts";
 
 export const unsubscribeRoutes = new Hono<AppEnv>();
 
-/** Contracts 12.8: POST /api/unsubscribe, owner-initiated RFC 8058 one-click for the group's sender. */
+/** Contracts 12.9: POST /api/unsubscribe, owner-initiated RFC 8058 one-click for the group's sender. */
 unsubscribeRoutes.post("/unsubscribe", async (c) => {
   const body = parseWith(UnsubscribeBodySchema, await readJsonBody(c));
   const decoded = decodeGroupKey(body.groupKey);

@@ -187,6 +187,7 @@ function scriptedProvider(script: Script): { provider: MailProvider; calls: stri
     trash: unexpected("trash"),
     archive: unexpected("archive"),
     restore: unexpected("restore"),
+    insertInboxNote: unexpected("insertInboxNote"),
   };
   return { provider, calls };
 }

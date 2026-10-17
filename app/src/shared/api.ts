@@ -167,6 +167,8 @@ export interface QueueSummary {
   asOf: string; // server time; pass back as asOf to approve/cleanup
   pending: Record<SuggestedAction, number> & { total: number };
   awaitingModel: number;
+  /** contracts 12.10: recent emails left alone until they are policy.minAgeDays old (not counted in awaitingModel). */
+  recentHeld: number;
   groups: number; // distinct (account, sender, action) among pending
   /** rev 2.1 A1: distinct pending sender groups per suggested action. */
   groupsByAction: Record<SuggestedAction, number>;
@@ -387,6 +389,8 @@ export interface Insights {
     outcome: "insufficient_data" | "calibrated" | "no_tau_meets_target" | null;
     ranAt: string | null;
     points: CalibrationPoint[];
+    /** contracts 12.10: per-segment trash thresholds from the same nightly run; empty before the first one. */
+    segments: SegmentCalibrationView[];
   };
   budget: {
     date: string; // UTC date
@@ -433,6 +437,35 @@ export const OAUTH_CALLBACK_ERRORS = [
   "provider_not_configured",
 ] as const;
 export type OAuthCallbackErrorCode = (typeof OAUTH_CALLBACK_ERRORS)[number];
+
+// contracts 12.10: accuracy and learning.
+
+/** "rule" segments skip the confidence check and are not calibrated. */
+export type CalibratedSegmentName = "sender" | "domain" | "bulk" | "other";
+export interface SegmentCalibrationView {
+  segment: CalibratedSegmentName;
+  /** null: paused, no trash suggestions in this segment until your choices agree often enough. */
+  tauDelete: number | null;
+  outcome: "insufficient_data" | "calibrated" | "no_tau_meets_target";
+  deleteSuggestions: number;
+  precisionAtTau: number | null;
+}
+
+/** A one-click sender rule offered from consistent owner decisions (never applied automatically). */
+export interface RuleSuggestion {
+  entry: string; // sender address
+  list: "allow" | "deny"; // allow = "Always keep", deny = "Always OK to trash"
+  decisions: number; // owner decisions on this sender
+  agreeing: number; // decisions matching the suggested rule
+  lastDecidedAt: string;
+}
+export interface RuleSuggestionsResponse {
+  suggestions: RuleSuggestion[];
+}
+export const DismissRuleSuggestionBodySchema = z.strictObject({
+  entry: SenderEntrySchema,
+  list: z.enum(["allow", "deny"]),
+});
 
 /** Contracts 12.9: unsubscribe assistant (RFC 8058 one-click only). */
 export interface GroupUnsubscribe {

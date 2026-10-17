@@ -114,6 +114,13 @@ insightsRoutes.get("/", async (c) => {
       outcome: calibration?.outcome ?? null,
       ranAt: calibration ? toIso(calibration.ranAt) : null,
       points: calibration?.points ?? [],
+      segments: (calibration?.segments ?? []).map((g) => ({
+        segment: g.segment,
+        tauDelete: g.tauDelete,
+        outcome: g.outcome,
+        deleteSuggestions: g.deleteSuggestions,
+        precisionAtTau: g.precisionAtTau,
+      })),
     },
     budget: {
       date: today,

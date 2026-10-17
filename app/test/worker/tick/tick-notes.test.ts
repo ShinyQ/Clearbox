@@ -20,7 +20,7 @@ describe("runTick: Clearbox's own inbox notes are never ingested", () => {
     mock.inboxDelta.set("inbox-1", {
       added: [
         mail(1, { receivedAt: NOW - MINUTE, from: CLEARBOX_NOTE_SENDER, fromName: "Clearbox" }),
-        mail(2, { receivedAt: NOW - 2 * DAY }),
+        mail(2, { receivedAt: NOW - 4 * DAY }),
       ],
       removed: [],
       next: "inbox-2",
@@ -58,7 +58,7 @@ describe("runTick: Clearbox's own inbox notes are never ingested", () => {
       fromName: "Clearbox",
       fromAddress: CLEARBOX_NOTE_SENDER,
     });
-    box.addMessage({ id: "fresh-1", receivedAt: NOW - 2 * DAY });
+    box.addMessage({ id: "fresh-1", receivedAt: NOW - 4 * DAY });
     useNetwork(gmailHandlers(box));
     await seedTickAccount({ provider: "gmail", phase: "incremental", accessToken: "g-access-2" });
 

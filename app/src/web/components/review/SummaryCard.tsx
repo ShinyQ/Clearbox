@@ -14,6 +14,8 @@ export interface SummaryCardProps {
   preview: CleanupPreview | null;
   pendingTotal: number;
   awaitingModel: number;
+  /** Contracts 12.10: recent emails left alone until they are old enough. */
+  recentHeld?: number | undefined;
   groupsLeft: number | null;
   tau: number | null;
   catchingUp: boolean;
@@ -45,6 +47,7 @@ export function summarySubline(o: {
   emailsLeft: number;
   catchingUp: boolean;
   awaitingModel: number;
+  recentHeld?: number | undefined;
 }): string {
   const parts = [`Clearbox is confident about ${plural(o.groups, "sender group", "sender groups")}.`];
   parts.push(o.groupsLeft === 0 ? "Nothing else needs you." : leftForYouSentence(o.groupsLeft, o.emailsLeft));
@@ -54,6 +57,14 @@ export function summarySubline(o: {
       o.awaitingModel === 1
         ? "1 email is waiting for the AI model."
         : `${formatCount(o.awaitingModel)} emails are waiting for the AI model.`,
+    );
+  }
+  const held = o.recentHeld ?? 0;
+  if (held > 0) {
+    parts.push(
+      held === 1
+        ? "1 recent email is left alone until it is old enough to sort."
+        : `${formatCount(held)} recent emails are left alone until they are old enough to sort.`,
     );
   }
   return parts.join(" ");
@@ -104,6 +115,7 @@ export function SummaryCard({ buttonRef, ...p }: SummaryCardProps) {
             emailsLeft,
             catchingUp: p.catchingUp,
             awaitingModel: p.awaitingModel,
+            recentHeld: p.recentHeld,
           });
 
   // Below lg the card stacks: text above, a full-width button below (UI spec 2.8).

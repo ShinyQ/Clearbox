@@ -15,6 +15,11 @@ export interface GuardrailResult {
   reasons: Reason[];
   allowlisted: boolean;
   denylisted: boolean;
+  /**
+   * Accuracy and learning (contracts 12.10): true when the denylist skipped a cap (correspondent, attachment or
+   * record pattern) that would otherwise have applied. Such mail keeps the normal confidence check.
+   */
+  liftedByDenylist?: boolean;
 }
 
 export function evaluateGuardrails(input: GuardrailInput, policy: Policy): GuardrailResult {
@@ -36,12 +41,13 @@ export function evaluateGuardrails(input: GuardrailInput, policy: Policy): Guard
   if (signals.ageDays < policy.minAgeDays) {
     cap("keep", { code: "guard_too_recent", params: { minAgeDays: policy.minAgeDays } });
   }
+  const pattern = matchRecordPattern(input.subject, input.snippet, policy.recordPatterns);
+  const softCaps = signals.isCorrespondent || signals.hasAttachments || pattern !== null;
   if (!denylisted) {
     if (signals.isCorrespondent) cap("keep", { code: "guard_correspondent", params: {} });
     if (signals.hasAttachments) cap("archive", { code: "guard_attachment", params: {} });
-    const pattern = matchRecordPattern(input.subject, input.snippet, policy.recordPatterns);
     if (pattern !== null) cap("archive", { code: "guard_record_pattern", params: { pattern } });
   }
 
-  return { ceiling, reasons, allowlisted, denylisted };
+  return { ceiling, reasons, allowlisted, denylisted, liftedByDenylist: denylisted && softCaps };
 }

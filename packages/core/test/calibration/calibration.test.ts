@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { calibrateTauDelete, type CalibrationSample } from "../../src/calibration/calibration.ts";
+import {
+  calibrateSegments,
+  calibrateTauDelete,
+  type CalibrationSample,
+  type SegmentCalibrationSample,
+} from "../../src/calibration/calibration.ts";
+import type { DecisionSegment } from "../../src/fusion/segments.ts";
 import type { ActionKind } from "../../src/model/actions.ts";
 
 function samples(
@@ -91,5 +97,57 @@ describe("calibrateTauDelete", () => {
       expect(result.tauDelete).toBeGreaterThanOrEqual(0.8);
       expect(result.tauDelete).toBeLessThanOrEqual(0.99);
     }
+  });
+});
+
+function segmentSamples(
+  segment: DecisionSegment | null,
+  n: number,
+  pDelete: number,
+  ownerAction: ActionKind,
+): SegmentCalibrationSample[] {
+  return samples(n, pDelete, ownerAction).map((s) => ({ ...s, segment }));
+}
+
+describe("calibrateSegments", () => {
+  it("calibrates each segment on its own samples", () => {
+    const result = calibrateSegments(
+      [
+        ...segmentSamples("bulk", 60, 0.85, "delete"),
+        ...segmentSamples("sender", 60, 0.9, "delete"),
+        ...segmentSamples("sender", 10, 0.9, "keep"),
+      ],
+      0.8,
+      {},
+    );
+    expect(result.taus.bulk).toBe(0.8);
+    // Sender precision is 60/70 at every tau: paused (null), never saturated at 0.99.
+    expect(result.taus.sender).toBeNull();
+    expect(result.segments.find((s) => s.segment === "sender")?.outcome).toBe("no_tau_meets_target");
+    expect(result.global.outcome).toBe("no_tau_meets_target");
+  });
+
+  it("keeps the current value, else the global result, when a segment lacks data", () => {
+    const base = [...segmentSamples("bulk", 60, 0.9, "delete"), ...segmentSamples("other", 5, 0.9, "delete")];
+    expect(calibrateSegments(base, 0.8, {}).taus.other).toBe(0.8);
+    expect(calibrateSegments(base, 0.8, { other: null }).taus.other).toBeNull();
+    expect(calibrateSegments(base, 0.8, { other: 0.93 }).taus.other).toBe(0.93);
+  });
+
+  it("ignores rule samples everywhere", () => {
+    const result = calibrateSegments(
+      [...segmentSamples("rule", 100, 0.3, "keep"), ...segmentSamples("bulk", 60, 0.9, "delete")],
+      0.8,
+      {},
+    );
+    expect(result.global.outcome).toBe("calibrated");
+    expect(result.taus.bulk).toBe(0.8);
+  });
+
+  it("reports changed only when a threshold moved", () => {
+    const s = segmentSamples("bulk", 60, 0.9, "delete");
+    const first = calibrateSegments(s, 0.8, {});
+    expect(first.changed).toBe(true);
+    expect(calibrateSegments(s, first.global.tauDelete, first.taus).changed).toBe(false);
   });
 });

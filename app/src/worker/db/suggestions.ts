@@ -1,5 +1,5 @@
 import { DECIDED_TTL_MS, SUGGESTED_ACTIONS } from "@clearbox/core";
-import type { ActionKind, Ceiling, SuggestedAction } from "@clearbox/core";
+import type { ActionKind, Ceiling, DecisionSegment, SuggestedAction } from "@clearbox/core";
 import { z } from "zod";
 import type { SuggestionStatus } from "../../shared/api.ts";
 import { base64UrlToBytes, bytesToBase64Url, fromUtf8, utf8 } from "../crypto/base64.ts";
@@ -76,10 +76,16 @@ export function insertSuggestionStmt(
     );
 }
 
+/**
+ * contracts 12.10: an awaiting_model row that was never sent to the model (decision_attempts = 0) with a retry_after
+ * is recent mail held by "Leave recent emails alone", not mail waiting for the model.
+ */
+export const HELD_SQL = "(decision_attempts = 0 AND retry_after IS NOT NULL)";
+
 export function countOpenByAccountStmt(db: D1Database, accountIds: readonly string[]): D1PreparedStatement {
   return db
     .prepare(
-      `SELECT account_id, SUM(status = 'pending') AS pending, SUM(status = 'awaiting_model') AS awaiting
+      `SELECT account_id, SUM(status = 'pending') AS pending, SUM(status = 'awaiting_model' AND NOT ${HELD_SQL}) AS awaiting
        FROM suggestions
        WHERE account_id IN (${placeholders(accountIds.length)}) AND (status = 'pending' OR status = 'awaiting_model')
        GROUP BY account_id`,
@@ -257,10 +263,20 @@ export function pendingByActionQuery(accountIds: readonly string[]): SqlQuery {
   return { sql, params: [...accountIds] };
 }
 
+/** n: waiting for the model; held: recent mail left alone until it is old enough (contracts 12.10). */
 export function awaitingCountQuery(accountIds: readonly string[]): SqlQuery {
-  const sql = `SELECT COUNT(*) AS n FROM suggestions
+  const sql = `SELECT COALESCE(SUM(NOT ${HELD_SQL}), 0) AS n, COALESCE(SUM(${HELD_SQL}), 0) AS held FROM suggestions
     WHERE account_id IN (${placeholders(accountIds.length)}) AND status = 'awaiting_model'`;
   return { sql, params: [...accountIds] };
+}
+
+/**
+ * contracts 12.10: a delete suggestion carries the trash threshold it already passed (delete_tau, per segment, 0 for
+ * an Always OK to trash rule); Clean up takes it when confidence reaches the lower of that and the requested
+ * threshold. Archive and keep (delete_tau NULL) still need the requested threshold.
+ */
+function meetsThreshold(param: string, prefix = ""): string {
+  return `COALESCE(${prefix}confidence, 0) >= MIN(${param}, COALESCE(${prefix}delete_tau, ${param}))`;
 }
 
 export function cleanupCountsQuery(
@@ -272,7 +288,7 @@ export function cleanupCountsQuery(
   const sql = `SELECT action, COUNT(*) AS n, COUNT(DISTINCT account_id || char(31) || sender) AS g
     FROM suggestions
     WHERE account_id IN (${placeholders(a)}) AND status = 'pending'
-      AND action IN (${placeholders(actions.length, a + 1)}) AND confidence >= ?${a + actions.length + 1}
+      AND action IN (${placeholders(actions.length, a + 1)}) AND ${meetsThreshold(`?${a + actions.length + 1}`)}
     GROUP BY action`;
   return { sql, params: [...accountIds, ...actions, threshold] };
 }
@@ -287,7 +303,7 @@ export function groupsLeftQuery(
   const sql = `SELECT COUNT(*) AS n FROM (
       SELECT 1 FROM suggestions
       WHERE account_id IN (${placeholders(a)}) AND status = 'pending'
-        AND NOT (action IN (${placeholders(actions.length, a + 1)}) AND COALESCE(confidence, 0) >= ?${a + actions.length + 1})
+        AND NOT (action IN (${placeholders(actions.length, a + 1)}) AND ${meetsThreshold(`?${a + actions.length + 1}`)})
       GROUP BY account_id, sender, action
     )`;
   return { sql, params: [...accountIds, ...actions, threshold] };
@@ -361,6 +377,8 @@ export interface TargetRow {
   p_delete: number | null;
   margin: number | null;
   ceiling: Ceiling;
+  /** contracts 12.10; null on rows written before migration 0003. */
+  segment: DecisionSegment | null;
   model_version: string | null;
   policy_version: number;
   sender: string;
@@ -372,7 +390,7 @@ export interface TargetRow {
 }
 
 const TARGET_COLUMNS =
-  "s.message_id, s.account_id, s.status, s.action, s.confidence, s.p_delete, s.margin, s.ceiling, s.model_version, " +
+  "s.message_id, s.account_id, s.status, s.action, s.confidence, s.p_delete, s.margin, s.ceiling, s.segment, s.model_version, " +
   "s.policy_version, s.sender, s.sender_domain, s.final_action, s.label_id, m.provider_msg_id, m.subject";
 
 export function targetsByIdsQuery(accountIds: readonly string[], ids: readonly number[]): SqlQuery {
@@ -410,7 +428,7 @@ export function targetsForCleanupQuery(
   const sql = `SELECT ${TARGET_COLUMNS}
     FROM suggestions s JOIN messages m ON m.id = s.message_id AND m.account_id = s.account_id
     WHERE s.account_id IN (${placeholders(a)}) AND s.status = 'pending'
-      AND s.action IN (${placeholders(actions.length, a + 1)}) AND s.confidence >= ?${t} AND s.created_at <= ?${t + 1}
+      AND s.action IN (${placeholders(actions.length, a + 1)}) AND ${meetsThreshold(`?${t}`, "s.")} AND s.created_at <= ?${t + 1}
     ORDER BY s.confidence DESC, s.message_id
     LIMIT ?${t + 2}`;
   return { sql, params: [...accountIds, ...actions, threshold, asOf, limit] };
@@ -437,7 +455,7 @@ export function remainingCleanupQuery(
   const t = a + actions.length + 1;
   const sql = `SELECT COUNT(*) AS n FROM suggestions
     WHERE account_id IN (${placeholders(a)}) AND status = 'pending'
-      AND action IN (${placeholders(actions.length, a + 1)}) AND confidence >= ?${t} AND created_at <= ?${t + 1}`;
+      AND action IN (${placeholders(actions.length, a + 1)}) AND ${meetsThreshold(`?${t}`)} AND created_at <= ?${t + 1}`;
   return { sql, params: [...accountIds, ...actions, threshold, asOf] };
 }
 

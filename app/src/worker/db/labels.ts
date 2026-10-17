@@ -1,4 +1,4 @@
-import type { ActionKind, Ceiling, SuggestedAction } from "@clearbox/core";
+import type { ActionKind, Ceiling, DecisionSegment, SuggestedAction } from "@clearbox/core";
 import { placeholders } from "./sql.ts";
 
 export type LabelSource = "approve" | "override" | "cleanup" | "undo";
@@ -15,6 +15,8 @@ export interface LabelInsert {
   pDelete: number | null;
   margin: number | null;
   ceiling: Ceiling;
+  /** contracts 12.10; omitted (NULL) when unknown. */
+  segment?: DecisionSegment | null;
   modelVersion: string | null;
   policyVersion: number;
   now: number;
@@ -24,8 +26,8 @@ export function insertLabelStmt(db: D1Database, accountId: string, l: LabelInser
   return db
     .prepare(
       `INSERT INTO labels (account_id, message_id, sender, sender_domain, subject_trunc, suggested_action, owner_action,
-         source, p_delete, margin, ceiling, model_version, policy_version, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14)`,
+         source, p_delete, margin, ceiling, model_version, policy_version, created_at, updated_at, segment)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15)`,
     )
     .bind(
       accountId,
@@ -42,6 +44,7 @@ export function insertLabelStmt(db: D1Database, accountId: string, l: LabelInser
       l.modelVersion,
       l.policyVersion,
       l.now,
+      l.segment ?? null,
     );
 }
 

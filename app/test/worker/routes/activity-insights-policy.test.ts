@@ -158,6 +158,7 @@ describe("GET /api/insights", () => {
       outcome: "calibrated",
       ranAt: new Date(SEED_NOW - DAY).toISOString(),
       points: [{ tau: 0.85, support: 30, precision: 0.99 }],
+      segments: [],
     });
     expect(body.budget).toMatchObject({
       date: today,

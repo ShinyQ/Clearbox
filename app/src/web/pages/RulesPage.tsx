@@ -4,6 +4,7 @@ import { useBlocker } from "react-router";
 import { isApiError } from "../api/client.ts";
 import { usePutPolicy } from "../api/mutations.ts";
 import { usePolicy } from "../api/queries.ts";
+import { RuleSuggestions } from "../components/rules/RuleSuggestions.tsx";
 import { RulesForm } from "../components/rules/RulesForm.tsx";
 import { AppBanners } from "../components/shell/AppBanners.tsx";
 import { PageHeader } from "../components/shell/PageHeader.tsx";
@@ -177,6 +178,7 @@ export function RulesPage() {
         </div>
       ) : (
         <>
+          <RuleSuggestions variant="rules" />
           <RulesForm
             draft={draft}
             disabled={saving}
@@ -186,8 +188,8 @@ export function RulesPage() {
             onMoved={onMoved}
           />
           <p className="mt-2.5 text-small text-ink-3">
-            Rule changes apply to emails sorted from now on. Suggestions already in Review keep their current
-            verdict.{" "}
+            Rule changes apply to new emails right away. Suggestions already in Review follow: sender lists at
+            once, other rules overnight.{" "}
             <Button variant="link" size="sm" onClick={() => data && setDraft(data.defaults)}>
               Reset to defaults
             </Button>

@@ -1,6 +1,13 @@
 import type { ActionKind, Ceiling } from "../model/actions.ts";
 import {
+  CALIBRATED_SEGMENTS,
+  type CalibratedSegment,
+  type DecisionSegment,
+  type SegmentTaus,
+} from "../fusion/segments.ts";
+import {
   CALIBRATION_MIN_DELETE_SUGGESTIONS,
+  CALIBRATION_WINDOW,
   CALIBRATION_MIN_SUPPORT,
   CALIBRATION_TARGET_PRECISION,
   DELETE_MARGIN,
@@ -99,4 +106,73 @@ export function calibrateTauDelete(
     precisionAtTau: chosen ? chosen.precision : (last?.precision ?? null),
     points,
   };
+}
+
+export interface SegmentCalibrationSample extends CalibrationSample {
+  /** labels.segment; null for labels written before contracts 12.10 that could not be classified. */
+  segment: DecisionSegment | null;
+}
+
+export interface SegmentCalibration {
+  segment: CalibratedSegment;
+  /** null: no threshold reaches the target, so the segment is paused (no trash suggestions). */
+  tauDelete: number | null;
+  outcome: CalibrationResult["outcome"];
+  deleteSuggestions: number;
+  precisionAtTau: number | null;
+  points: CalibrationPoint[];
+}
+
+export interface SegmentCalibrationResult {
+  /** The single global threshold of contracts 5.3 (fallback and the archive and keep Clean up threshold). */
+  global: CalibrationResult;
+  segments: SegmentCalibration[];
+  /** Explicit value for every calibrated segment, ready for Thresholds.segmentTaus. */
+  taus: Record<CalibratedSegment, number | null>;
+  changed: boolean;
+}
+
+/**
+ * contracts 12.10: the 5.3 grid search per segment. calibrated -> that tau; no_tau_meets_target -> null (paused,
+ * never saturate at TAU_DELETE_MAX); insufficient_data -> the segment's current value, else the global result.
+ * The global result uses the newest CALIBRATION_WINDOW samples; rule samples never count (they skip the check).
+ */
+export function calibrateSegments(
+  samples: readonly SegmentCalibrationSample[],
+  currentTau: number,
+  currentTaus: SegmentTaus,
+): SegmentCalibrationResult {
+  const calibrated = samples.filter((s) => s.segment !== "rule");
+  const global = calibrateTauDelete(calibrated.slice(0, CALIBRATION_WINDOW), currentTau);
+  const taus = {} as Record<CalibratedSegment, number | null>;
+  const segments: SegmentCalibration[] = [];
+  let changed = global.changed;
+  for (const segment of CALIBRATED_SEGMENTS) {
+    const current = currentTaus[segment];
+    const r = calibrateTauDelete(
+      calibrated.filter((s) => s.segment === segment),
+      current ?? global.tauDelete,
+    );
+    const tau =
+      r.outcome === "calibrated"
+        ? r.tauDelete
+        : r.outcome === "no_tau_meets_target"
+          ? null
+          : current === undefined
+            ? global.tauDelete
+            : current;
+    taus[segment] = tau;
+    if (tau !== current) changed = true;
+    segments.push({
+      segment,
+      tauDelete: tau,
+      outcome: r.outcome,
+      deleteSuggestions: r.deleteSuggestions,
+      // A paused segment reports its agreement at TAU_DELETE_MIN (the widest support), for the Insights note.
+      precisionAtTau:
+        r.outcome === "no_tau_meets_target" ? (r.points[0]?.precision ?? null) : r.precisionAtTau,
+      points: r.points,
+    });
+  }
+  return { global, segments, taus, changed };
 }

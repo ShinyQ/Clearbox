@@ -6,6 +6,7 @@ import type {
   ApiErrorCode,
   ApiReason,
   GroupUnsubscribe,
+  RuleSuggestion,
   UnsubscribeResponse,
   Insights,
   ItemErrorCode,
@@ -62,7 +63,9 @@ export type RouteName =
   | "policy"
   | "putPolicy"
   | "patchSender"
-  | "unsubscribe";
+  | "unsubscribe"
+  | "ruleSuggestions"
+  | "dismissRuleSuggestion";
 
 export interface Failure {
   status: number;
@@ -105,6 +108,8 @@ export interface FakeApiState {
   unsubscribe: Record<string, GroupUnsubscribe>;
   /** Response of POST /api/unsubscribe; default success. */
   unsubscribeResult: UnsubscribeResponse | null;
+  /** Contracts 12.10: offered sender rules; default none. */
+  ruleSuggestions: RuleSuggestion[];
 }
 
 export function createFakeApiState(): FakeApiState {
@@ -130,6 +135,7 @@ export function createFakeApiState(): FakeApiState {
     nextBatchId: 10,
     unsubscribe: {},
     unsubscribeResult: null,
+    ruleSuggestions: [],
   };
 }
 

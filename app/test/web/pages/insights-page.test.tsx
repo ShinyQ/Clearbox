@@ -47,6 +47,31 @@ describe("Insights page", () => {
     await expectNoA11yViolations(container);
   });
 
+  it("shows the trash threshold per kind of email and explains a paused one (contracts 12.10)", async () => {
+    setup();
+    const panel = await screen.findByRole("region", { name: "Trash thresholds by kind of email" });
+    expect(within(panel).getByText("1 paused")).toBeTruthy();
+    const table = within(panel).getByRole("table", { name: "Trash thresholds by kind of email" });
+    expect(within(table).getByText("Newsletters and bulk mail")).toBeTruthy();
+    expect(within(table).getByText("Paused")).toBeTruthy();
+    expect(
+      within(table).getByText(
+        "Trash suggestions paused (you agreed 91.0% of the time): below the 98% target, so these go to Check instead.",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(table).getByText("Not enough trash decisions here yet (12 of 50), so Clearbox stays careful."),
+    ).toBeTruthy();
+  });
+
+  it("hides the segment panel before the first segment calibration", async () => {
+    setup((s) => {
+      s.insights = { ...s.insights, calibration: { ...s.insights.calibration, segments: [] } };
+    });
+    await screen.findByText("Storage: 182 MB of 500 MB");
+    expect(screen.queryByRole("region", { name: "Trash thresholds by kind of email" })).toBeNull();
+  });
+
   it("explains insufficient data", async () => {
     setup((s) => {
       s.insights = {

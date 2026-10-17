@@ -12,6 +12,7 @@ import {
   evaluateGuardrails,
   extractSignals,
   fuse,
+  holdUntil,
   priorKeyForDomain,
   priorKeyForSender,
   selectPrior,
@@ -184,6 +185,12 @@ export interface PreparedItem {
   /** messages.id for a re-decided suggestion; null for a fresh message. */
   existingMessageId: number | null;
   previousAttempts: number;
+  /**
+   * contracts 12.10, "Leave recent emails alone": while the email is younger than policy.minAgeDays it is not sent to
+   * the model; it waits as awaiting_model (decision_attempts unchanged) until this time, then is decided with the
+   * priors, rules and thresholds of that moment. null when it can be decided now.
+   */
+  heldUntil: number | null;
 }
 
 export function truncateText(text: string, max: number): string {
@@ -220,8 +227,10 @@ function prepareOne(
   existingMessageId: number | null,
   previousAttempts: number,
 ): PreparedItem {
-  // Provider mappers use receivedAt = 0 when no date exists; fail closed so guard_too_recent applies.
-  const signals: Signals = msg.receivedAt <= 0 ? { ...rawSignals, ageDays: 0 } : rawSignals;
+  // Provider mappers use receivedAt = 0 when no date exists; fail closed so guard_too_recent applies. A stored
+  // (re-decided) email gets its age from receivedAt, not the ageDays frozen at ingest.
+  const ageDays = msg.receivedAt <= 0 ? 0 : Math.max(0, Math.floor((s.now - msg.receivedAt) / 86_400_000));
+  const signals: Signals = { ...rawSignals, ageDays };
   const guard = evaluateGuardrails({ signals, subject: msg.subject, snippet: msg.snippet }, s.policy);
   const prior = selectPrior(
     history.senderPrior,
@@ -239,7 +248,31 @@ function prepareOne(
     state,
     seed: decisionSeed(s.accountId, msg.providerMessageId),
   };
-  return { msg, signals, guard, prior, input, existingMessageId, previousAttempts };
+  const heldUntil = holdUntil(msg.receivedAt, s.policy.minAgeDays, s.now);
+  return { msg, signals, guard, prior, input, existingMessageId, previousAttempts, heldUntil };
+}
+
+/** Held items wait as awaiting_model without a model call (their attempt count is unchanged). */
+export function heldFinals(items: readonly PreparedItem[]): FinalItem[] {
+  return items.flatMap((item): FinalItem[] =>
+    item.heldUntil === null
+      ? []
+      : [
+          {
+            msg: item.msg,
+            signals: item.signals,
+            guard: item.guard,
+            existingMessageId: item.existingMessageId,
+            attempts: item.previousAttempts,
+            status: "awaiting_model",
+            suggestion: null,
+            retryAfter: item.heldUntil,
+            modelVersion: null,
+            result: null,
+            error: null,
+          },
+        ],
+  );
 }
 
 export function prepareFresh(

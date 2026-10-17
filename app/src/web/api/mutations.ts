@@ -1,6 +1,11 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { AccountsResponse, PolicyResponse } from "../../shared/api.ts";
-import { api, type PatchSenderBody, type PutPolicyBody } from "./endpoints.ts";
+import {
+  api,
+  type DismissRuleSuggestionBody,
+  type PatchSenderBody,
+  type PutPolicyBody,
+} from "./endpoints.ts";
 import { qk } from "./keys.ts";
 
 /** Caches touched by any mailbox action, Clean up or undo (UI spec 5.2.2). */
@@ -52,7 +57,21 @@ export function usePatchSender() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: PatchSenderBody) => api.patchSender(body),
-    onSuccess: (res: PolicyResponse) => qc.setQueryData(qk.policy, res),
+    onSuccess: async (res: PolicyResponse) => {
+      qc.setQueryData(qk.policy, res);
+      // Contracts 12.10: the server re-fuses pending suggestions of that sender, so Review and the offers change.
+      await Promise.all(
+        ["queue", "cleanup", "groups", "group", "rules"].map((p) => qc.invalidateQueries({ queryKey: [p] })),
+      );
+    },
+  });
+}
+
+export function useDismissRuleSuggestion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DismissRuleSuggestionBody) => api.dismissRuleSuggestion(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.ruleSuggestions }),
   });
 }
 
@@ -60,6 +79,11 @@ export function usePutPolicy() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: PutPolicyBody) => api.putPolicy(body),
-    onSuccess: (res: PolicyResponse) => qc.setQueryData(qk.policy, res),
+    onSuccess: async (res: PolicyResponse) => {
+      qc.setQueryData(qk.policy, res);
+      await Promise.all(
+        ["queue", "cleanup", "groups", "group", "rules"].map((p) => qc.invalidateQueries({ queryKey: [p] })),
+      );
+    },
   });
 }

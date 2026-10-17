@@ -1620,6 +1620,7 @@ Each screen lists purpose, layout, hierarchy, data needed (contract routes and f
 1. PageHeader: "Review", meta "Sorted 4 min ago", right: account Select (width 160px), ghost "Scan now" (refresh icon).
 2. App banners (0 to 3).
 3. SummaryCard (full width).
+3a. Suggested rules card (contracts 12.10, only when `GET /api/rules/suggestions` returns an offer): the first offer only, as one row "You trashed 24 of 24 emails from news@shop.example." with a danger sm "Always OK to trash" (deny) or a secondary sm "Always keep" (allow) and a ghost sm "Not now" (dismiss, `aria-label` "Not now: <address>"); the panel meta is a link "N more in Rules" when there are more, else "From your recent choices. Nothing changes until you pick one.". Accept calls `PATCH /api/policy/senders` (the server re-fuses that sender's pending suggestions) and toasts "<address> is on your Always OK to trash list. Its emails skip the confidence check." or "<address> is on your Always keep list."; then `queue`, `cleanup`, `groups`, `group` and `rules` are invalidated.
 4. ActionTabs (full width, attached to the work area below).
 5. Work area: list (fluid, min 560px) | DetailPanel 300px. Height: natural; the page scrolls, the list header row and the detail panel are sticky (`top: 0` within main; the detail panel uses `position: sticky; top: 0; max-height: 100dvh; overflow-y: auto`).
 6. ConfirmBar (only during the Clean up flow), sticky bottom 16px.
@@ -1634,7 +1635,8 @@ At 1024 to 1279px the detail panel is a slide-over (2.8). Below 1024px see 2.8.
 |---|---|---|
 | `GET /api/me` | `["me"]` | `email`, `tauDelete` (fallback only), `issues`, `providers`, `freeTier`, `serverTime` |
 | `GET /api/accounts` | `["accounts"]` | `accounts[].id`, `provider`, `email`, `status`, `statusReason`, `paused`, `archiveSupported`, `sync.phase`, `sync.backfillDone`, `sync.lastTickAt`, `sync.awaitingModelCount`, `sync.backoffUntil`, `sync.lastErrorCode` |
-| `GET /api/queue/summary?accountId=` | `["queue", "summary", { accountId }]` | `asOf`, `pending.total`, `pending.delete/archive/keep/unsure`, `awaitingModel`, `groups`, `tauDelete`, A1 `groupsByAction` |
+| `GET /api/queue/summary?accountId=` | `["queue", "summary", { accountId }]` | `asOf`, `pending.total`, `pending.delete/archive/keep/unsure`, `awaitingModel`, `recentHeld` (12.10: the subline adds "N recent emails are left alone until they are old enough to sort."), `groups`, `tauDelete`, A1 `groupsByAction` |
+| `GET /api/rules/suggestions` | `["rules", "suggestions"]` | 12.10 `suggestions[]` (`entry`, `list`, `decisions`, `agreeing`) for the Suggested rules card |
 | `GET /api/cleanup/preview?actions=delete,archive&accountId=` | `["cleanup", "preview", { accountId }]` | `asOf`, `threshold`, `defaultThreshold`, `count`, `byAction.delete`, `byAction.archive`, `groups`, A2 `groupsLeft` |
 | `GET /api/groups?accountId=&action=&sort=&limit=50&cursor=` | `["groups", { accountId, action, sort }]` (infinite) | `items[]` (all `SenderGroup` fields, A6 `latestSubject`), `nextCursor` |
 | `GET /api/groups/:key?limit=20&cursor=` | `["group", key]` (infinite) | `asOf`, `group`, `items.items[]` (`id`, `action`, `confidence`, `reasons`, `from`, `subject`, `snippet`, `receivedAt`, `isRead`, `deepLink`, `ceilingApplied`, `status`), `items.nextCursor` |
@@ -1843,7 +1845,7 @@ Keeps wording for the other moments (same machine and layout as 5.2.4, "Confirmi
 
 **Purpose:** answer "is the AI trustworthy?" and "how is the free tier doing?" in plain statements and one table, not a wall of KPI cards.
 
-**Layout:** content max-width 1040px. PageHeader "Insights". App banners. Row 1: `grid-template-columns: 1.4fr 1fr; gap: 14px` (stacks below 1024px): panel "How well Clearbox matches you" | panel "Emails cleaned per week". Row 2 (margin-top 14px): panel "Accounts and daily budget". Row 3 (margin-top 14px): collapsed `details` panel "How the threshold was chosen".
+**Layout:** content max-width 1040px. PageHeader "Insights". App banners. Row 1: `grid-template-columns: 1.4fr 1fr; gap: 14px` (stacks below 1024px): panel "How well Clearbox matches you" | panel "Emails cleaned per week". Row 2 (margin-top 14px): panel "Accounts and daily budget". Row 3 (margin-top 14px, contracts 12.10, hidden while `calibration.segments` is empty): panel "Trash thresholds by kind of email". Row 4 (margin-top 14px): collapsed `details` panel "How the threshold was chosen".
 
 Panels: `bg-surface border border-line rounded-xl`; panel header `px-4 py-3 border-b border-line flex items-center gap-2.5`, title `font-semibold`, optional right meta `text-small text-ink-3`.
 
@@ -1875,6 +1877,8 @@ Table columns: "Account" (strong email), "Status" (`AccountStatusItem variant="i
 "About N days" = `ceil(remaining / dailyRate)` where `dailyRate` is the mean `messagesIngested` of the last 3 complete days in `history` (fallback 6,800); "about 1 day" when below 1.5; "less than a day" when below 0.5.
 
 Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rowsWritten / rowsCap`, label "Daily writes used"), then `text-small text-ink-3` "21,080 of 90,000 daily writes used (23%)". Then two lines `text-small text-ink-3`: "AI model today: 3,412 calls, 2 failed, about $0.06" (`decisionCalls`, `decisionFailures`, `estimatedDecisionCostUsd` with 2 decimals, "less than $0.01" when below 0.005) and "Storage: 182 MB of 500 MB". Paid tier hides the write meter line.
+
+**Panel "Trash thresholds by kind of email" (contracts 12.10):** meta "N paused" or "All active". Table with columns "Kind of email" ("Senders you decided on before", "Domains you decided on before", "Newsletters and bulk mail", "Everything else"), "Threshold" ("86%" or "Paused") and "What it means": calibrated "Tuned nightly from your choices."; paused "Trash suggestions paused (you agreed 91.0% of the time): below the 98% target, so these go to Check instead."; insufficient data "Not enough trash decisions here yet (12 of 50), so Clearbox stays careful.".
 
 **Panel 4 (collapsed): How the threshold was chosen:** `details` element, summary row "How the threshold was chosen" with chevron. Content: helper "Each row shows how often you agreed with trash suggestions at that threshold. Clearbox picks the lowest threshold with at least 20 decisions and 98% agreement." and a Table: "Threshold" ("80%"), "Decisions" (`support`), "Agreement" (`precision` as "97.9%" or "n/a"); the chosen row is marked with a "Current" Protected-style neutral tag. Empty `points`: "Not enough decisions yet."
 
@@ -1975,14 +1979,14 @@ Below the table (padding 12px 16px): `ProgressBar tone="accent" height=6` (`rows
 | 1 | "Always keep these senders" | "Never suggested for trash or archive." | ChipInput, placeholder "Add sender or @domain" | `allowlist` |
 | 2 | "Always OK to trash" | "Skip the confidence check for these." | ChipInput, same placeholder | `denylist` |
 | 3 | "Scan history" (rev 2.4) | "How far back Clearbox sorts mail already in your inbox. New mail is always scanned. A longer window picks up where the last scan stopped; a shorter one keeps existing suggestions." | Select (Last 30 days, Last 90 days, Last year, All mail); default Last 90 days | `scanHistoryDays` (30, 90, 365, null) |
-| 4 | "Leave recent emails alone" | "Don't suggest anything for emails newer than this." | Select (Off, 1 day, 2, 3, 5, 7, 14, 30 days) | `minAgeDays` |
+| 4 | "Leave recent emails alone" | "Don't suggest anything for emails newer than this." (12.10: such emails are not decided until they are old enough, then appear with a real suggestion) | Select (Off, 1 day, 2, 3, 5, 7, 14, 30 days) | `minAgeDays` |
 | 5 | "Protect starred, flagged and replied threads" | "Always on. These are never trashed." | Toggle locked on | none (fixed guardrail) |
 | 6 | "Receipts and attachments go to Archive, not Trash" | "Always on. Emails with files, and emails whose subject or preview contains one of the words below." + nested ChipInput "Record words" (placeholder "Add a word", validation 2 to 40 characters, max 100) | Toggle locked on | `recordPatterns` |
 | 7 | "Store email previews" | "Keeps a short snippet for 30 days to show in Review. Turn off to store subjects only." | Toggle | `storeSnippets` |
 | 8 | "Remember subjects of emails you decide" | "Keeps the first 60 characters of the subject with each decision to improve suggestions. Turn off to keep only the sender." | Toggle | `labelSubjects` |
 | 9 | "Weekly reminder" (contracts 12.8) | "A short note in your inbox when emails are ready to review, with counts and a link to Review. Clearbox adds it to your inbox directly, so nothing is sent, and it is never sorted. Arrives around {local time} your time." ({local time} is 02:00 UTC in the browser's time zone, for example "9:00 AM") | Select "Reminder day" (seven weekdays; each option's value is the UTC weekday, its label the owner's local day of 02:00 UTC on that weekday; disabled while the reminder is off) and Toggle; default on, Sunday (UTC) | `weeklyReminder` (`{ enabled, weekday }`) |
 
-Below the panel, `text-small text-ink-3`: "Rule changes apply to emails sorted from now on. Suggestions already in Review keep their current verdict." and a link button "Reset to defaults" (fills the form with `defaults`, marks dirty; does not save).
+Above the form (contracts 12.10): the "Suggested rules" panel with every offer (same rows as the Review card, 5.1 item 3a), hidden when there is none. Below the panel, `text-small text-ink-3`: "Rule changes apply to new emails right away. Suggestions already in Review follow: sender lists at once, other rules overnight." and a link button "Reset to defaults" (fills the form with `defaults`, marks dirty; does not save).
 
 **Data needed:** `GET /api/policy` (`["policy"]`): `policy`, `version`, `defaults`. Mutation: `PUT /api/policy { policy, expectedVersion: version }`.
 

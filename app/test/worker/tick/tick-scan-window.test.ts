@@ -169,7 +169,7 @@ describe("runTick: scan history window (rev 2.4)", () => {
 
   it("scans everything with All mail (null) and finishes with backfill_done = 1", async () => {
     await storePolicy(null);
-    mock.inbox = [mail(1, { receivedAt: NOW - 2 * DAY }), mail(2, { receivedAt: NOW - 3000 * DAY })];
+    mock.inbox = [mail(1, { receivedAt: NOW - 4 * DAY }), mail(2, { receivedAt: NOW - 3000 * DAY })];
     useNetwork(mock.handlers());
     await seedTickAccount({ phase: "inbox_backfill", lastIncrementalAt: NOW - MINUTE });
 
@@ -181,7 +181,7 @@ describe("runTick: scan history window (rev 2.4)", () => {
     await storePolicy(30);
     const box = new FakeMailbox();
     box.validAccessToken = "g-access-2";
-    for (let i = 0; i < 4; i++) box.addMessage({ id: `new-${i}`, receivedAt: NOW - (i + 1) * DAY });
+    for (let i = 0; i < 4; i++) box.addMessage({ id: `new-${i}`, receivedAt: NOW - (i + 4) * DAY });
     for (let i = 0; i < 4; i++) box.addMessage({ id: `old-${i}`, receivedAt: NOW - (40 + i) * DAY });
     useNetwork(gmailHandlers(box), mock.handlers());
     await seedTickAccount({
@@ -204,7 +204,7 @@ describe("runTick: scan history window (rev 2.4)", () => {
   it("leaves incremental sync unaffected: new mail is scanned after an edge stop", async () => {
     await storePolicy(30);
     mock.inboxDelta.set("inbox-1", {
-      added: [mail(1, { receivedAt: NOW - 29 * DAY }), mail(2, { receivedAt: NOW - MINUTE })],
+      added: [mail(1, { receivedAt: NOW - 29 * DAY }), mail(2, { receivedAt: NOW - 4 * DAY })],
       removed: [],
       next: "inbox-2",
     });

@@ -1,7 +1,8 @@
 import { parsePolicy, TAU_DELETE_DEFAULT } from "@clearbox/core";
-import type { CalibrationResult, Policy } from "@clearbox/core";
+import type { CalibrationResult, Policy, SegmentCalibration, SegmentTaus } from "@clearbox/core";
 import { z } from "zod";
 import type { AppIssue, AppIssueCode } from "../../shared/api.ts";
+import { parseSegmentTaus } from "../scan/claim.ts";
 import { toIso } from "./sql.ts";
 
 export type SettingKey =
@@ -11,16 +12,28 @@ export type SettingKey =
   | "calibration"
   | "issues"
   | "nightly"
+  | "tau_segments"
+  | "rule_dismissals"
   | "reminder"
   | "app_origin";
 
-export type CalibrationSetting = CalibrationResult & { ranAt: number };
+/** contracts 12.10 adds `segments` (absent on rows written before it). */
+export type CalibrationSetting = CalibrationResult & { ranAt: number; segments?: SegmentCalibration[] };
+
+/** contracts 12.10: dismissed rule suggestions, newest last, at most RULE_DISMISSALS_MAX. */
+export interface RuleDismissal {
+  entry: string;
+  list: "allow" | "deny";
+  at: number;
+}
 
 export interface NightlySetting {
   ranAt: number;
   purgedMessages: number;
   purgedAccounts: number;
   staleRecovered: number;
+  /** contracts 12.10: pending suggestions re-fused by this run (absent before it). */
+  refreshed?: number;
 }
 
 export interface Settings {
@@ -30,6 +43,9 @@ export interface Settings {
   calibration: CalibrationSetting | null;
   issues: AppIssue[];
   nightly: NightlySetting | null;
+  /** contracts 12.10: null before the first segment calibration. */
+  segmentTaus: SegmentTaus | null;
+  ruleDismissals: RuleDismissal[];
   /** Contracts 12.8: origin of the deployment, recorded by GET /api/me, linked from the weekly reminder. */
   appOrigin: string | null;
 }
@@ -38,6 +54,10 @@ export interface SettingRow {
   key: string;
   value: string;
 }
+
+const RuleDismissalsSchema = z.array(
+  z.object({ entry: z.string(), list: z.enum(["allow", "deny"]), at: z.number() }),
+);
 
 const IssueListSchema = z.array(
   z.object({ code: z.string(), since: z.string(), accountId: z.string().nullable() }),
@@ -56,6 +76,7 @@ export function parseSettings(rows: readonly SettingRow[]): Settings {
   const tau = json("tau_delete");
   const version = json("policy_version");
   const issues = IssueListSchema.safeParse(json("issues") ?? []);
+  const dismissals = RuleDismissalsSchema.safeParse(json("rule_dismissals") ?? []);
   const origin = json("app_origin");
   return {
     tauDelete: typeof tau === "number" ? tau : TAU_DELETE_DEFAULT,
@@ -64,6 +85,8 @@ export function parseSettings(rows: readonly SettingRow[]): Settings {
     calibration: (json("calibration") as CalibrationSetting | null) ?? null,
     issues: issues.success ? (issues.data as AppIssue[]) : [],
     nightly: (json("nightly") as NightlySetting | null) ?? null,
+    segmentTaus: parseSegmentTaus(map.get("tau_segments") ?? null),
+    ruleDismissals: dismissals.success ? dismissals.data : [],
     appOrigin: typeof origin === "string" ? origin : null,
   };
 }

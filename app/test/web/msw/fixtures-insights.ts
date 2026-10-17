@@ -17,6 +17,30 @@ export function makeInsights(accounts: AccountView[]): Insights {
         { tau: 0.86, support: 96, precision: 0.986 },
         { tau: 0.9, support: 60, precision: 0.99 },
       ],
+      segments: [
+        {
+          segment: "sender",
+          tauDelete: 0.9,
+          outcome: "calibrated",
+          deleteSuggestions: 210,
+          precisionAtTau: 0.99,
+        },
+        {
+          segment: "domain",
+          tauDelete: 0.86,
+          outcome: "insufficient_data",
+          deleteSuggestions: 12,
+          precisionAtTau: null,
+        },
+        { segment: "bulk", tauDelete: 0.8, outcome: "calibrated", deleteSuggestions: 180, precisionAtTau: 1 },
+        {
+          segment: "other",
+          tauDelete: null,
+          outcome: "no_tau_meets_target",
+          deleteSuggestions: 64,
+          precisionAtTau: 0.91,
+        },
+      ],
     },
     budget: {
       date: "2026-10-15",

@@ -63,7 +63,8 @@ Each deployment serves a single owner. You run your own copy on Cloudflare Worke
 
 - **One-click Clean up**: everything above the confidence threshold goes into a single batch; one confirm moves hundreds of emails to Trash or Archive.
 - **Confidence bands and reasons**: every sender group shows a calibrated confidence (Very sure, Sure, Likely, Unsure) and up to three reasons built from real signals, such as "You trashed 41 of 44 from this sender".
-- **Guardrails**: starred, flagged and replied threads, recent mail and your always-keep senders are never trashed; people you write to, attachments and receipts are capped at keep or archive unless you mark the sender as always OK to trash.
+- **Guardrails**: starred, flagged and replied threads and your always-keep senders are never trashed; people you write to, attachments and receipts are capped at keep or archive unless you mark the sender as always OK to trash. Recent mail is left alone: it is not judged until it is old enough (3 days by default), then gets a real suggestion.
+- **Learns from you**: every decision updates the suggestions still waiting in Review, and after about 10 consistent choices on a sender Clearbox offers a one-click "Always OK to trash" or "Always keep" rule (never applied on its own).
 - **Learns from your choices**: every approval or override updates per-sender priors, and a nightly job tunes the trash threshold to the lowest value that keeps delete precision at or above 98%.
 - **Gmail and Outlook, multi-account**: connect several mailboxes in one deployment and review them together or one at a time.
 - **One-click unsubscribe**: when a sender's newest email supports RFC 8058 one-click (and passed DKIM), the detail panel offers "Unsubscribe" or "Trash and unsubscribe"; Clearbox sends the request from the Worker after you confirm and shows "Unsubscribed on <date>" afterwards.
@@ -122,7 +123,7 @@ flowchart TB
   worker -->|"api-key, probabilities only"| foundry
 ```
 
-- **A pipeline per email**: **signals** from headers and history (unsubscribe headers, bulk mail, authentication results, open rate, whether you wrote to the sender or replied in the thread), then **guardrails** that set the highest allowed action, then **Microsoft-Decision-1** for trash, archive, keep and unsure probabilities, then your **per-sender priors**, then a deterministic **fusion** that suggests trash only above the calibrated threshold (at least 0.80) with a clear margin.
+- **A pipeline per email**: **signals** from headers and history (unsubscribe headers, bulk mail, authentication results, open rate, whether you wrote to the sender or replied in the thread), then **guardrails** that set the highest allowed action, then **Microsoft-Decision-1** for trash, archive, keep and unsure probabilities, then your **per-sender priors**, then a deterministic **fusion** that suggests trash only above the calibrated threshold (at least 0.80) with a clear margin. The threshold is tuned nightly per kind of email (senders you decided on, domains, bulk mail, everything else) to reach 98% agreement; a kind that cannot reach it is paused and goes to Check.
 - **One tick per minute**: each tick leases one mailbox, reads one page of up to 25 messages (metadata and the provider snippet only) and writes everything in one D1 batch. **Scan now** runs the same tick on demand. The nightly job recalibrates the threshold, recovers stale runs, adds the weekly reminder note on the chosen day and purges old data.
 - **Free-tier budgets**: ticks stop at 65,000 D1 rows written per day, the purge at 80,000 and owner actions at 90,000 of the 100,000 limit. That is about 13,000 emails per day during the first backfill and about 6,800 per day sustained; the backfill stops at the scan history window (default 90 days), so older mail in a large inbox is not scanned unless you widen it. On Workers Paid, `FREE_TIER=false` lifts the gates without code changes.
 - **Trash-only**: the mail provider interface has no hard-delete method, and Gmail's `gmail.modify` scope cannot permanently delete anyway.
@@ -210,6 +211,7 @@ The seeded mailboxes carry dummy tokens, so actions that reach a real mailbox (C
 | `pnpm deploy:cf`                                | Worker types, `tsc` and `cf deploy --no-provision` (after `setup:cf` has stored the D1 id)            |
 | `pnpm eval`                                     | Model evaluation against the real Decision-1 deployment (needs the `AZURE_DECISION_*` env vars)       |
 | `pnpm --filter @clearbox/eval export-labels`    | Export your own decisions from D1 into the git-ignored `eval/private/`                                |
+| `pnpm --filter @clearbox/eval replay --export`  | Replay your decisions offline (no model calls): trash precision, recall and pending counts, before and after |
 | `pnpm --filter @clearbox/app test:worker`       | Worker tests only (workerd through `@cloudflare/vitest-plugin`)                                       |
 | `pnpm --filter @clearbox/app test:web`          | SPA tests only (happy-dom, Testing Library, axe-core)                                                 |
 | `node --test "scripts/test/*.test.ts"`          | Tests for `setup:cf`, `gen-key` and `check-text`                                                      |
@@ -254,6 +256,8 @@ docs/              setup guides, runbook, security checklist, UI mockup, design 
 ### Model evaluation
 
 `pnpm eval` runs the real pipeline (signals, guardrails, Microsoft-Decision-1, fusion) on 40 synthetic labeled emails in `eval/fixtures/emails.jsonl` and writes a report to the git-ignored `eval/private/reports/`: delete precision and recall, a reliability (calibration) table, an option-order shuffle check, latency p50/p95 and token usage. It needs `AZURE_DECISION_ENDPOINT`, `AZURE_DECISION_KEY` and `AZURE_DECISION_DEPLOYMENT` in the environment and never runs in CI ([Azure guide, section 5](docs/setup-azure.md#5-run-the-model-evaluation)). To evaluate on your own decisions, export them with `pnpm --filter @clearbox/eval export-labels` and run `pnpm eval --fixtures private/owner-labels.jsonl`. Never commit exported labels: they contain your real senders and subjects.
+
+`pnpm --filter @clearbox/eval replay --export` measures the learning pipeline without calling the model: it exports your decisions with the stored model outputs (no subjects or snippets) to `eval/private/replay.json`, replays them in order (each email sees only the decisions made before it), fits the per-kind trash thresholds on the first 60% of the timeline and reports trash precision and recall on the rest, how many trashed emails would still be suggested as Keep, and how many trash suggestions would be pending. Run it again without `--export` to reuse the file.
 
 ## Deploy
 

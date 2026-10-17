@@ -54,6 +54,7 @@ import { callbackPath } from "../scan/providers.ts";
 import { createD1TokenSource, refreshFnFor, tokenUpdateStmt } from "../scan/token-source.ts";
 import type { D1TokenSource } from "../scan/token-source.ts";
 import { decisionPriorDeltas, labelFor } from "./learn.ts";
+import { refreshScoped } from "./refresh.ts";
 import type { DecidedItem } from "./learn.ts";
 
 export type ExecuteRequest =
@@ -273,6 +274,7 @@ function decided(c: Candidate): DecidedItem {
     pDelete: c.row.p_delete,
     margin: c.row.margin,
     ceiling: c.row.ceiling,
+    segment: c.row.segment,
     modelVersion: c.row.model_version,
     policyVersion: c.row.policy_version,
   };
@@ -518,11 +520,40 @@ export async function executeSuggestions(ctx: ActionContext, req: ExecuteRequest
     ? ((finalResults[finalResults.length - 1]?.results[0] as { n: number } | undefined)?.n ?? 0)
     : 0;
 
+  // contracts 12.10: owner decisions just moved these priors; re-fuse what is still pending for the same senders and
+  // domains so Review reflects them now. Best effort: a failure here never fails the action.
+  let refreshRows = { read: 0, written: 0 };
+  for (const [accountId, items] of groupBy(executed, (e) => e.cand.account.id)) {
+    try {
+      const out = await refreshScoped(
+        db,
+        accountId,
+        {
+          senders: items.map((e) => e.cand.row.sender),
+          domains: items.map((e) => e.cand.row.sender_domain),
+        },
+        settings,
+        now,
+      );
+      refreshRows = { read: refreshRows.read + out.rowsRead, written: refreshRows.written + out.rowsWritten };
+    } catch (err) {
+      logEvent("request.error", {
+        requestId: ctx.requestId,
+        route: ctx.route,
+        errorName: err instanceof Error ? err.name : "unknown",
+      });
+    }
+  }
+
   // 5. Budget (contracts 8.5: counted like a tick's D1 call 4).
   await budgetDeltaStmt(
     db,
     utcDate(now),
-    { rowsWritten: sumRowsWritten(writes) + 1, rowsRead: sumRowsRead(writes), providerCalls },
+    {
+      rowsWritten: sumRowsWritten(writes) + refreshRows.written + 1,
+      rowsRead: sumRowsRead(writes) + refreshRows.read,
+      providerCalls,
+    },
     now,
   ).run();
 

@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type {
   ApproveBody,
   CleanupBody,
+  DismissRuleSuggestionBodySchema,
   OverrideBody,
   PatchAccountBody,
   PatchSenderBodySchema,
@@ -21,7 +22,9 @@ import {
   GroupDetailSchema,
   InsightsSchema,
   MeResponseSchema,
+  NoContentSchema,
   PolicyResponseSchema,
+  RuleSuggestionsSchema,
   QueueSummarySchema,
   SenderGroupPageSchema,
   TickReportSchema,
@@ -31,6 +34,7 @@ import {
 
 export type PutPolicyBody = z.input<typeof PutPolicyBodySchema>;
 export type PatchSenderBody = z.input<typeof PatchSenderBodySchema>;
+export type DismissRuleSuggestionBody = z.input<typeof DismissRuleSuggestionBodySchema>;
 
 export interface PageParams {
   cursor?: string | undefined;
@@ -87,4 +91,7 @@ export const api = {
   policy: () => apiGet("/api/policy", PolicyResponseSchema),
   putPolicy: (body: PutPolicyBody) => apiSend("PUT", "/api/policy", PolicyResponseSchema, body),
   patchSender: (body: PatchSenderBody) => apiSend("PATCH", "/api/policy/senders", PolicyResponseSchema, body),
+  ruleSuggestions: () => apiGet("/api/rules/suggestions", RuleSuggestionsSchema),
+  dismissRuleSuggestion: (body: DismissRuleSuggestionBody) =>
+    apiSend("POST", "/api/rules/suggestions/dismiss", NoContentSchema, body),
 };

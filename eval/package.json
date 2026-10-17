@@ -5,6 +5,7 @@
   "scripts": {
     "eval": "node src/run.ts",
     "export-labels": "node src/export-labels.ts",
+    "replay": "node src/replay.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },

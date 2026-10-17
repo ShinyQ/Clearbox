@@ -1,4 +1,5 @@
 import {
+  CALIBRATED_SEGMENTS,
   DEFAULT_POLICY,
   LEASE_TTL_MS,
   TAU_DELETE_DEFAULT,
@@ -6,7 +7,7 @@ import {
   TAU_DELETE_MIN,
   parsePolicy,
 } from "@clearbox/core";
-import type { Policy, ProviderKind } from "@clearbox/core";
+import type { CalibratedSegment, Policy, ProviderKind, SegmentTaus } from "@clearbox/core";
 import type { AccountPhase, AppIssue } from "../../shared/api.ts";
 import { ApiError } from "../middleware/errors.ts";
 import { isoOf, nextUtcMidnight, rowsOf, stmt, sumMeta } from "./write-plan.ts";
@@ -147,6 +148,8 @@ export interface TickSettings {
   policy: Policy;
   policyVersion: number;
   tauDelete: number;
+  /** contracts 12.10: settings 'tau_segments'; null before the first segment calibration. */
+  segmentTaus: SegmentTaus | null;
   issues: AppIssue[];
 }
 
@@ -172,12 +175,36 @@ export function parseTickSettings(rows: readonly SettingRow[]): TickSettings {
   }
   return {
     policy,
+    segmentTaus: parseSegmentTaus(map.get("tau_segments") ?? null),
     policyVersion: Number.isInteger(version) && version >= 1 ? version : 1,
     tauDelete: Number.isFinite(tau)
       ? Math.min(TAU_DELETE_MAX, Math.max(TAU_DELETE_MIN, tau))
       : TAU_DELETE_DEFAULT,
     issues,
   };
+}
+
+/**
+ * contracts 12.10: {"sender": 0.93, "bulk": null, ...}. Values are clamped to [TAU_DELETE_MIN, TAU_DELETE_MAX]; null
+ * pauses a segment; unknown keys and invalid values are dropped. Returns null when absent or unreadable.
+ */
+export function parseSegmentTaus(raw: string | null): SegmentTaus | null {
+  if (raw === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const out: Partial<Record<CalibratedSegment, number | null>> = {};
+  for (const segment of CALIBRATED_SEGMENTS) {
+    const value = (parsed as Record<string, unknown>)[segment];
+    if (value === null) out[segment] = null;
+    else if (typeof value === "number" && Number.isFinite(value))
+      out[segment] = Math.min(TAU_DELETE_MAX, Math.max(TAU_DELETE_MIN, value));
+  }
+  return out;
 }
 
 /** Contracts 7.5: why a scan-now request could not claim its account. */

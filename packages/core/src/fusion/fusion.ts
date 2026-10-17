@@ -21,6 +21,7 @@ import {
 import type { Reason } from "../model/reasons.ts";
 import type { Prior } from "../priors/priors.ts";
 import type { Signals } from "../signals/signals.ts";
+import { decisionSegment, segmentTau, type DecisionSegment, type SegmentTaus } from "./segments.ts";
 
 export interface Thresholds {
   /** From settings, [TAU_DELETE_MIN, TAU_DELETE_MAX], default TAU_DELETE_DEFAULT. */
@@ -29,6 +30,11 @@ export interface Thresholds {
   deleteMargin: number;
   /** MIN_CONFIDENCE. */
   minConfidence: number;
+  /**
+   * contracts 12.10: calibrated trash threshold per segment (null = paused). A missing segment uses tauDelete.
+   * Omitted entirely before the first segment calibration.
+   */
+  segmentTaus?: SegmentTaus;
 }
 
 export interface FusionInput {
@@ -56,6 +62,10 @@ export interface Suggestion {
   flags: DecisionFlags | null;
   /** 0..3 entries, selection in contracts 5.2. */
   reasons: Reason[];
+  /** contracts 12.10: the evidence segment that picked the trash threshold. */
+  segment: DecisionSegment;
+  /** The trash threshold this suggestion passed when action is "delete" (0 for rule), else null. */
+  deleteTau: number | null;
 }
 
 export interface ReasonContext {
@@ -170,9 +180,15 @@ interface Choice {
   lowConfidence: boolean;
 }
 
-function choose(dist: ActionDistribution, th: Thresholds): Choice {
+/**
+ * tau null: the segment is paused, so never delete. skipCheck: an "Always OK to trash" rule, so delete whenever
+ * the ceiling allows it (contracts 12.10).
+ */
+function choose(dist: ActionDistribution, th: Thresholds, tau: number | null, skipCheck: boolean): Choice {
   const nextBest = Math.max(dist.archive, dist.keep, dist.unsure);
-  if (dist.delete >= th.tauDelete && dist.delete - nextBest >= th.deleteMargin) {
+  if (skipCheck && dist.delete > 0)
+    return { action: "delete", confidence: dist.delete, lowConfidence: false };
+  if (tau !== null && dist.delete >= tau && dist.delete - nextBest >= th.deleteMargin) {
     return { action: "delete", confidence: dist.delete, lowConfidence: false };
   }
   let best: (typeof ORDER_NON_DELETE)[number] = ORDER_NON_DELETE[0];
@@ -205,6 +221,9 @@ function clampAndRenormalize(v: ActionDistribution): ActionDistribution {
 /** Deterministic fusion of model, prior, flags and guardrail ceiling (contracts 5.1). */
 export function fuse(input: FusionInput): Suggestion {
   const { model, prior, guard, signals, thresholds } = input;
+  const segment = decisionSegment(prior, signals, guard);
+  const tau = segmentTau(segment, thresholds.tauDelete, thresholds.segmentTaus);
+  const skipCheck = segment === "rule";
   if (model === null) {
     return {
       action: "unsure",
@@ -225,6 +244,8 @@ export function fuse(input: FusionInput): Suggestion {
         ceilingApplied: false,
         lowConfidence: false,
       }),
+      segment,
+      deleteTau: null,
     };
   }
 
@@ -248,7 +269,7 @@ export function fuse(input: FusionInput): Suggestion {
   }
   v = clampAndRenormalize(v);
 
-  const unbounded = choose(v, thresholds);
+  const unbounded = choose(v, thresholds, tau, skipCheck);
   const w: ActionDistribution = { ...v };
   for (const x of ["delete", "archive"] as const) {
     if (ACTION_RANK[x] > ACTION_RANK[guard.ceiling]) {
@@ -257,7 +278,7 @@ export function fuse(input: FusionInput): Suggestion {
     }
   }
 
-  const chosen = choose(w, thresholds);
+  const chosen = choose(w, thresholds, tau, skipCheck);
   const ceilingApplied = !isAllowedByCeiling(unbounded.action, guard.ceiling);
 
   return {
@@ -279,5 +300,7 @@ export function fuse(input: FusionInput): Suggestion {
       ceilingApplied,
       lowConfidence: chosen.lowConfidence,
     }),
+    segment,
+    deleteTau: chosen.action === "delete" ? tau : null,
   };
 }

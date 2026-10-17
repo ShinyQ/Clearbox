@@ -118,6 +118,7 @@ export function summaryOf(s: FakeApiState, accountId?: string | null): QueueSumm
       total: pend.length,
     },
     awaitingModel: s.awaitingModel,
+    recentHeld: 0,
     groups: groups.length,
     tauDelete: s.tau,
     cleanup: {

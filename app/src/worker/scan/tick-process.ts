@@ -13,6 +13,7 @@ import {
   emptyStage,
   finalize,
   freshKeys,
+  heldFinals,
   identify,
   prepareFresh,
   prepareRedecide,
@@ -108,6 +109,7 @@ export async function processAccount(p: ProcessParams): Promise<Processed> {
       tauDelete: p.settings.tauDelete,
       deleteMargin: DELETE_MARGIN,
       minConfidence: MIN_CONFIDENCE,
+      ...(p.settings.segmentTaus === null ? {} : { segmentTaus: p.settings.segmentTaus }),
     },
     ownerAddresses: ownerAddresses(account),
     now,
@@ -171,13 +173,15 @@ export async function processAccount(p: ProcessParams): Promise<Processed> {
     }
   }
 
+  // contracts 12.10: recent mail is held (no model call) until it is old enough.
+  const toDecide = items.filter((i) => i.heldUntil === null);
   // decideStage sizes Decision-1 from the counter as it stands now, after the fetch's real cost.
   const stage =
-    engine === null || items.length === 0 ? emptyStage() : await decideStage(engine, items, p.work);
+    engine === null || toDecide.length === 0 ? emptyStage() : await decideStage(engine, toDecide, p.work);
   logDecisionErrors(stage, p.tickId, account.id);
   if (stage.configError !== null) throw stage.configError;
   if (stage.outage) throw new DecisionOutageError(stage.retryableFailures, stage.processed.length);
-  const finals = watch.pure(() => finalize(stage, s.thresholds, now));
+  const finals = watch.pure(() => [...finalize(stage, s.thresholds, now), ...heldFinals(items)]);
   const fresh = finals.filter((f) => f.existingMessageId === null);
   const maxReceived = fresh.reduce<number | null>(
     (m, f) => (m === null || f.msg.receivedAt > m ? f.msg.receivedAt : m),

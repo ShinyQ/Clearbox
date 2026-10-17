@@ -20,6 +20,7 @@ describe("evaluateGuardrails", () => {
       reasons: [],
       allowlisted: false,
       denylisted: false,
+      liftedByDenylist: false,
     });
   });
 
@@ -92,6 +93,8 @@ describe("evaluateGuardrails", () => {
     const denied = evaluateGuardrails(input({ ...SENDER, ...row.signals }, row.subject), DENY);
     expect(denied.denylisted).toBe(true);
     expect(denied.ceiling).toBe(row.deniedCeiling);
+    // A cap the denylist skipped keeps the normal confidence check (contracts 12.10).
+    expect(denied.liftedByDenylist).toBe(row.deniedCeiling === "delete");
   });
 
   it("allowlist caps at keep and beats the denylist", () => {
@@ -105,7 +108,13 @@ describe("evaluateGuardrails", () => {
 
   it("denylist alone does not cap and adds no cap reason", () => {
     const result = evaluateGuardrails(input(SENDER), DENY);
-    expect(result).toEqual({ ceiling: "delete", reasons: [], allowlisted: false, denylisted: true });
+    expect(result).toEqual({
+      ceiling: "delete",
+      reasons: [],
+      allowlisted: false,
+      denylisted: true,
+      liftedByDenylist: false,
+    });
   });
 
   it("reports every cap in rule order with params", () => {

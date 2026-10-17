@@ -24,7 +24,7 @@ describe("runTick: incremental retention skip", () => {
     mock.inboxDelta.set("inbox-1", {
       added: [
         mail(1, { receivedAt: NOW - 40 * DAY, listUnsubscribe: true }),
-        mail(2, { receivedAt: NOW - 2 * DAY, listUnsubscribe: true }),
+        mail(2, { receivedAt: NOW - 4 * DAY, listUnsubscribe: true }),
       ],
       removed: [],
       next: "inbox-2",
@@ -55,7 +55,7 @@ describe("runTick: incremental retention skip", () => {
     const box = new FakeMailbox();
     box.validAccessToken = "g-access-2";
     box.addMessage({ id: "old-1", receivedAt: NOW - 40 * DAY });
-    box.addMessage({ id: "fresh-1", receivedAt: NOW - 2 * DAY });
+    box.addMessage({ id: "fresh-1", receivedAt: NOW - 4 * DAY });
     const mock = new ProviderMock();
     const decision = new DecisionMock();
     useNetwork(gmailHandlers(box), mock.handlers(), decision.handlers());
@@ -93,7 +93,7 @@ describe("runTick: incremental retention skip", () => {
     const mock = new ProviderMock();
     mock.inbox = [
       mail(1, { receivedAt: NOW - 40 * DAY, listUnsubscribe: true }),
-      mail(2, { receivedAt: NOW - 2 * DAY, listUnsubscribe: true }),
+      mail(2, { receivedAt: NOW - 4 * DAY, listUnsubscribe: true }),
     ];
     useNetwork(mock.handlers());
     await seedTickAccount({ phase: "inbox_backfill", lastIncrementalAt: NOW - MINUTE });

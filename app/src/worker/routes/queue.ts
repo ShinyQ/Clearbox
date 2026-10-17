@@ -239,6 +239,7 @@ queueRoutes.get("/queue/summary", async (c) => {
   const groupsByAction = zeroByAction();
   const byAction: Record<ActionKind, number> = { delete: 0, archive: 0, keep: 0 };
   let awaitingModel = 0;
+  let recentHeld = 0;
   if (ids.length > 0) {
     const [byActionRes, awaitingRes, cleanupRes] = await db.batch([
       bindQuery(db, pendingByActionQuery(ids)),
@@ -252,7 +253,9 @@ queueRoutes.get("/queue/summary", async (c) => {
       pending.total += row.n;
       groupsByAction[row.action] = row.g;
     }
-    awaitingModel = ((awaitingRes?.results ?? [])[0] as { n: number } | undefined)?.n ?? 0;
+    const awaiting = (awaitingRes?.results ?? [])[0] as { n: number; held: number } | undefined;
+    awaitingModel = awaiting?.n ?? 0;
+    recentHeld = awaiting?.held ?? 0;
     for (const row of (cleanupRes?.results ?? []) as { action: ActionKind; n: number }[])
       byAction[row.action] = row.n;
   }
@@ -260,6 +263,7 @@ queueRoutes.get("/queue/summary", async (c) => {
     asOf: toIso(now),
     pending,
     awaitingModel,
+    recentHeld,
     groups: Object.values(groupsByAction).reduce((s, n) => s + n, 0),
     groupsByAction,
     tauDelete: settings.tauDelete,

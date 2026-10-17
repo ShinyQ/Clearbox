@@ -4,8 +4,10 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { PatchSenderBodySchema, PutPolicyBodySchema } from "../../shared/api.ts";
 import type { PolicyResponse } from "../../shared/api.ts";
+import { refreshForEntry } from "../actions/refresh.ts";
 import { readSettings, writePolicy } from "../db/settings.ts";
 import type { AppEnv } from "../env.ts";
+import { logEvent } from "../log.ts";
 import { ApiError, parseWith, readJsonBody } from "../middleware/errors.ts";
 
 export const policyRoutes = new Hono<AppEnv>();
@@ -50,8 +52,21 @@ policyRoutes.patch("/senders", async (c) => {
   for (let attempt = 0; attempt < PATCH_ATTEMPTS; attempt++) {
     const settings = await readSettings(c.env.DB);
     const next = parseWith(PolicySchema, applySenderPatch(settings.policy, body.entry, body.list));
-    const version = await writePolicy(c.env.DB, next, settings.policyVersion, c.get("deps").now());
-    if (version !== null) return policyResponse(c);
+    const now = c.get("deps").now();
+    const version = await writePolicy(c.env.DB, next, settings.policyVersion, now);
+    if (version !== null) {
+      // contracts 12.10: the new rule reaches pending suggestions now. Best effort, the rule is already saved.
+      try {
+        await refreshForEntry(c.env.DB, body.entry, { ...settings, policy: next }, now);
+      } catch (err) {
+        logEvent("request.error", {
+          requestId: c.get("requestId"),
+          route: "/api/policy/senders",
+          errorName: err instanceof Error ? err.name : "unknown",
+        });
+      }
+      return policyResponse(c);
+    }
   }
   throw new ApiError(409, "conflict", "The policy changed; reload and try again");
 });

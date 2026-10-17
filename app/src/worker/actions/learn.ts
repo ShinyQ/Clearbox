@@ -1,5 +1,5 @@
 import { LABEL_SUBJECT_MAX_CHARS, priorDelta } from "@clearbox/core";
-import type { ActionKind, Ceiling, SuggestedAction } from "@clearbox/core";
+import type { ActionKind, Ceiling, DecisionSegment, SuggestedAction } from "@clearbox/core";
 import type { LabelInsert, LabelSource } from "../db/labels.ts";
 import { addPriorDelta } from "../db/priors.ts";
 import type { PriorDeltaMap } from "../db/priors.ts";
@@ -15,6 +15,8 @@ export interface DecidedItem {
   pDelete: number | null;
   margin: number | null;
   ceiling: Ceiling;
+  /** contracts 12.10: copied to the label for per-segment calibration. */
+  segment?: DecisionSegment | null;
   modelVersion: string | null;
   policyVersion: number;
 }
@@ -42,6 +44,7 @@ export function labelFor(
     pDelete: item.pDelete,
     margin: item.margin,
     ceiling: item.ceiling,
+    segment: item.segment ?? null,
     modelVersion: item.modelVersion,
     policyVersion: item.policyVersion,
     now,

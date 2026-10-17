@@ -168,5 +168,22 @@ export type { DecisionOutcome } from "./decision/run.ts";
 
 export { fuse, selectReasons } from "./fusion/fusion.ts";
 export type { FusionInput, ReasonContext, Suggestion, Thresholds } from "./fusion/fusion.ts";
-export { calibrateTauDelete } from "./calibration/calibration.ts";
-export type { CalibrationPoint, CalibrationResult, CalibrationSample } from "./calibration/calibration.ts";
+export { calibrateSegments, calibrateTauDelete } from "./calibration/calibration.ts";
+export type {
+  CalibrationPoint,
+  CalibrationResult,
+  CalibrationSample,
+  SegmentCalibration,
+  SegmentCalibrationResult,
+  SegmentCalibrationSample,
+} from "./calibration/calibration.ts";
+export {
+  CALIBRATED_SEGMENTS,
+  DECISION_SEGMENTS,
+  decisionSegment,
+  isBulkMail,
+  segmentTau,
+} from "./fusion/segments.ts";
+export type { CalibratedSegment, DecisionSegment, SegmentTaus } from "./fusion/segments.ts";
+export { refreshSuggestion, holdUntil } from "./fusion/refresh.ts";
+export type { RefreshInput, RefreshResult, StoredModel } from "./fusion/refresh.ts";

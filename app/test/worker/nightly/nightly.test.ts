@@ -114,6 +114,7 @@ describe("runNightly", () => {
       purgedMessages: 3,
       purgedAccounts: 0,
       staleRecovered: 1,
+      refreshed: 0,
     });
     expect(await one("SELECT count FROM audit_log WHERE kind = 'purge'")).toEqual({ count: 3 });
     expect(await one("SELECT released_at FROM leases WHERE name = 'nightly'")).toEqual({ released_at: NOW });
@@ -201,6 +202,7 @@ describe("runNightly", () => {
       purgedMessages: 0,
       purgedAccounts: 0,
       staleRecovered: 0,
+      refreshed: 0,
     });
     expect(await setting<{ outcome: string }>("calibration")).toMatchObject({ outcome: "insufficient_data" });
   });

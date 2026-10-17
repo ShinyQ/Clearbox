@@ -55,6 +55,7 @@ describe("GET /api/queue/summary", () => {
       asOf: new Date(SEED_NOW).toISOString(),
       pending: { delete: 4, archive: 2, keep: 1, unsure: 1, total: 8 },
       awaitingModel: 1,
+      recentHeld: 0,
       groups: 5,
       groupsByAction: { delete: 2, archive: 1, keep: 1, unsure: 1 },
       tauDelete: 0.8,

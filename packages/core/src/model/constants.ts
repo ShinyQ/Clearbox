@@ -19,6 +19,8 @@ export const CALIBRATION_WINDOW = 500;
 export const CALIBRATION_MIN_DELETE_SUGGESTIONS = 50;
 export const CALIBRATION_MIN_SUPPORT = 20;
 export const CALIBRATION_TARGET_PRECISION = 0.98;
+/** contracts 12.10: newest labels read for the per-segment calibration (the global one keeps CALIBRATION_WINDOW). */
+export const CALIBRATION_SEGMENT_WINDOW = 1_000;
 
 // Decision-1
 export const DECISION_TIMEOUT_MS = 10_000;

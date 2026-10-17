@@ -115,17 +115,17 @@ const MESSAGE_INSERT = `INSERT INTO messages (account_id, provider_msg_id, threa
 
 const SUGGESTION_INSERT = `INSERT INTO suggestions (message_id, account_id, sender, sender_domain, status, action,
     confidence, p_delete, p_archive, p_keep, p_unsure, model_p_delete, margin, importance, flags_json, ceiling,
-    ceiling_applied, reasons_json, model_version, policy_version, decision_attempts, retry_after, created_at,
-    updated_at, expires_at)
+    ceiling_applied, reasons_json, segment, delete_tau, model_action_json, model_version, policy_version,
+    decision_attempts, retry_after, created_at, updated_at, expires_at)
   SELECT m.id, ?1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22,
-    ?23, ?23, ?24
+    ?23, ?24, ?25, ?26, ?26, ?27
   FROM messages m WHERE m.account_id = ?1 AND m.provider_msg_id = ?2
   ON CONFLICT (message_id) DO NOTHING`;
 
 const SUGGESTION_REDECIDE = `UPDATE suggestions SET status = ?3, action = ?4, confidence = ?5, p_delete = ?6,
     p_archive = ?7, p_keep = ?8, p_unsure = ?9, model_p_delete = ?10, margin = ?11, importance = ?12,
-    flags_json = ?13, ceiling = ?14, ceiling_applied = ?15, reasons_json = ?16, model_version = ?17,
-    decision_attempts = ?18, retry_after = ?19, updated_at = ?20
+    flags_json = ?13, ceiling = ?14, ceiling_applied = ?15, reasons_json = ?16, segment = ?17, delete_tau = ?18,
+    model_action_json = ?19, model_version = ?20, decision_attempts = ?21, retry_after = ?22, updated_at = ?23
   WHERE message_id = ?1 AND account_id = ?2 AND status = 'awaiting_model'`;
 
 // Lease fence: a stalled tick whose lease was taken over must not double-count senders (SQLite needs the
@@ -190,6 +190,9 @@ function suggestionColumns(it: FinalItem): SqlValue[] {
     s?.ceiling ?? it.guard.ceiling,
     s?.ceilingApplied ? 1 : 0,
     JSON.stringify(s?.reasons ?? []),
+    s?.segment ?? null,
+    s?.deleteTau ?? null,
+    it.result === null ? null : JSON.stringify(it.result.action),
   ];
 }
 

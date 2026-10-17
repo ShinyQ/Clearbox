@@ -22,6 +22,7 @@ import {
   type Page,
   type PolicyResponse,
   type QueueSummary,
+  type RuleSuggestionsResponse,
   type SenderGroup,
   type SuggestionItem,
   type TickReport,
@@ -119,6 +120,7 @@ export const QueueSummarySchema = z.object({
   asOf: str,
   pending: bySuggested.extend({ total: num }),
   awaitingModel: num,
+  recentHeld: num,
   groups: num,
   tauDelete: num,
   cleanup: z.object({ threshold: num, count: num, byAction: byActionKind }),
@@ -251,6 +253,15 @@ export const InsightsSchema = z.object({
     outcome: z.enum(["insufficient_data", "calibrated", "no_tau_meets_target"]).nullable(),
     ranAt: nstr,
     points: z.array(z.object({ tau: num, support: num, precision: num.nullable() })),
+    segments: z.array(
+      z.object({
+        segment: z.enum(["sender", "domain", "bulk", "other"]),
+        tauDelete: num.nullable(),
+        outcome: z.enum(["insufficient_data", "calibrated", "no_tau_meets_target"]),
+        deleteSuggestions: num,
+        precisionAtTau: num.nullable(),
+      }),
+    ),
   }),
   budget: z.object({
     date: str,
@@ -281,3 +292,15 @@ export const PolicyResponseSchema = z.object({
   version: num,
   defaults: policy,
 }) satisfies z.ZodType<PolicyResponse>;
+
+export const RuleSuggestionsSchema = z.object({
+  suggestions: z.array(
+    z.object({
+      entry: str,
+      list: z.enum(["allow", "deny"]),
+      decisions: num,
+      agreeing: num,
+      lastDecidedAt: str,
+    }),
+  ),
+}) satisfies z.ZodType<RuleSuggestionsResponse>;

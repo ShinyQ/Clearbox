@@ -16,6 +16,18 @@ export const ScanHistoryDaysSchema = z.union([z.literal(30), z.literal(90), z.li
 
 export type ScanHistoryDays = z.infer<typeof ScanHistoryDaysSchema>;
 
+/**
+ * Weekly "ready to clean" reminder (contracts 12.8). `weekday` is a UTC day of the week (0 = Sunday, as
+ * Date.getUTCDay); the nightly job (02:00 UTC) adds the note to the owner's inbox on that day.
+ */
+export const WeeklyReminderSchema = z
+  .object({ enabled: z.boolean(), weekday: z.int().min(0).max(6) })
+  .strict();
+
+export type WeeklyReminder = z.infer<typeof WeeklyReminderSchema>;
+
+export const DEFAULT_WEEKLY_REMINDER: WeeklyReminder = { enabled: true, weekday: 0 };
+
 export const PolicySchema = z
   .object({
     allowlist: z.array(SenderEntrySchema).max(1000),
@@ -25,6 +37,7 @@ export const PolicySchema = z
     labelSubjects: z.boolean(),
     recordPatterns: z.array(z.string().trim().toLowerCase().min(2).max(40)).max(100),
     scanHistoryDays: ScanHistoryDaysSchema,
+    weeklyReminder: WeeklyReminderSchema,
   })
   .strict();
 
@@ -38,6 +51,7 @@ export const DEFAULT_POLICY: Policy = {
   labelSubjects: true,
   recordPatterns: ["receipt", "invoice", "tax", "statement", "contract", "medical", "legal"],
   scanHistoryDays: DEFAULT_SCAN_HISTORY_DAYS,
+  weeklyReminder: DEFAULT_WEEKLY_REMINDER,
 };
 
 const PolicyJsonSchema = z
@@ -53,10 +67,16 @@ const PolicyJsonSchema = z
   .transform(withStoredDefaults)
   .pipe(PolicySchema);
 
-/** Policies stored before rev 2.4 have no scanHistoryDays; they read as the default (90 days). */
+/**
+ * Policies stored before rev 2.4 have no scanHistoryDays; they read as the default (90 days). Policies stored
+ * before the weekly reminder (12.8) have no weeklyReminder; they read as the default (on, Sunday).
+ */
 function withStoredDefaults(value: unknown): unknown {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
-  return "scanHistoryDays" in value ? value : { ...value, scanHistoryDays: DEFAULT_SCAN_HISTORY_DAYS };
+  const out: Record<string, unknown> = { ...value };
+  if (!("scanHistoryDays" in out)) out.scanHistoryDays = DEFAULT_SCAN_HISTORY_DAYS;
+  if (!("weeklyReminder" in out)) out.weeklyReminder = { ...DEFAULT_WEEKLY_REMINDER };
+  return out;
 }
 
 /**
@@ -75,7 +95,8 @@ export function scanHistoryWidened(prev: ScanHistoryDays, next: ScanHistoryDays)
 
 /**
  * Parses stored JSON; returns a copy of DEFAULT_POLICY when input is null; throws ZodError when invalid.
- * A stored policy without scanHistoryDays (written before rev 2.4) gets DEFAULT_SCAN_HISTORY_DAYS.
+ * A stored policy without scanHistoryDays (written before rev 2.4) gets DEFAULT_SCAN_HISTORY_DAYS; one without
+ * weeklyReminder gets DEFAULT_WEEKLY_REMINDER.
  */
 export function parsePolicy(json: string | null): Policy {
   if (json === null) return structuredClone(DEFAULT_POLICY);

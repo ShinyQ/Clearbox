@@ -1,4 +1,4 @@
-import { DELETE_MARGIN, MIN_CONFIDENCE, scanHistoryCutoff } from "@clearbox/core";
+import { DELETE_MARGIN, MIN_CONFIDENCE, dropClearboxNotes, scanHistoryCutoff } from "@clearbox/core";
 import type { DecisionEngine, FetchLike, MailMessage, SentItem, SubrequestCounter } from "@clearbox/core";
 import type { AppIssueCode, TickKind } from "../../shared/api.ts";
 import type { TickAccountRow, TickSettings } from "./claim.ts";
@@ -152,6 +152,8 @@ export async function processAccount(p: ProcessParams): Promise<Processed> {
       fetchedCount = fetched.page.added.length;
       ({ kept: messages, skippedOld } = dropBeyondRetention(fetched.page.added, now));
     }
+    // Contracts 12.8: Clearbox's own inbox notes (the weekly reminder) are never ingested.
+    messages = dropClearboxNotes(messages).kept;
     if (messages.length > 0) {
       // Graph delta also reports updates of stored messages in `added`: the "known" read and prepareFresh
       // drop every provider id already in D1 (and repeats within the page) before Decision-1 and the write.

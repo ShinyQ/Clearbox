@@ -4,7 +4,15 @@ import { z } from "zod";
 import type { AppIssue, AppIssueCode } from "../../shared/api.ts";
 import { toIso } from "./sql.ts";
 
-export type SettingKey = "tau_delete" | "policy" | "policy_version" | "calibration" | "issues" | "nightly";
+export type SettingKey =
+  | "tau_delete"
+  | "policy"
+  | "policy_version"
+  | "calibration"
+  | "issues"
+  | "nightly"
+  | "reminder"
+  | "app_origin";
 
 export type CalibrationSetting = CalibrationResult & { ranAt: number };
 
@@ -22,6 +30,8 @@ export interface Settings {
   calibration: CalibrationSetting | null;
   issues: AppIssue[];
   nightly: NightlySetting | null;
+  /** Contracts 12.8: origin of the deployment, recorded by GET /api/me, linked from the weekly reminder. */
+  appOrigin: string | null;
 }
 
 export interface SettingRow {
@@ -46,6 +56,7 @@ export function parseSettings(rows: readonly SettingRow[]): Settings {
   const tau = json("tau_delete");
   const version = json("policy_version");
   const issues = IssueListSchema.safeParse(json("issues") ?? []);
+  const origin = json("app_origin");
   return {
     tauDelete: typeof tau === "number" ? tau : TAU_DELETE_DEFAULT,
     policy: parsePolicy(map.get("policy") ?? null),
@@ -53,6 +64,7 @@ export function parseSettings(rows: readonly SettingRow[]): Settings {
     calibration: (json("calibration") as CalibrationSetting | null) ?? null,
     issues: issues.success ? (issues.data as AppIssue[]) : [],
     nightly: (json("nightly") as NightlySetting | null) ?? null,
+    appOrigin: typeof origin === "string" ? origin : null,
   };
 }
 
@@ -72,6 +84,16 @@ export function setSettingStmt(
       "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
     )
     .bind(key, JSON.stringify(value), now);
+}
+
+/**
+ * Contracts 12.8: the origin the owner reaches Clearbox on (https, or http on localhost in development). The
+ * nightly job has no request, so the weekly reminder links to this. Null for anything else.
+ */
+export function appOriginOf(url: string): string | null {
+  const u = new URL(url);
+  const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+  return u.protocol === "https:" || (u.protocol === "http:" && local) ? u.origin : null;
 }
 
 export function addIssue(

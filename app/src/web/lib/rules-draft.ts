@@ -35,6 +35,31 @@ export const scanHistoryValue = (days: ScanHistoryDays): ScanHistoryValue =>
 export const scanHistoryDaysOf = (value: ScanHistoryValue): ScanHistoryDays =>
   value === "all" ? null : value === "30" ? 30 : value === "365" ? 365 : 90;
 
+/** Contracts 12.8: the nightly job runs at 02:00 UTC, so the reminder arrives then on the chosen UTC weekday. */
+const REMINDER_UTC_HOUR = 2;
+/** A Sunday (UTC); day `w` of the reminder week is this plus `w` days. */
+const REMINDER_BASE_SUNDAY = Date.UTC(2026, 9, 18, REMINDER_UTC_HOUR);
+
+const reminderInstant = (weekday: number) => new Date(REMINDER_BASE_SUNDAY + weekday * 86_400_000);
+
+/**
+ * Weekday choices for the reminder. The value is the UTC weekday (0 = Sunday) the server stores; the label is
+ * the owner's local day for 02:00 UTC, so a UTC-8 owner sees "Saturday" for the Sunday 02:00 UTC run.
+ */
+export function reminderDayOptions(timeZone?: string): { value: string; label: string }[] {
+  const fmt = new Intl.DateTimeFormat("en-US", { weekday: "long", ...(timeZone ? { timeZone } : {}) });
+  return Array.from({ length: 7 }, (_, w) => ({ value: String(w), label: fmt.format(reminderInstant(w)) }));
+}
+
+/** Local time of the 02:00 UTC run, for example "9:00 AM" in UTC+7. */
+export function reminderLocalTime(timeZone?: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
+  }).format(reminderInstant(0));
+}
+
 const other = (list: ListKey): ListKey => (list === "allowlist" ? "denylist" : "allowlist");
 
 /** Adding to one list removes the entry from the other (UI spec 5.6, contracts 7.11). */
@@ -75,6 +100,7 @@ const POLICY_KEYS = [
   "labelSubjects",
   "recordPatterns",
   "scanHistoryDays",
+  "weeklyReminder",
 ] as const;
 
 /** Maps validation_failed details ({ path, message }[]) to one message per field. */

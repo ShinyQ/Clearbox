@@ -69,6 +69,7 @@ Each deployment serves a single owner. You run your own copy on Cloudflare Worke
 - **Undo for 24 hours**: trash and archive moves can be restored from Activity for 24 hours (the providers keep Trash for about 30 days).
 - **Keyboard-first**: `J`/`K` to move, `X` to select, `T`/`A`/`E` for trash, archive and keep, `Cmd`/`Ctrl`+`Enter` to Clean up, `G` then a letter to switch pages, `?` for the full list.
 - **Runs on Cloudflare Free**: a once-a-minute tick processes one page per mailbox within the Workers and D1 Free limits; Workers Paid only makes it faster.
+- **Weekly reminder**: on your chosen day, a short plain text note lands in your own inbox with how many emails are ready and a link to Review. Clearbox adds it directly with the scopes it already has (nothing is sent, no domain needed) and never sorts it; turn it off on Rules.
 - **Recent mail first, bounded backfill**: the first sort covers a scan history window (default the last 90 days) and then switches to new mail only; widen it on Rules to keep going back.
 - **EU data residency**: D1 is created in the EU jurisdiction and Decision-1 runs on DataZoneStandard in Sweden Central.
 - **Security model**: Cloudflare Access plus JWT verification in the Worker, least-privilege OAuth, encrypted tokens, plain-text email rendering and a strict CSP. See [Security](#security).
@@ -121,7 +122,7 @@ flowchart TB
 ```
 
 - **A pipeline per email**: **signals** from headers and history (unsubscribe headers, bulk mail, authentication results, open rate, whether you wrote to the sender or replied in the thread), then **guardrails** that set the highest allowed action, then **Microsoft-Decision-1** for trash, archive, keep and unsure probabilities, then your **per-sender priors**, then a deterministic **fusion** that suggests trash only above the calibrated threshold (at least 0.80) with a clear margin.
-- **One tick per minute**: each tick leases one mailbox, reads one page of up to 25 messages (metadata and the provider snippet only) and writes everything in one D1 batch. **Scan now** runs the same tick on demand. The nightly job recalibrates the threshold, recovers stale runs and purges old data.
+- **One tick per minute**: each tick leases one mailbox, reads one page of up to 25 messages (metadata and the provider snippet only) and writes everything in one D1 batch. **Scan now** runs the same tick on demand. The nightly job recalibrates the threshold, recovers stale runs, adds the weekly reminder note on the chosen day and purges old data.
 - **Free-tier budgets**: ticks stop at 65,000 D1 rows written per day, the purge at 80,000 and owner actions at 90,000 of the 100,000 limit. That is about 13,000 emails per day during the first backfill and about 6,800 per day sustained; the backfill stops at the scan history window (default 90 days), so older mail in a large inbox is not scanned unless you widen it. On Workers Paid, `FREE_TIER=false` lifts the gates without code changes.
 - **Trash-only**: the mail provider interface has no hard-delete method, and Gmail's `gmail.modify` scope cannot permanently delete anyway.
 - **Plain-text email**: subject, sender, date and snippet are rendered as text; HTML bodies never are. The model returns bounded probabilities and no text, so a hostile email cannot make it say or do anything.

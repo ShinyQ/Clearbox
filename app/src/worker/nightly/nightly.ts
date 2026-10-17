@@ -23,6 +23,14 @@ import {
 } from "../scan/write-plan.ts";
 import type { BatchResult, Stmt } from "../scan/write-plan.ts";
 import { newPurgeState, purgeDisconnected, purgeExpired } from "./purge.ts";
+import {
+  DEFAULT_REMINDER_DEPS,
+  REMINDER_SETTINGS_SQL,
+  REMINDER_TARGETS_SQL,
+  parseReminderSettings,
+  runWeeklyReminder,
+} from "./reminder.ts";
+import type { ReminderDeps } from "./reminder.ts";
 
 export const NIGHTLY_LEASE_TTL_MS = 600_000;
 export const PURGE_EXPIRED_MAX_ROUNDS = 16;
@@ -55,6 +63,8 @@ interface LabelSampleRow {
 
 export interface NightlyOptions {
   now: number;
+  /** Tests inject the provider fetch, factory and sleep of the weekly reminder (contracts 12.8). */
+  reminder?: Partial<ReminderDeps>;
 }
 
 function parseTau(value: string | undefined): number {
@@ -76,6 +86,8 @@ export async function runNightly(env: Env, opts: NightlyOptions): Promise<void> 
     stmt("SELECT value FROM settings WHERE key = 'tau_delete'"),
     stmt("SELECT rows_written FROM budget WHERE date = ?1", today),
     stmt("SELECT id, status FROM accounts ORDER BY id"),
+    stmt(REMINDER_SETTINGS_SQL),
+    stmt(REMINDER_TARGETS_SQL),
   ]);
   if (rowsOf(claim[0]).length === 0) return;
   results.push(...claim);
@@ -107,6 +119,31 @@ export async function runNightly(env: Env, opts: NightlyOptions): Promise<void> 
       }),
     ])),
   );
+
+  // Contracts 12.8: before the purge, which then gets only the subrequests left over.
+  try {
+    await runWeeklyReminder({
+      env,
+      run,
+      work,
+      runId,
+      now,
+      settings: parseReminderSettings(rowsOf(claim[4])),
+      targets: rowsOf<{ id: string; email: string }>(claim[5]),
+      visibleIds: accounts.filter((a) => a.status !== "disconnected").map((a) => a.id),
+      deps: { ...DEFAULT_REMINDER_DEPS, ...opts.reminder },
+      results,
+    });
+  } catch (err) {
+    logEvent("reminder.done", {
+      runId,
+      outcome: "failed",
+      accountId: null,
+      pending: 0,
+      groups: 0,
+      errorCode: err instanceof Error ? err.name : "internal",
+    });
+  }
 
   const state = newPurgeState();
   // Read directly (not via readConfig) so housekeeping still runs with an incomplete config; the generated Env

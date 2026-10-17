@@ -22,6 +22,7 @@ Complete this list before the first production deploy and again after any change
 ## OAuth
 
 - [ ] Scopes are exactly `gmail.modify` (Google) and `offline_access User.Read Mail.ReadWrite` (Microsoft) (`GOOGLE_SCOPES`, `MICROSOFT_SCOPES` in `packages/core/src/providers/oauth.ts`). `git grep -n '"https://mail.google.com/"' -- packages app/src` (the full-access scope) returns nothing.
+- [ ] The weekly reminder (contracts 12.8) only adds a note to the owner's own inbox (Gmail `messages.insert`, Graph create in Inbox), never sends mail, carries plain text with no remote content or tracking, and is never ingested (`app/test/worker/tick/tick-notes.test.ts`, `app/test/worker/nightly/reminder.test.ts`).
 - [ ] Granted scopes are checked on connect (`scope_missing` case in `app/test/worker/oauth/oauth-routes.test.ts`).
 - [ ] PKCE S256 and the HMAC-signed `__Host-clearbox_oauth` cookie: tampered, expired, provider-mismatch and state-mismatch tests pass (`app/test/worker/oauth/state-cookie.test.ts`, `app/test/worker/oauth/oauth-routes.test.ts`, `app/test/worker/crypto/pkce.test.ts`); the cookie is cleared on every callback.
 - [ ] Redirect URIs in Google and Entra are exactly `https://clearbox.<subdomain>.workers.dev/oauth/<provider>/callback` (plus optional localhost); Microsoft uses the Web platform, not SPA.

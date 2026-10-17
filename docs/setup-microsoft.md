@@ -1,6 +1,6 @@
 # Set up Microsoft (Outlook)
 
-Each Clearbox deployment uses its own Microsoft Entra app registration. Clearbox requests the delegated Microsoft Graph permissions `offline_access`, `User.Read` and `Mail.ReadWrite`. It moves mail between folders (Deleted Items, Archive, Inbox) and never deletes permanently.
+Each Clearbox deployment uses its own Microsoft Entra app registration. Clearbox requests the delegated Microsoft Graph permissions `offline_access`, `User.Read` and `Mail.ReadWrite`. It moves mail between folders (Deleted Items, Archive, Inbox), creates the optional weekly reminder note in Inbox (nothing is sent) and never deletes permanently.
 
 You need the Worker URL from [setup-cloudflare.md](setup-cloudflare.md) (`https://clearbox.<subdomain>.workers.dev`).
 

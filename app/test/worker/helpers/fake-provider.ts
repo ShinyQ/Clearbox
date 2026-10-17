@@ -2,6 +2,7 @@ import type {
   ActionResult,
   AuthorizeParams,
   BootstrapResult,
+  InboxNote,
   MailProvider,
   OAuthClientConfig,
   OAuthTokens,
@@ -18,7 +19,7 @@ import type {
 } from "../../../src/worker/scan/providers.ts";
 
 export interface FakeCall {
-  method: "bootstrap" | "inboxEstimate" | "trash" | "archive" | "restore";
+  method: "bootstrap" | "inboxEstimate" | "trash" | "archive" | "restore" | "insertInboxNote";
   ids: string[];
   target: ProviderTarget;
 }
@@ -45,6 +46,8 @@ const DEFAULT_BOOTSTRAP: BootstrapResult = {
 /** In-memory MailProvider for worker tests; it calls tokens.getAccessToken() like a real provider. */
 export class FakeProvider {
   readonly calls: FakeCall[] = [];
+  /** Notes passed to insertInboxNote (contracts 12.8), in call order. */
+  readonly notes: InboxNote[] = [];
   options: FakeProviderOptions;
 
   constructor(options: FakeProviderOptions = {}) {
@@ -94,6 +97,14 @@ export class FakeProvider {
       resyncCursor: unused("resyncCursor"),
       trash: (ids: readonly string[]) => run("trash", [...ids]),
       archive: (ids: readonly string[]) => run("archive", [...ids]),
+      insertInboxNote: async (note: InboxNote) => {
+        this.calls.push({ method: "insertInboxNote", ids: [], target });
+        await deps.tokens.getAccessToken();
+        const failure = this.options.failWith?.insertInboxNote;
+        if (failure) throw failure;
+        this.notes.push(note);
+        return `note-${String(this.notes.length)}`;
+      },
       // Calls record restore items as "<from>:<id>"; results are looked up by the raw id.
       restore: (items: readonly RestoreItem[]) =>
         run(

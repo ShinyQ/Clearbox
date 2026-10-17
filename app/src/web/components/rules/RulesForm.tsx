@@ -3,6 +3,8 @@ import {
   addEntry,
   MIN_AGE_OPTIONS,
   MOVED_NOTE,
+  reminderDayOptions,
+  reminderLocalTime,
   removeEntry,
   SCAN_HISTORY_OPTIONS,
   scanHistoryDaysOf,
@@ -174,6 +176,32 @@ export function RulesForm({ draft, disabled, errors, notes, onChange, onMoved }:
           labelledBy="rule-subjects-title"
           describedBy="rule-subjects-desc"
         />
+      </RuleField>
+      <RuleField
+        id="rule-reminder"
+        title="Weekly reminder"
+        description={`A short note in your inbox when emails are ready to review, with counts and a link to Review. Clearbox adds it to your inbox directly, so nothing is sent, and it is never sorted. Arrives around ${reminderLocalTime()} your time.`}
+        row
+      >
+        <div className="flex items-center gap-3">
+          <Select
+            label="Reminder day"
+            value={String(draft.weeklyReminder.weekday)}
+            options={reminderDayOptions()}
+            disabled={disabled || !draft.weeklyReminder.enabled}
+            onChange={(v) =>
+              onChange({ ...draft, weeklyReminder: { ...draft.weeklyReminder, weekday: Number(v) } })
+            }
+          />
+          <Toggle
+            checked={draft.weeklyReminder.enabled}
+            disabled={disabled}
+            onChange={(v) => onChange({ ...draft, weeklyReminder: { ...draft.weeklyReminder, enabled: v } })}
+            label="Weekly reminder"
+            labelledBy="rule-reminder-title"
+            describedBy="rule-reminder-desc"
+          />
+        </div>
       </RuleField>
     </div>
   );

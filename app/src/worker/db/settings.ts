@@ -13,7 +13,9 @@ export type SettingKey =
   | "issues"
   | "nightly"
   | "tau_segments"
-  | "rule_dismissals";
+  | "rule_dismissals"
+  | "reminder"
+  | "app_origin";
 
 /** contracts 12.10 adds `segments` (absent on rows written before it). */
 export type CalibrationSetting = CalibrationResult & { ranAt: number; segments?: SegmentCalibration[] };
@@ -44,6 +46,8 @@ export interface Settings {
   /** contracts 12.10: null before the first segment calibration. */
   segmentTaus: SegmentTaus | null;
   ruleDismissals: RuleDismissal[];
+  /** Contracts 12.8: origin of the deployment, recorded by GET /api/me, linked from the weekly reminder. */
+  appOrigin: string | null;
 }
 
 export interface SettingRow {
@@ -73,6 +77,7 @@ export function parseSettings(rows: readonly SettingRow[]): Settings {
   const version = json("policy_version");
   const issues = IssueListSchema.safeParse(json("issues") ?? []);
   const dismissals = RuleDismissalsSchema.safeParse(json("rule_dismissals") ?? []);
+  const origin = json("app_origin");
   return {
     tauDelete: typeof tau === "number" ? tau : TAU_DELETE_DEFAULT,
     policy: parsePolicy(map.get("policy") ?? null),
@@ -82,6 +87,7 @@ export function parseSettings(rows: readonly SettingRow[]): Settings {
     nightly: (json("nightly") as NightlySetting | null) ?? null,
     segmentTaus: parseSegmentTaus(map.get("tau_segments") ?? null),
     ruleDismissals: dismissals.success ? dismissals.data : [],
+    appOrigin: typeof origin === "string" ? origin : null,
   };
 }
 
@@ -101,6 +107,16 @@ export function setSettingStmt(
       "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
     )
     .bind(key, JSON.stringify(value), now);
+}
+
+/**
+ * Contracts 12.8: the origin the owner reaches Clearbox on (https, or http on localhost in development). The
+ * nightly job has no request, so the weekly reminder links to this. Null for anything else.
+ */
+export function appOriginOf(url: string): string | null {
+  const u = new URL(url);
+  const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+  return u.protocol === "https:" || (u.protocol === "http:" && local) ? u.origin : null;
 }
 
 export function addIssue(

@@ -60,6 +60,7 @@ export type {
   ChangesPage,
   GraphProviderDeps,
   IncrementalCursor,
+  InboxNote,
   InboxPage,
   MailProvider,
   ProviderDeps,
@@ -112,17 +113,31 @@ export type { SenderHistory, SignalContext, Signals } from "./signals/signals.ts
 export {
   DEFAULT_POLICY,
   DEFAULT_SCAN_HISTORY_DAYS,
+  DEFAULT_WEEKLY_REMINDER,
   PolicySchema,
   SCAN_HISTORY_DAYS_OPTIONS,
   ScanHistoryDaysSchema,
   SenderEntrySchema,
+  WeeklyReminderSchema,
   matchRecordPattern,
   matchesSenderList,
   parsePolicy,
   scanHistoryCutoff,
   scanHistoryWidened,
 } from "./policy/policy.ts";
-export type { Policy, ScanHistoryDays } from "./policy/policy.ts";
+export type { Policy, ScanHistoryDays, WeeklyReminder } from "./policy/policy.ts";
+export {
+  CLEARBOX_NOTE_HEADER,
+  CLEARBOX_NOTE_NAME,
+  CLEARBOX_NOTE_SENDER,
+  REMINDER_MIN_GAP_DAYS,
+  buildReminderNote,
+  dropClearboxNotes,
+  isClearboxNote,
+  pendingTotal,
+  reminderDue,
+} from "./reminder/reminder.ts";
+export type { ReminderCounts, ReminderInput } from "./reminder/reminder.ts";
 export { evaluateGuardrails } from "./guardrails/guardrails.ts";
 export type { GuardrailInput, GuardrailResult } from "./guardrails/guardrails.ts";
 export {

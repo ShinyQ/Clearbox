@@ -84,6 +84,18 @@ export interface RestoreItem {
   from: RestoreFrom;
 }
 
+/** A plain text note Clearbox adds to the owner's own inbox (contracts 12.8). Never sent over SMTP. */
+export interface InboxNote {
+  /** One ASCII line. */
+  subject: string;
+  /** Plain text body, "\n" line breaks. */
+  text: string;
+  /** The mailbox address (lowercased); shown as the recipient. */
+  to: string;
+  /** Epoch ms; the note's date. */
+  sentAt: number;
+}
+
 /**
  * No hard-delete method exists, by design.
  * Whole-call failures throw: ProviderAuthError, ProviderConfigError, ProviderRateLimitError,
@@ -114,4 +126,10 @@ export interface MailProvider {
   archive(ids: readonly string[]): Promise<ActionResult[]>;
   /** Back to inbox. Gmail trash: untrash, then add INBOX if missing. Graph: move to "inbox". Max 100 per call. */
   restore(items: readonly RestoreItem[]): Promise<ActionResult[]>;
+  /**
+   * Adds an unread note to the inbox without sending anything (contracts 12.8), one request. Gmail
+   * `messages.insert` (allowed with gmail.modify); Graph `POST /me/mailFolders/inbox/messages` (Mail.ReadWrite).
+   * The sender is CLEARBOX_NOTE_SENDER so ingestion skips it. Returns the new provider message id.
+   */
+  insertInboxNote(note: InboxNote): Promise<string>;
 }

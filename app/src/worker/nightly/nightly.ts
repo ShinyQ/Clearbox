@@ -28,6 +28,14 @@ import {
 } from "../scan/write-plan.ts";
 import type { BatchResult, Stmt } from "../scan/write-plan.ts";
 import { newPurgeState, purgeDisconnected, purgeExpired } from "./purge.ts";
+import {
+  DEFAULT_REMINDER_DEPS,
+  REMINDER_SETTINGS_SQL,
+  REMINDER_TARGETS_SQL,
+  parseReminderSettings,
+  runWeeklyReminder,
+} from "./reminder.ts";
+import type { ReminderDeps } from "./reminder.ts";
 
 export const NIGHTLY_LEASE_TTL_MS = 600_000;
 export const PURGE_EXPIRED_MAX_ROUNDS = 16;
@@ -73,6 +81,8 @@ function parseNightlyPolicy(raw: string | undefined): Policy {
 
 export interface NightlyOptions {
   now: number;
+  /** Tests inject the provider fetch, factory and sleep of the weekly reminder (contracts 12.8). */
+  reminder?: Partial<ReminderDeps>;
 }
 
 function parseTau(value: string | undefined): number {
@@ -94,6 +104,8 @@ export async function runNightly(env: Env, opts: NightlyOptions): Promise<void> 
     stmt("SELECT value FROM settings WHERE key = 'tau_delete'"),
     stmt("SELECT rows_written FROM budget WHERE date = ?1", today),
     stmt("SELECT id, status FROM accounts ORDER BY id"),
+    stmt(REMINDER_SETTINGS_SQL),
+    stmt(REMINDER_TARGETS_SQL),
     stmt("SELECT key, value FROM settings WHERE key IN ('tau_segments', 'policy')"),
   ]);
   if (rowsOf(claim[0]).length === 0) return;
@@ -102,7 +114,7 @@ export async function runNightly(env: Env, opts: NightlyOptions): Promise<void> 
   const startRows = rowsOf<{ rows_written: number }>(claim[2])[0]?.rows_written ?? 0;
   const accounts = rowsOf<{ id: string; status: string }>(claim[3]);
   const disconnected = accounts.filter((a) => a.status === "disconnected").map((a) => a.id);
-  const extra = new Map(rowsOf<{ key: string; value: string }>(claim[4]).map((r) => [r.key, r.value]));
+  const extra = new Map(rowsOf<{ key: string; value: string }>(claim[6]).map((r) => [r.key, r.value]));
   const currentTaus = parseSegmentTaus(extra.get("tau_segments") ?? null) ?? {};
 
   const recovery: Stmt[] = accounts.map((a) =>
@@ -137,6 +149,31 @@ export async function runNightly(env: Env, opts: NightlyOptions): Promise<void> 
     ])),
   );
 
+  // Contracts 12.8: before the purge, which then gets only the subrequests left over.
+  try {
+    await runWeeklyReminder({
+      env,
+      run,
+      work,
+      runId,
+      now,
+      settings: parseReminderSettings(rowsOf(claim[4])),
+      targets: rowsOf<{ id: string; email: string }>(claim[5]),
+      visibleIds: accounts.filter((a) => a.status !== "disconnected").map((a) => a.id),
+      deps: { ...DEFAULT_REMINDER_DEPS, ...opts.reminder },
+      results,
+    });
+  } catch (err) {
+    logEvent("reminder.done", {
+      runId,
+      outcome: "failed",
+      accountId: null,
+      pending: 0,
+      groups: 0,
+      errorCode: err instanceof Error ? err.name : "internal",
+    });
+  }
+
   const state = newPurgeState();
   // Read directly (not via readConfig) so housekeeping still runs with an incomplete config; the generated Env
   // type narrows FREE_TIER to the configured literal, hence String().
@@ -168,24 +205,33 @@ export async function runNightly(env: Env, opts: NightlyOptions): Promise<void> 
   const refresh = { rowsRead: 0, rowsWritten: 0, updated: 0 };
   const active = accounts.filter((a) => a.status !== "disconnected").map((a) => a.id);
   let rounds = 0;
-  for (const accountId of active) {
-    let afterId = 0;
-    while (rounds < NIGHTLY_REFRESH_MAX_ROUNDS && work.limit - work.used >= 2) {
-      if (base + state.rowsWritten + refresh.rowsWritten >= stopRows) break;
-      work.reserve(2);
-      rounds += 1;
-      const out = await refreshPending(
-        env.DB,
-        { accountId, afterId, limit: NIGHTLY_REFRESH_PAGE },
-        refreshSettings,
-        now,
-      );
-      refresh.rowsRead += out.rowsRead;
-      refresh.rowsWritten += out.rowsWritten;
-      refresh.updated += out.updated;
-      if (out.lastId === null || out.scanned < NIGHTLY_REFRESH_PAGE) break;
-      afterId = out.lastId;
+  try {
+    for (const accountId of active) {
+      let afterId = 0;
+      while (rounds < NIGHTLY_REFRESH_MAX_ROUNDS && work.limit - work.used >= 2) {
+        if (base + state.rowsWritten + refresh.rowsWritten >= stopRows) break;
+        work.reserve(2);
+        rounds += 1;
+        const out = await refreshPending(
+          env.DB,
+          { accountId, afterId, limit: NIGHTLY_REFRESH_PAGE },
+          refreshSettings,
+          now,
+        );
+        refresh.rowsRead += out.rowsRead;
+        refresh.rowsWritten += out.rowsWritten;
+        refresh.updated += out.updated;
+        if (out.lastId === null || out.scanned < NIGHTLY_REFRESH_PAGE) break;
+        afterId = out.lastId;
+      }
     }
+  } catch (err) {
+    // Best effort: pending suggestions keep their previous fusion; housekeeping and the lease release still run.
+    logEvent("request.error", {
+      requestId: runId,
+      route: "nightly",
+      errorName: err instanceof Error ? err.name : "unknown",
+    });
   }
 
   const final = createSubrequestCounter(TICK_SUBREQUEST_LIMIT, work.used);

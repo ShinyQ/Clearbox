@@ -88,6 +88,7 @@ export function makePolicyResponse(): PolicyResponse {
     labelSubjects: true,
     recordPatterns: ["receipt", "invoice", "tax", "statement", "contract", "medical", "legal"],
     scanHistoryDays: 90 as const,
+    weeklyReminder: { enabled: true, weekday: 0 },
   };
   return {
     policy: {

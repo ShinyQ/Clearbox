@@ -23,7 +23,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "2.0.0-beta.sha-67fa336fd",
+    "@cloudflare/vite-plugin": "2.0.0-beta.sha-805ec1ff3",
     "@cloudflare/vitest-plugin": "1.4.2",
     "@msw/cloudflare": "0.2.0",
     "@tailwindcss/vite": "4.3.3",

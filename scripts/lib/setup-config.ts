@@ -2,7 +2,7 @@ import { isValidKey } from "../gen-key.ts";
 
 export const WORKER_NAME = "clearbox";
 export const D1_NAME = "clearbox";
-export const MIN_NODE_VERSION = "24.13.0";
+export const MIN_NODE_VERSION = "24.22.1";
 export const MIN_PNPM_VERSION = "12.0.0";
 export const LOCAL_CONFIG_PATH = "app/clearbox.local.json";
 export const SECRETS_FILE_PATH = "app/deploy.secrets.json";

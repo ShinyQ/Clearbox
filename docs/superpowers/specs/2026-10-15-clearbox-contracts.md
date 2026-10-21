@@ -267,7 +267,7 @@ Root `package.json`:
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.11.2",
-  "engines": { "node": ">=24.13.0" },
+  "engines": { "node": ">=24.22.1" },
   "scripts": {
     "dev": "pnpm --filter @clearbox/app dev",
     "build": "pnpm --filter @clearbox/app build",
@@ -326,7 +326,7 @@ Exact versions, no ranges. Verified with `npm view <pkg> version` / `dist-tags` 
 
 | Package | Version | Where | Notes |
 |---|---|---|---|
-| Node.js | 24.13.1 (engines `>=24.13.0`) | runtime for tooling | `cf` needs >= 22.18, react-router 8 needs >= 22.22, Vitest 5 supports 24 |
+| Node.js | 24.22.1 (engines `>=24.22.1`, Oct 2026 security release) | runtime for tooling | `cf` needs >= 22.18, react-router 8 needs >= 22.22, Vitest 5 supports 24 |
 | pnpm | 12.11.2 | `packageManager` | via Corepack |
 | typescript | **6.0.3** | root dev | npm `latest` is 7.0.2, but `typescript-eslint@8.71.2` peers `typescript >=4.8.4 <6.1.0`; pin the newest 6.0.x |
 | vite | 8.3.4 | app dev | |

@@ -116,7 +116,7 @@ function deps(over: {
     onInterrupt: over.onInterrupt ?? (() => () => undefined),
     log: (line) => logs.push(line),
     generateKey: over.generateKey ?? (() => Buffer.alloc(32, 9).toString("base64")),
-    nodeVersion: "24.13.1",
+    nodeVersion: "24.22.1",
     flags: over.flags ?? { rotateTokenKey: false, rotateStateKey: false },
   };
 }
@@ -506,13 +506,13 @@ describe("runSetup, failures", () => {
     });
   });
 
-  it("requires Node.js 24.13 or newer", async () => {
+  it("requires Node.js 24.22.1 or newer", async () => {
     const { runner } = fakeRunner(base);
     const d = {
       ...deps({ runner, prompter: fakePrompter([]), fs: fakeFs({ ...INSTALLED }) }),
-      nodeVersion: "22.18.0",
+      nodeVersion: "24.22.0",
     };
-    await assert.rejects(runSetup(d), /Node.js 24.13.0/);
+    await assert.rejects(runSetup(d), /Node.js 24.22.1/);
   });
 
   it("refuses to write secrets to a path git does not ignore", async () => {

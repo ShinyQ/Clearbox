@@ -147,7 +147,7 @@ flowchart TB
 
 ## Quick start
 
-Prerequisites: Node.js 24.13 or newer and pnpm 12 (`corepack enable` picks up `packageManager` from `package.json`). No Cloudflare, Azure, Google or Microsoft account is needed to run the UI locally.
+Prerequisites: Node.js 24.22.1 or newer and pnpm 12 (`corepack enable` picks up `packageManager` from `package.json`). No Cloudflare, Azure, Google or Microsoft account is needed to run the UI locally.
 
 ```bash
 git clone https://github.com/ShinyQ/Clearbox.git

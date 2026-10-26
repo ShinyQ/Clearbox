@@ -35,10 +35,10 @@
     "@vitejs/plugin-react": "6.1.2",
     "axe-core": "4.14.0",
     "cf": "1.0.0-beta.17",
-    "happy-dom": "21.0.1",
+    "happy-dom": "21.0.3",
     "msw": "3.0.3",
     "tailwindcss": "4.3.3",
     "vite": "8.3.4",
-    "vitest": "5.0.4"
+    "vitest": "5.0.5"
   }
 }
